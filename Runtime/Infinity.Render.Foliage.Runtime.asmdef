@@ -1,0 +1,25 @@
+{
+    "name": "Infinity.Render.Foliage..Runtime",
+    "rootNamespace": "",
+    "references": [
+        "Unity.Jobs",
+        "Unity.Burst",
+        "Unity.Collections",
+        "Unity.Mathematics"
+    ],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": true,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [
+        {
+            "name": "com.unity.render-foliage.infinity",
+            "expression": "0.0.0",
+            "define": "InfinityFoliageRuntime"
+        }
+    ],
+    "noEngineReferences": false
+}

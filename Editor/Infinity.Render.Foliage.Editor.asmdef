@@ -1,0 +1,23 @@
+{
+    "name": "Infinity.Render.Foliage..Editor",
+    "rootNamespace": "",
+    "references": [
+        "Unity.Mathematics",
+        "Infinity.Render.Foliage..Runtime"
+    ],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": true,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [
+        {
+            "name": "com.unity.render-foliage.infinity",
+            "expression": "0.0.0",
+            "define": "InfinityFoliageEditor"
+        }
+    ],
+    "noEngineReferences": false
+}
