@@ -28,5 +28,35 @@ namespace Landscape.FoliagePipeline
         {
 
         }
+
+        void Awake()
+        {
+            Debug.Log("Awake");
+        }
+
+        void Reset()
+        {
+            Debug.Log("Reset");
+        }
+
+        void OnEnable()
+        {
+            Debug.Log("OnEnable");
+        }
+
+        void OnValidate()
+        {
+            Debug.Log("OnValidate");
+        }
+
+        void OnDisable()
+        {
+            Debug.Log("OnDisable");
+        }
+
+        void OnDestroy()
+        {
+            Debug.Log("OnDestroy");
+        }
     }
 }
