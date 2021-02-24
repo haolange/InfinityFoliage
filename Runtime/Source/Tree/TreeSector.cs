@@ -2,9 +2,9 @@ using System;
 using UnityEngine;
 using Unity.Mathematics;
 using Unity.Collections;
-using System.Collections;
-using System.Collections.Generic;
+using UnityEngine.Rendering;
 using InfinityTech.Core.Geometry;
+using System.Collections.Generic;
 
 namespace Landscape.FoliagePipeline
 {
@@ -14,25 +14,38 @@ namespace Landscape.FoliagePipeline
         internal TreeAsset Tree;
         internal NativeList<FTreeBatch> TreeBatchs;
 
+        public static List<FTreeSector> TreeSectors = new List<FTreeSector>(16);
 
-        public void BindTreeAsset(TreeAsset InTree)
+        public void SetTreeAsset(TreeAsset InTree)
         {
             Tree = InTree;
         }
 
-        public void Update()
+        public void DrawTree(CommandBuffer CmdBuffer)
         {
+            for (int i = 0; i < TreeBatchs.Length; ++i)
+            {
+                FTreeBatch TreeBatch = TreeBatchs[i];
 
+                if (TreeBatch.LODIndex == 1)
+                {
+                    Mesh Meshe = Tree.Meshes[TreeBatch.LODIndex];
+                    Material material = Tree.Materials[TreeBatch.MaterialIndex];
+                    CmdBuffer.DrawMesh(Meshe, TreeBatch.Matrix_LocalToWorld, material, TreeBatch.SubmeshIndex, 0);
+                }
+            }
         }
 
         public void BuildNativeCollection()
         {
             TreeBatchs = new NativeList<FTreeBatch>(2048, Allocator.Persistent);
+            TreeSectors.Add(this);
         }
 
         public void ReleaseNativeCollection()
         {
             TreeBatchs.Dispose();
+            TreeSectors.Remove(this);
         }
 
         public void AddBatch(in FTreeBatch TreeBatch)
@@ -85,7 +98,7 @@ namespace Landscape.FoliagePipeline
                 for (int j = 0; j < Tree.Meshes.Length; ++j)
                 {
                     Mesh Meshe = Tree.Meshes[j];
-                    float4x4 Matrix = float4x4.TRS(Transform.Position, new quaternion(Transform.Rotation.x, Transform.Rotation.y / 180, Transform.Rotation.z, 1), Transform.Scale);
+                    float4x4 Matrix = float4x4.TRS(Transform.Position, quaternion.EulerXYZ(Transform.Rotation), Transform.Scale);
 
                     TreeBatch.LODIndex = j;
                     TreeBatch.Matrix_LocalToWorld = Matrix;
@@ -95,6 +108,7 @@ namespace Landscape.FoliagePipeline
                     for (int k = 0; k < Meshe.subMeshCount; ++k)
                     {
                         TreeBatch.SubmeshIndex = k;
+                        TreeBatch.MaterialIndex = Tree.LODInfo[j].MaterialSlot[k];
                         AddBatch(TreeBatch);
                     }
                 }

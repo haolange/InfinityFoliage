@@ -53,13 +53,12 @@ public class InstanceMeshComponent : MonoBehaviour
         EventPlay();
     }
 
-    public void Update()
+    void Update()
     {
         if (TransfromStateDirty())
         {
             OnTransformChange();
         }
-
         EventTick();
     }
 

@@ -9,6 +9,7 @@ namespace Landscape.FoliagePipeline
     public struct FTreeLODInfo
     {
         public float ScreenSize;
+        public int[] MaterialSlot;
     }
 
     [CreateAssetMenu(menuName = "Landscape/TreeAsset")]

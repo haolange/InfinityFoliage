@@ -34,7 +34,7 @@ namespace Landscape.FoliagePipeline
 
         protected override void OnRegister()
         {
-            TreeSector.BindTreeAsset(Tree);
+            TreeSector.SetTreeAsset(Tree);
             TreeSector.BuildNativeCollection();
             TreeSector.BuildMeshBatchs(InstancesTransfrom);
         }
@@ -68,7 +68,7 @@ namespace Landscape.FoliagePipeline
             TreeSector.ReleaseNativeCollection();
 
             TreeSector = new FTreeSector();
-            TreeSector.BindTreeAsset(Tree);
+            TreeSector.SetTreeAsset(Tree);
             TreeSector.BuildNativeCollection();
             TreeSector.BuildMeshBatchs(InstancesTransfrom);
         }

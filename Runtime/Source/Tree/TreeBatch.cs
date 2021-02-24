@@ -19,6 +19,7 @@ namespace Landscape.FoliagePipeline
     {
         public int LODIndex;
         public int SubmeshIndex;
+        public int MaterialIndex;
         public FBound BoundingBox;
         public FSphere BoundingSphere;
         public float4x4 Matrix_LocalToWorld;
