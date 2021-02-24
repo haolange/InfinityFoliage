@@ -36,13 +36,13 @@ namespace Landscape.FoliagePipeline
             }
         }
 
-        public void BuildNativeCollection()
+        public void Initialize()
         {
             TreeBatchs = new NativeList<FTreeBatch>(2048, Allocator.Persistent);
             TreeSectors.Add(this);
         }
 
-        public void ReleaseNativeCollection()
+        public void Release()
         {
             TreeBatchs.Dispose();
             TreeSectors.Remove(this);

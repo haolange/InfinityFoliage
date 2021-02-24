@@ -14,7 +14,8 @@ namespace Landscape.FoliagePipeline
         public float CullDistance;
 
         [Header("Tree")]
-        public TreeAsset Tree;
+        public TreeAsset TreeProfile;
+        public GameObject TreePrefabs;
 
         [Header("Instances")]
         public FTransform[] InstancesTransfrom;
@@ -34,9 +35,15 @@ namespace Landscape.FoliagePipeline
 
         protected override void OnRegister()
         {
-            TreeSector.SetTreeAsset(Tree);
-            TreeSector.BuildNativeCollection();
+            TreeSector = new FTreeSector();
+            TreeSector.Initialize();
+            TreeSector.SetTreeAsset(TreeProfile);
             TreeSector.BuildMeshBatchs(InstancesTransfrom);
+
+            if(UnityTerrain.drawTreesAndFoliage == true)
+            {
+                UnityTerrain.drawTreesAndFoliage = false;
+            }
         }
 
         protected override void OnTransformChange()
@@ -56,7 +63,7 @@ namespace Landscape.FoliagePipeline
 
         protected override void UnRegister()
         {
-            TreeSector.ReleaseNativeCollection();
+            TreeSector.Release();
         }
 
 #if UNITY_EDITOR
@@ -64,13 +71,6 @@ namespace Landscape.FoliagePipeline
         {
             UnityTerrain = GetComponent<Terrain>();
             UnityTerrainData = GetComponent<TerrainCollider>().terrainData;
-
-            TreeSector.ReleaseNativeCollection();
-
-            TreeSector = new FTreeSector();
-            TreeSector.SetTreeAsset(Tree);
-            TreeSector.BuildNativeCollection();
-            TreeSector.BuildMeshBatchs(InstancesTransfrom);
         }
 
         public void DrawBounds(in bool LODColor = false)

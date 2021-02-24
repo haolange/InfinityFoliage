@@ -26,9 +26,9 @@ internal struct RenderTransfrom
     }
 };
 
-[ExecuteInEditMode]
+//[ExecuteInEditMode]
 #if UNITY_EDITOR
-[CanEditMultipleObjects]
+//[CanEditMultipleObjects]
 #endif
 public class InstanceMeshComponent : MonoBehaviour
 {
@@ -53,7 +53,7 @@ public class InstanceMeshComponent : MonoBehaviour
         EventPlay();
     }
 
-    void Update()
+    void EventUpdate()
     {
         if (TransfromStateDirty())
         {
