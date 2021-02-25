@@ -11,12 +11,12 @@ namespace Landscape.FoliagePipeline
     [Serializable]
     public class FTreeSector
     {
-        internal TreeAsset Tree;
+        internal FTree Tree;
         internal NativeList<FTreeBatch> TreeBatchs;
 
         public static List<FTreeSector> TreeSectors = new List<FTreeSector>(16);
 
-        public void SetTreeAsset(TreeAsset InTree)
+        public void SetTree(FTree InTree)
         {
             Tree = InTree;
         }

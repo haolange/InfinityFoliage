@@ -2,6 +2,7 @@ using UnityEditor;
 using UnityEngine;
 using Unity.Mathematics;
 using Landscape.FoliagePipeline;
+using System.Collections.Generic;
 
 namespace Landscape.Editor.FoliagePipeline
 {
@@ -44,8 +45,8 @@ namespace Landscape.Editor.FoliagePipeline
             Foliage.Serialize();
         }
 
-        [MenuItem("GameObject/Tool/Landscape/BuildTree", false, 3)]
-        public static void CreatePrimitiveEntity(MenuCommand menuCommand)
+        [MenuItem("GameObject/Tool/Landscape/Tree/InstancesFromTerrain", false, 0)]
+        public static void GetTreeInstancesFromTerrain(MenuCommand menuCommand)
         {
             GameObject LandscapeActor = menuCommand.context as GameObject;
             Terrain UTerrain = LandscapeActor.GetComponent<Terrain>();
@@ -54,14 +55,48 @@ namespace Landscape.Editor.FoliagePipeline
 
             Foliage.InstancesTransfrom = new FTransform[UTerrainData.treeInstanceCount];
 
-            for (int i = 0; i < UTerrainData.treeInstanceCount; i++)
+            for (int i = 0; i < UTerrainData.treeInstanceCount; ++i)
             {
                 Foliage.InstancesTransfrom[i].Scale = new float3(UTerrainData.treeInstances[i].widthScale, UTerrainData.treeInstances[i].heightScale, UTerrainData.treeInstances[i].widthScale);
                 Foliage.InstancesTransfrom[i].Rotation = new float3(0, UTerrainData.treeInstances[i].rotation, 0);
                 Foliage.InstancesTransfrom[i].Position = UTerrainData.treeInstances[i].position * (UTerrainData.heightmapResolution - 1);
             }
             Undo.RegisterCreatedObjectUndo(LandscapeActor, "BuildTree");
-            //Selection.activeObject = MeshEntity;
+        }
+
+        [MenuItem("GameObject/Tool/Landscape/TreesFromTerrain", false, 0)]
+        public static void BuildTreeFromTerrainData(MenuCommand menuCommand)
+        {
+            GameObject[] SelectObjects = Selection.gameObjects;
+            List<Mesh> Meshes = new List<Mesh>();
+            List<Material> Materials = new List<Material>();
+
+            foreach (GameObject SelectObject in SelectObjects)
+            {
+                Terrain UTerrain = SelectObject.GetComponent<Terrain>();
+                TerrainData UTerrainData = UTerrain.terrainData;
+
+                foreach (TreePrototype treePrototype in UTerrainData.treePrototypes)
+                {
+                    GameObject treePrefab = treePrototype.prefab;
+                    LODGroup lodGroup = treePrefab.GetComponent<LODGroup>();
+                    LOD[] lods = lodGroup.GetLODs();
+
+                    for (int j = 0; j < lods.Length; ++j)
+                    {
+                        ref LOD lod = ref lods[j];
+                        Renderer renderer = lod.renderers[0];
+                        MeshFilter meshFilter = renderer.gameObject.GetComponent<MeshFilter>();
+
+                        for(int k = 0; k < renderer.sharedMaterials.Length; ++k)
+                        {
+                            Materials.AddUnique(renderer.sharedMaterials[k]);
+                        }
+                        Meshes.AddUnique(meshFilter.sharedMesh);
+                    }
+                }
+                Debug.Log("");
+            }
         }
     }
 }
