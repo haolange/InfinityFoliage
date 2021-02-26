@@ -42,6 +42,15 @@ namespace Landscape.FoliagePipeline
         public FTreeLODInfo[] LODInfo;
 
 
+
+        /*public FTree()
+        {
+            this.IsCreated = true;
+            this.Meshes = null;
+            this.LODInfo = null;
+            this.Materials = null;
+        }*/
+
         public FTree(Mesh[] Meshes, Material[] Materials, FTreeLODInfo[] LODInfo)
         {
             this.IsCreated = true;

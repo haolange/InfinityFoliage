@@ -13,8 +13,13 @@ namespace Landscape.FoliagePipeline
     {
         internal FTree Tree;
         internal NativeList<FTreeBatch> TreeBatchs;
+        public static List<FTreeSector> TreeSectors = new List<FTreeSector>(64);
 
-        public static List<FTreeSector> TreeSectors = new List<FTreeSector>(16);
+
+        public FTreeSector()
+        {
+
+        }
 
         public void SetTree(FTree InTree)
         {
@@ -23,11 +28,13 @@ namespace Landscape.FoliagePipeline
 
         public void DrawTree(CommandBuffer CmdBuffer)
         {
+            if (Application.isPlaying == false) { return; }
+
             for (int i = 0; i < TreeBatchs.Length; ++i)
             {
                 FTreeBatch TreeBatch = TreeBatchs[i];
 
-                if (TreeBatch.LODIndex == 1)
+                if (TreeBatch.LODIndex == 2)
                 {
                     Mesh Meshe = Tree.Meshes[TreeBatch.LODIndex];
                     Material material = Tree.Materials[TreeBatch.MaterialIndex];
@@ -72,6 +79,8 @@ namespace Landscape.FoliagePipeline
 
         public void DrawBounds(in bool LODColor = false, in bool DrawSphere = false)
         {
+            if (Application.isPlaying == false) { return; }
+
             for (int i = 0; i < TreeBatchs.Length; ++i)
             {
                 Geometry.DrawBound(TreeBatchs[i].BoundingBox, LODColor ? LODColors[TreeBatchs[i].LODIndex] : Color.blue);
