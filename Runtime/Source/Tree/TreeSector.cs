@@ -122,6 +122,18 @@ namespace Landscape.FoliagePipeline
                     }
                 }
             }
+
+            TreeBatchs.Sort();
+        }
+        
+        private void DoCulling()
+        {
+
+        }
+
+        public void InitView()
+        {
+
         }
     }
 }

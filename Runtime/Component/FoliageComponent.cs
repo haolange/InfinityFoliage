@@ -11,21 +11,21 @@ namespace Landscape.FoliagePipeline
 #endif
 
         [Header("Cull")]
-        public float CullDistance;
-
-        [Header("Foliage")]
-        //[HideInInspector]
-        public FTree Tree;
+        public float CullDistance = 256;
 
         [Header("Instances")]
         public FTransform[] InstancesTransfrom;
 
         [HideInInspector]
+        public FTree Tree;
+        [HideInInspector]
+        public int TreeIndex;
+        [HideInInspector]
+        public FTreeSector TreeSector;
+        [HideInInspector]
         public Terrain UnityTerrain;
         [HideInInspector]
         public TerrainData UnityTerrainData;
-        [HideInInspector]
-        public FTreeSector TreeSector;
 
 
         public FoliageComponent() : base()

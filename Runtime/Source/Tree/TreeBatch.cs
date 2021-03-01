@@ -24,6 +24,7 @@ namespace Landscape.FoliagePipeline
         public FSphere BoundingSphere;
         public float4x4 Matrix_LocalToWorld;
 
+
         public bool Equals(FTreeBatch Target)
         {
             return LODIndex.Equals(Target.LODIndex) && SubmeshIndex.Equals(Target.SubmeshIndex);
@@ -36,7 +37,7 @@ namespace Landscape.FoliagePipeline
 
         public int CompareTo(FTreeBatch Target)
         {
-            return 1;
+            return LODIndex.CompareTo(Target.LODIndex) + SubmeshIndex.CompareTo(Target.SubmeshIndex) + MaterialIndex.CompareTo(Target.MaterialIndex);
         }
 
         public override int GetHashCode()

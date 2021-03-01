@@ -4,7 +4,7 @@ using Unity.Mathematics;
 
 namespace InfinityTech.Core.Geometry
 {
-    [Serializable]
+    /*[Serializable]
     public struct FPlane : IEquatable<FPlane>
     {
         private float m_Distance;
@@ -50,6 +50,57 @@ namespace InfinityTech.Core.Geometry
         }
 
         public static implicit operator Plane(FPlane plane) { return new Plane(plane.normal, plane.distance); }
+
+        public static implicit operator FPlane(Plane plane) { return new FPlane(plane.normal, plane.distance); }
+    }*/
+
+    [Serializable]
+    public struct FPlane : IEquatable<FPlane>
+    {
+        private float4 m_NormalDist;
+
+        public float4 normalDist { get { return m_NormalDist; } set { m_NormalDist = value; } }
+
+
+        public FPlane(float3 inNormal, float3 inPoint)
+        {
+            m_NormalDist = new float4(1, 1, 1, 1);
+            m_NormalDist.xyz = math.normalize(inNormal);
+            m_NormalDist.w = -math.dot(m_NormalDist.xyz, inPoint);
+        }
+
+        public FPlane(float3 inNormal, float d)
+        {
+            m_NormalDist = new float4(1, 1, 1, 1);
+            m_NormalDist.xyz = math.normalize(inNormal);
+            m_NormalDist.w = d;
+        }
+
+        public FPlane(float3 a, float3 b, float3 c)
+        {
+            m_NormalDist = new float4(1, 1, 1, 1);
+            m_NormalDist.xyz = math.normalize(math.cross(b - a, c - a));
+            m_NormalDist.w = -math.dot(m_NormalDist.xyz, a);
+        }
+
+        public override bool Equals(object other)
+        {
+            if (!(other is FPlane)) return false;
+
+            return Equals((FPlane)other);
+        }
+
+        public bool Equals(FPlane other)
+        {
+            return normalDist.Equals(other.normalDist);
+        }
+
+        public override int GetHashCode()
+        {
+            return m_NormalDist.GetHashCode();
+        }
+
+        public static implicit operator Plane(FPlane plane) { return new Plane(plane.normalDist.xyz, plane.normalDist.w); }
 
         public static implicit operator FPlane(Plane plane) { return new FPlane(plane.normal, plane.distance); }
     }
@@ -195,8 +246,8 @@ namespace InfinityTech.Core.Geometry
         {
             for (int i = 0; i < 6; ++i)
             {
-                float3 normal = plane[i].normal;
-                float distance = plane[i].distance;
+                float3 normal = plane[i].normalDist.xyz;
+                float distance = plane[i].normalDist.w;
 
                 float dist = math.dot(normal, bound.center) + distance;
                 float radius = math.dot(bound.extents, math.abs(normal));

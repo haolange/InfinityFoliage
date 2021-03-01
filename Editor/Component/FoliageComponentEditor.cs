@@ -45,26 +45,49 @@ namespace Landscape.Editor.FoliagePipeline
             Foliage.Serialize();
         }
 
-        /*[MenuItem("GameObject/Tool/Landscape/Tree/InstancesFromTerrain", false, 10)]
-        public static void GetTreeInstancesFromTerrain(MenuCommand menuCommand)
+        [MenuItem("GameObject/Tool/Landscape/UpdateTreesForTerrain", false, 10)]
+        public static void UpdateTreeFromTerrainData(MenuCommand menuCommand)
         {
-            GameObject LandscapeActor = menuCommand.context as GameObject;
-            Terrain UTerrain = LandscapeActor.GetComponent<Terrain>();
-            TerrainData UTerrainData = UTerrain.terrainData;
-            FoliageComponent Foliage = LandscapeActor.GetComponent<FoliageComponent>();
-
-            Foliage.InstancesTransfrom = new FTransform[UTerrainData.treeInstanceCount];
-
-            for (int i = 0; i < UTerrainData.treeInstanceCount; ++i)
+            GameObject[] SelectObjects = Selection.gameObjects;
+            foreach (GameObject SelectObject in SelectObjects)
             {
-                Foliage.InstancesTransfrom[i].Scale = new float3(UTerrainData.treeInstances[i].widthScale, UTerrainData.treeInstances[i].heightScale, UTerrainData.treeInstances[i].widthScale);
-                Foliage.InstancesTransfrom[i].Rotation = new float3(0, UTerrainData.treeInstances[i].rotation, 0);
-                Foliage.InstancesTransfrom[i].Position = UTerrainData.treeInstances[i].position * (UTerrainData.heightmapResolution - 1);
-            }
-            Undo.RegisterCreatedObjectUndo(LandscapeActor, "BuildTree");
-        }*/
+                Terrain UTerrain = SelectObject.GetComponent<Terrain>();
+                TerrainData UTerrainData = UTerrain.terrainData;
 
-        [MenuItem("GameObject/Tool/Landscape/TreesFromTerrain", false, 10)]
+                FoliageComponent[] foliageComponents = SelectObject.GetComponents<FoliageComponent>();
+                if (foliageComponents.Length != 0)
+                {
+                    for (int i = 0; i < foliageComponents.Length; ++i)
+                    {
+                        FoliageComponent foliageComponent = foliageComponents[i];
+                        TreePrototype treePrototype = UTerrainData.treePrototypes[foliageComponent.TreeIndex];
+
+                        //Build InstancesTransfrom
+                        List<TreeInstance> treeInstances = new List<TreeInstance>(512);
+                        for (int j = 0; j < UTerrainData.treeInstanceCount; ++j)
+                        {
+                            ref TreeInstance treeInstance = ref UTerrainData.treeInstances[j];
+                            TreePrototype serchTreePrototype = UTerrainData.treePrototypes[treeInstance.prototypeIndex];
+                            if (serchTreePrototype.Equals(treePrototype))
+                            {
+                                treeInstances.Add(treeInstance);
+                            }
+                        }
+
+                        foliageComponent.InstancesTransfrom = new FTransform[treeInstances.Count];
+                        for (int k = 0; k < treeInstances.Count; ++k)
+                        {
+                            foliageComponent.InstancesTransfrom[k].Scale = new float3(treeInstances[k].widthScale, treeInstances[k].heightScale, treeInstances[k].widthScale);
+                            foliageComponent.InstancesTransfrom[k].Rotation = new float3(0, treeInstances[k].rotation, 0);
+                            foliageComponent.InstancesTransfrom[k].Position = treeInstances[k].position * new float3(UTerrainData.heightmapResolution - 1, UTerrainData.heightmapScale.y, UTerrainData.heightmapResolution - 1);
+                        }
+                        Undo.RegisterCreatedObjectUndo(foliageComponent, "BuildFoliage");
+                    }
+                }
+            }
+        }
+
+        [MenuItem("GameObject/Tool/Landscape/BuildTreesForTerrain", false, 10)]
         public static void BuildTreeFromTerrainData(MenuCommand menuCommand)
         {
             GameObject[] SelectObjects = Selection.gameObjects;
@@ -83,8 +106,9 @@ namespace Landscape.Editor.FoliagePipeline
                 Terrain UTerrain = SelectObject.GetComponent<Terrain>();
                 TerrainData UTerrainData = UTerrain.terrainData;
 
-                foreach (TreePrototype treePrototype in UTerrainData.treePrototypes)
+                for (int TreeIndex = 0; TreeIndex < UTerrainData.treePrototypes.Length; ++TreeIndex)
                 {
+                    TreePrototype treePrototype = UTerrainData.treePrototypes[TreeIndex];
                     List<Mesh> Meshes = new List<Mesh>();
                     List<Material> Materials = new List<Material>();
 
@@ -93,6 +117,7 @@ namespace Landscape.Editor.FoliagePipeline
                     LOD[] lods = lodGroup.GetLODs();
 
                     FoliageComponent foliageComponent = SelectObject.AddComponent<FoliageComponent>();
+                    foliageComponent.TreeIndex = TreeIndex;
 
                     //Collector Meshes&Materials
                     for (int j = 0; j < lods.Length; ++j)
@@ -144,7 +169,7 @@ namespace Landscape.Editor.FoliagePipeline
                     {
                         foliageComponent.InstancesTransfrom[o].Scale = new float3(treeInstances[o].widthScale, treeInstances[o].heightScale, treeInstances[o].widthScale);
                         foliageComponent.InstancesTransfrom[o].Rotation = new float3(0, treeInstances[o].rotation, 0);
-                        foliageComponent.InstancesTransfrom[o].Position = treeInstances[o].position * (UTerrainData.heightmapResolution - 1);
+                        foliageComponent.InstancesTransfrom[o].Position = treeInstances[o].position * new float3(UTerrainData.heightmapResolution - 1, UTerrainData.heightmapScale.y, UTerrainData.heightmapResolution - 1);
                     }
                     Undo.RegisterCreatedObjectUndo(foliageComponent, "BuildFoliage");
                 }
