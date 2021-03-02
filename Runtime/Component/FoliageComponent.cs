@@ -1,4 +1,5 @@
 ﻿using UnityEngine;
+using System.Collections.Generic;
 
 namespace Landscape.FoliagePipeline
 {
@@ -9,12 +10,10 @@ namespace Landscape.FoliagePipeline
         [Header("Debug")]
         public bool DisplayBounds = false;
 #endif
-
         [Header("Cull")]
         public float CullDistance = 256;
-
         [Header("Instances")]
-        public FTransform[] InstancesTransfrom;
+        public List<FTransform> InstancesTransfrom;
 
         [HideInInspector]
         public FTree Tree;

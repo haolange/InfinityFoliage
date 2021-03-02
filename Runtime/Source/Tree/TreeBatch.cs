@@ -13,6 +13,14 @@ namespace Landscape.FoliagePipeline
         public float3 Position;
         public float3 Rotation;
         public float3 Scale;
+
+
+        public FTransform(float3 Position, float3 Rotation, float3 Scale)
+        {
+            this.Scale = Scale;
+            this.Rotation = Rotation;
+            this.Position = Position;
+        }
     }
 
     public struct FTreeBatch : IComparable<FTreeBatch>, IEquatable<FTreeBatch>

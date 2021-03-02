@@ -34,7 +34,7 @@ namespace Landscape.FoliagePipeline
             {
                 FTreeBatch TreeBatch = TreeBatchs[i];
 
-                if (TreeBatch.LODIndex == 2)
+                if (TreeBatch.LODIndex == 4)
                 {
                     Mesh Meshe = Tree.Meshes[TreeBatch.LODIndex];
                     Material material = Tree.Materials[TreeBatch.MaterialIndex];
@@ -96,18 +96,16 @@ namespace Landscape.FoliagePipeline
         }
 #endif
 
-        public void BuildMeshBatchs(FTransform[] Instances)
+        public void BuildMeshBatchs(List<FTransform> Instances)
         {
             FTreeBatch TreeBatch;
 
-            for (int i = 0; i < Instances.Length; ++i)
+            for (int i = 0; i < Instances.Count; ++i)
             {
-                ref FTransform Transform = ref Instances[i];
-
                 for (int j = 0; j < Tree.Meshes.Length; ++j)
                 {
                     Mesh Meshe = Tree.Meshes[j];
-                    float4x4 Matrix = float4x4.TRS(Transform.Position, quaternion.EulerXYZ(Transform.Rotation), Transform.Scale);
+                    float4x4 Matrix = float4x4.TRS(Instances[i].Position, quaternion.EulerXYZ(Instances[i].Rotation), Instances[i].Scale);
 
                     TreeBatch.LODIndex = j;
                     TreeBatch.Matrix_LocalToWorld = Matrix;

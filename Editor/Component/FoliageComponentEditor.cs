@@ -63,10 +63,27 @@ namespace Landscape.Editor.FoliagePipeline
                         TreePrototype treePrototype = UTerrainData.treePrototypes[foliageComponent.TreeIndex];
 
                         //Build InstancesTransfrom
-                        List<TreeInstance> treeInstances = new List<TreeInstance>(512);
+                        /*FTransform Transform = new FTransform();
+                        foliageComponent.InstancesTransfrom = new List<FTransform>(512);
+
                         for (int j = 0; j < UTerrainData.treeInstanceCount; ++j)
                         {
                             ref TreeInstance treeInstance = ref UTerrainData.treeInstances[j];
+                            TreePrototype serchTreePrototype = UTerrainData.treePrototypes[treeInstance.prototypeIndex];
+                            if (serchTreePrototype.Equals(treePrototype))
+                            {
+                                Transform.Scale = new float3(treeInstance.widthScale, treeInstance.heightScale, treeInstance.widthScale);
+                                Transform.Rotation = new float3(0, treeInstance.rotation, 0);
+                                Transform.Position = treeInstance.position * new float3(UTerrainData.heightmapResolution - 1, UTerrainData.heightmapScale.y, UTerrainData.heightmapResolution - 1);
+                                foliageComponent.InstancesTransfrom.Add(Transform);
+                            }
+                        }*/
+
+                        //Build InstancesTransfrom
+                        List<TreeInstance> treeInstances = new List<TreeInstance>(256);
+                        for (int n = 0; n < UTerrainData.treeInstanceCount; ++n)
+                        {
+                            ref TreeInstance treeInstance = ref UTerrainData.treeInstances[n];
                             TreePrototype serchTreePrototype = UTerrainData.treePrototypes[treeInstance.prototypeIndex];
                             if (serchTreePrototype.Equals(treePrototype))
                             {
@@ -74,12 +91,14 @@ namespace Landscape.Editor.FoliagePipeline
                             }
                         }
 
-                        foliageComponent.InstancesTransfrom = new FTransform[treeInstances.Count];
-                        for (int k = 0; k < treeInstances.Count; ++k)
+                        FTransform Transform = new FTransform();
+                        foliageComponent.InstancesTransfrom = new List<FTransform>(treeInstances.Count);
+                        for (int o = 0; o < treeInstances.Count; ++o)
                         {
-                            foliageComponent.InstancesTransfrom[k].Scale = new float3(treeInstances[k].widthScale, treeInstances[k].heightScale, treeInstances[k].widthScale);
-                            foliageComponent.InstancesTransfrom[k].Rotation = new float3(0, treeInstances[k].rotation, 0);
-                            foliageComponent.InstancesTransfrom[k].Position = treeInstances[k].position * new float3(UTerrainData.heightmapResolution - 1, UTerrainData.heightmapScale.y, UTerrainData.heightmapResolution - 1);
+                            Transform.Scale = new float3(treeInstances[o].widthScale, treeInstances[o].heightScale, treeInstances[o].widthScale);
+                            Transform.Rotation = new float3(0, treeInstances[o].rotation, 0);
+                            Transform.Position = treeInstances[o].position * new float3(UTerrainData.heightmapResolution - 1, UTerrainData.heightmapScale.y, UTerrainData.heightmapResolution - 1);
+                            foliageComponent.InstancesTransfrom.Add(Transform);
                         }
                         Undo.RegisterCreatedObjectUndo(foliageComponent, "BuildFoliage");
                     }
@@ -108,6 +127,9 @@ namespace Landscape.Editor.FoliagePipeline
 
                 for (int TreeIndex = 0; TreeIndex < UTerrainData.treePrototypes.Length; ++TreeIndex)
                 {
+                    FoliageComponent foliageComponent = SelectObject.AddComponent<FoliageComponent>();
+                    foliageComponent.TreeIndex = TreeIndex;
+
                     TreePrototype treePrototype = UTerrainData.treePrototypes[TreeIndex];
                     List<Mesh> Meshes = new List<Mesh>();
                     List<Material> Materials = new List<Material>();
@@ -115,9 +137,6 @@ namespace Landscape.Editor.FoliagePipeline
                     GameObject treePrefab = treePrototype.prefab;
                     LODGroup lodGroup = treePrefab.GetComponent<LODGroup>();
                     LOD[] lods = lodGroup.GetLODs();
-
-                    FoliageComponent foliageComponent = SelectObject.AddComponent<FoliageComponent>();
-                    foliageComponent.TreeIndex = TreeIndex;
 
                     //Collector Meshes&Materials
                     for (int j = 0; j < lods.Length; ++j)
@@ -140,7 +159,6 @@ namespace Landscape.Editor.FoliagePipeline
                         ref LOD lod = ref lods[l];
                         ref FTreeLODInfo LODInfo = ref LODInfos[l];
                         Renderer renderer = lod.renderers[0];
-                        MeshFilter meshFilter = renderer.gameObject.GetComponent<MeshFilter>();
 
                         LODInfo.MaterialSlot = new int[renderer.sharedMaterials.Length];
                         for (int m = 0; m < renderer.sharedMaterials.Length; ++m)
@@ -153,7 +171,7 @@ namespace Landscape.Editor.FoliagePipeline
 
 
                     //Build InstancesTransfrom
-                    List<TreeInstance> treeInstances = new List<TreeInstance>(256);
+                    /*List<TreeInstance> treeInstances = new List<TreeInstance>(256);
                     for (int n = 0; n < UTerrainData.treeInstanceCount; ++n)
                     {
                         ref TreeInstance treeInstance = ref UTerrainData.treeInstances[n];
@@ -170,7 +188,7 @@ namespace Landscape.Editor.FoliagePipeline
                         foliageComponent.InstancesTransfrom[o].Scale = new float3(treeInstances[o].widthScale, treeInstances[o].heightScale, treeInstances[o].widthScale);
                         foliageComponent.InstancesTransfrom[o].Rotation = new float3(0, treeInstances[o].rotation, 0);
                         foliageComponent.InstancesTransfrom[o].Position = treeInstances[o].position * new float3(UTerrainData.heightmapResolution - 1, UTerrainData.heightmapScale.y, UTerrainData.heightmapResolution - 1);
-                    }
+                    }*/
                     Undo.RegisterCreatedObjectUndo(foliageComponent, "BuildFoliage");
                 }
             }
