@@ -2,6 +2,7 @@
     "name": "Infinity.Render.Foliage..Editor",
     "rootNamespace": "",
     "references": [
+        "Unity.Collections",
         "Unity.Mathematics",
         "Infinity.Render.Foliage..Runtime"
     ],

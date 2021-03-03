@@ -2,31 +2,24 @@ using Unity.Jobs;
 using UnityEditor;
 using UnityEngine;
 using Unity.Mathematics;
-using Unity.Collections;
 using Landscape.FoliagePipeline;
 using System.Collections.Generic;
-using Unity.Collections.LowLevel.Unsafe;
+using System.Runtime.InteropServices;
 
 namespace Landscape.Editor.FoliagePipeline
 {
-    public struct FUpdateTreeJob : IJob
+    interface ITask
     {
-        [ReadOnly]
+        void Execute();
+    }
+
+    public struct FUpdateTreeTask : ITask
+    {
         public int length;
-
-        [ReadOnly]
         public float2 Scale;
-
-        [ReadOnly]
         public TreePrototype TreePrototype;
-
-        [ReadOnly]
         public TreeInstance[] TreeInstances;
-
-        [ReadOnly]
         public TreePrototype[] TreePrototypes;
-
-        [WriteOnly]
         public List<FTransform> TreeTransfroms;
 
 
@@ -46,6 +39,17 @@ namespace Landscape.Editor.FoliagePipeline
                     TreeTransfroms.Add(Transform);
                 }
             }
+        }
+    }
+
+    public struct FUpdateTreeJob : IJob
+    {
+        public GCHandle TaskHandle;
+
+        public void Execute()
+        {
+            ITask Task = (ITask)TaskHandle.Target;
+            Task.Execute();
         }
     }
 
@@ -180,7 +184,7 @@ namespace Landscape.Editor.FoliagePipeline
         }
 
 
-        [MenuItem("GameObject/Tool/Landscape/UpdateTreesForTerrain", false, 11)]
+        /*[MenuItem("GameObject/Tool/Landscape/UpdateTreesForTerrain", false, 11)]
         public static void UpdateTreeFromTerrainData(MenuCommand menuCommand)
         {
             GameObject[] SelectObjects = Selection.gameObjects;
@@ -216,6 +220,58 @@ namespace Landscape.Editor.FoliagePipeline
                         Undo.RegisterCreatedObjectUndo(foliageComponent, "BuildFoliage");
                     }
                 }
+            }
+        }*/
+
+
+        [MenuItem("GameObject/Tool/Landscape/UpdateTreesForTerrain", false, 12)]
+        public static void UpdateTreeFromTerrainDataParallel(MenuCommand menuCommand)
+        {
+            GCHandle TaskHandle;
+            List<GCHandle> TasksHandle = new List<GCHandle>(32);
+            List<JobHandle> JobsHandle = new List<JobHandle>(32);
+            GameObject[] SelectObjects = Selection.gameObjects;
+
+            foreach (GameObject SelectObject in SelectObjects)
+            {
+                Terrain UTerrain = SelectObject.GetComponent<Terrain>();
+                TerrainData UTerrainData = UTerrain.terrainData;
+
+                FoliageComponent[] foliageComponents = SelectObject.GetComponents<FoliageComponent>();
+                if (foliageComponents.Length != 0)
+                {
+                    for (int i = 0; i < foliageComponents.Length; ++i)
+                    {
+                        FoliageComponent foliageComponent = foliageComponents[i];
+                        foliageComponent.InstancesTransfrom = new List<FTransform>(512);
+                        TreePrototype treePrototype = UTerrainData.treePrototypes[foliageComponent.TreeIndex];
+
+                        //Build InstancesTransfrom
+                        FUpdateTreeTask UpdateTreeTask = new FUpdateTreeTask();
+                        {
+                            UpdateTreeTask.length = UTerrainData.treeInstanceCount;
+                            UpdateTreeTask.Scale = new float2(UTerrainData.heightmapResolution - 1, UTerrainData.heightmapScale.y);
+                            UpdateTreeTask.TreePrototype = treePrototype;
+                            UpdateTreeTask.TreeInstances = UTerrainData.treeInstances;
+                            UpdateTreeTask.TreePrototypes = UTerrainData.treePrototypes;
+                            UpdateTreeTask.TreeTransfroms = foliageComponent.InstancesTransfrom;
+                        }
+                        TaskHandle = GCHandle.Alloc(UpdateTreeTask);
+                        TasksHandle.Add(TaskHandle);
+
+                        FUpdateTreeJob UpdateTreeJob = new FUpdateTreeJob();
+                        {
+                            UpdateTreeJob.TaskHandle = TaskHandle;
+                        }
+                        JobsHandle.Add(UpdateTreeJob.Schedule());
+                    }
+                }
+            }
+
+            for (int j = 0; j < JobsHandle.Count; ++j)
+            {
+                JobsHandle[j].Complete();
+                TasksHandle[j].Free();
             }
         }
     }
