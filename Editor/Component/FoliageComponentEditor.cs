@@ -93,7 +93,7 @@ namespace Landscape.Editor.FoliagePipeline
         }
 
 
-        [MenuItem("GameObject/Tool/Landscape/BuildTreesForTerrain", false, 10)]
+        [MenuItem("GameObject/ActorAction/Landscape/BuildTreesForTerrain", false, 10)]
         public static void BuildTreeFromTerrainData(MenuCommand menuCommand)
         {
             GameObject[] SelectObjects = Selection.gameObjects;
@@ -224,7 +224,7 @@ namespace Landscape.Editor.FoliagePipeline
         }*/
 
 
-        [MenuItem("GameObject/Tool/Landscape/UpdateTreesForTerrain", false, 12)]
+        [MenuItem("GameObject/ActorAction/Landscape/UpdateTreesForTerrain", false, 11)]
         public static void UpdateTreeFromTerrainDataParallel(MenuCommand menuCommand)
         {
             GCHandle TaskHandle;
@@ -274,5 +274,25 @@ namespace Landscape.Editor.FoliagePipeline
                 TasksHandle[j].Free();
             }
         }
+
+
+        [MenuItem("GameObject/ActorAction/Landscape/RemoveTreeFormTerrain", false, 12)]
+        public static void RemoveTreeForTerrain(MenuCommand menuCommand)
+        {
+            GameObject[] SelectObjects = Selection.gameObjects;
+            foreach (GameObject SelectObject in SelectObjects)
+            {
+                FoliageComponent[] foliageComponents = SelectObject.GetComponents<FoliageComponent>();
+                if (foliageComponents.Length != 0)
+                {
+                    for (int i = 0; i < foliageComponents.Length; ++i)
+                    {
+                        Object.DestroyImmediate(foliageComponents[i]);
+                        Undo.RegisterCreatedObjectUndo(SelectObject, "RemoveTreeComponent");
+                    }
+                }
+            }
+        }
+
     }
 }

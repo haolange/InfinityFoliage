@@ -34,7 +34,7 @@ namespace Landscape.FoliagePipeline
             {
                 FTreeBatch TreeBatch = TreeBatchs[i];
 
-                if (TreeBatch.LODIndex == 4)
+                if (TreeBatch.LODIndex == 2)
                 {
                     Mesh Meshe = Tree.Meshes[TreeBatch.LODIndex];
                     Material material = Tree.Materials[TreeBatch.MaterialIndex];
