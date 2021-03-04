@@ -1,11 +1,15 @@
-﻿using UnityEngine;
+﻿using Unity.Jobs;
+using UnityEngine;
+using Unity.Collections;
 using UnityEngine.Rendering;
 using System.Collections.Generic;
+using InfinityTech.Core.Geometry;
+using Unity.Collections.LowLevel.Unsafe;
 
 namespace Landscape.FoliagePipeline
 {
     [AddComponentMenu("HG/Foliage Component")]
-    public class FoliageComponent : InstanceMeshComponent
+    public unsafe class FoliageComponent : InstanceMeshComponent
     {
         public static List<FoliageComponent> FoliageComponents = new List<FoliageComponent>(64);
 
@@ -19,6 +23,8 @@ namespace Landscape.FoliagePipeline
         [HideInInspector]
         public TerrainData UnityTerrainData;
 
+        [HideInInspector]
+        public List<JobHandle> CullRefs;
         [HideInInspector]
         public FTreeSector[] TreeSectors;
 
@@ -34,6 +40,7 @@ namespace Landscape.FoliagePipeline
                 UnityTerrain.drawTreesAndFoliage = false;
             }
 
+            CullRefs = new List<JobHandle>(64);
             InitTreeSectors();
         }
 
@@ -91,26 +98,49 @@ namespace Landscape.FoliagePipeline
             for (int i = 0; i < TreeSectors.Length; ++i)
             {
                 FTreeSector TreeSector = TreeSectors[i];
-                if (TreeSector != null)
-                {
-                    TreeSector.Initialize();
-                    TreeSector.BuildMeshBatchs();
-                    TreeSector.BuildMeshElements();
-                }
+                TreeSector.Initialize();
+                TreeSector.BuildMeshBatchs();
+                TreeSector.BuildMeshElements();
             }
         }
 
-        public void DrawTree(CommandBuffer CmdBuffer)
+        public void InitViewTree(NativeArray<FPlane> Planes)
         {
-            if (Application.isPlaying == false) { return; }
+            //Cull
+            CullRefs.Clear();
 
             for (int i = 0; i < TreeSectors.Length; ++i)
             {
                 FTreeSector TreeSector = TreeSectors[i];
-                if (TreeSector != null)
-                {
-                    TreeSector.DrawTree(CmdBuffer);
-                }
+                CullRefs.Add(TreeSector.InitView((FPlane*)Planes.GetUnsafePtr()));
+            }
+        }
+
+        public void WaitViewTree()
+        {
+            //Wait
+            for (int j = 0; j < CullRefs.Count; ++j)
+            {
+                CullRefs[j].Complete();
+            }
+        }
+
+        public void DrawViewTree(CommandBuffer CmdBuffer)
+        {
+            //Draw Call
+            for (int l = 0; l < TreeSectors.Length; ++l)
+            {
+                FTreeSector TreeSector = TreeSectors[l];
+                TreeSector.DrawTree(CmdBuffer);
+            }
+        }
+
+        public void ReleaseViewTree()
+        {
+            //Release
+            for (int k = 0; k < TreeSectors.Length; ++k)
+            {
+                TreeSectors[k].ReleaseView();
             }
         }
 
@@ -119,10 +149,7 @@ namespace Landscape.FoliagePipeline
             for (int i = 0; i < TreeSectors.Length; ++i)
             {
                 FTreeSector TreeSector = TreeSectors[i];
-                if (TreeSector != null)
-                {
-                    TreeSector.Release();
-                }
+                TreeSector.Release();
             }
         }
         #endregion //Tree

@@ -1,6 +1,5 @@
 using System;
 using Unity.Mathematics;
-using InfinityTech.Core.Geometry;
 
 namespace Landscape.FoliagePipeline
 {
@@ -40,7 +39,7 @@ namespace Landscape.FoliagePipeline
 
         public int CompareTo(FTreeElement Target)
         {
-            return LODIndex.CompareTo(Target.LODIndex) + MatIndex.CompareTo(Target.MatIndex) + MeshIndex.CompareTo(Target.MeshIndex) + BatchIndex.CompareTo(Target.BatchIndex);
+            return (LODIndex + MatIndex + MeshIndex).CompareTo(Target.LODIndex + Target.MatIndex + Target.MeshIndex);
         }
 
         public override int GetHashCode()

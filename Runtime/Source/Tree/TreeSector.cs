@@ -1,4 +1,5 @@
 using System;
+using Unity.Jobs;
 using UnityEngine;
 using Unity.Mathematics;
 using Unity.Collections;
@@ -9,7 +10,7 @@ using System.Collections.Generic;
 namespace Landscape.FoliagePipeline
 {
     [Serializable]
-    public class FTreeSector
+    public unsafe class FTreeSector
     {
         public FTree Tree;
         public int TreeIndex;
@@ -17,6 +18,7 @@ namespace Landscape.FoliagePipeline
         public List<FTransform> Transfroms;
 
         private NativeList<FTreeBatch> TreeBatchs;
+        private NativeArray<int> ViewTreeBatchs;
         private NativeList<FTreeElement> TreeElements;
 
 
@@ -106,18 +108,54 @@ namespace Landscape.FoliagePipeline
                     }
                 }
             }
+
+            TreeElements.Sort();
         }
 
-        private void DoCulling()
+        public JobHandle InitView(FPlane* Planes)
         {
+            JobHandle JobRef;
+            ViewTreeBatchs = new NativeArray<int>(TreeBatchs.Length, Allocator.TempJob);
 
+            if(ViewTreeBatchs.Length >= 1024)
+            {
+                FTreeBatchCullingParallelJob TreeBatchCullingParallelJob = new FTreeBatchCullingParallelJob();
+                {
+                    TreeBatchCullingParallelJob.Planes = Planes;
+                    TreeBatchCullingParallelJob.TreeBatchs = (FTreeBatch*)TreeBatchs.GetUnsafeList()->Ptr;
+                    TreeBatchCullingParallelJob.ViewTreeBatchs = ViewTreeBatchs;
+                }
+                JobRef = TreeBatchCullingParallelJob.Schedule(ViewTreeBatchs.Length, 256);
+            } else if(ViewTreeBatchs.Length >= 512) {
+                FTreeBatchCullingParallelJob TreeBatchCullingParallelJob = new FTreeBatchCullingParallelJob();
+                {
+                    TreeBatchCullingParallelJob.Planes = Planes;
+                    TreeBatchCullingParallelJob.TreeBatchs = (FTreeBatch*)TreeBatchs.GetUnsafeList()->Ptr;
+                    TreeBatchCullingParallelJob.ViewTreeBatchs = ViewTreeBatchs;
+                }
+                JobRef = TreeBatchCullingParallelJob.Schedule(ViewTreeBatchs.Length, 128);
+            } else if (ViewTreeBatchs.Length >= 256) {
+                FTreeBatchCullingParallelJob TreeBatchCullingParallelJob = new FTreeBatchCullingParallelJob();
+                {
+                    TreeBatchCullingParallelJob.Planes = Planes;
+                    TreeBatchCullingParallelJob.TreeBatchs = (FTreeBatch*)TreeBatchs.GetUnsafeList()->Ptr;
+                    TreeBatchCullingParallelJob.ViewTreeBatchs = ViewTreeBatchs;
+                }
+                JobRef = TreeBatchCullingParallelJob.Schedule(ViewTreeBatchs.Length, 64);
+            } else {
+                FTreeBatchCullingJob TreeBatchCullingJob = new FTreeBatchCullingJob();
+                {
+                    TreeBatchCullingJob.Length = ViewTreeBatchs.Length;
+                    TreeBatchCullingJob.Planes = Planes;
+                    TreeBatchCullingJob.TreeBatchs = (FTreeBatch*)TreeBatchs.GetUnsafeList()->Ptr;
+                    TreeBatchCullingJob.ViewTreeBatchs = ViewTreeBatchs;
+                }
+                JobRef = TreeBatchCullingJob.Schedule();
+            }
+
+            return JobRef;
         }
 
-        public void InitView()
-        {
-
-        }
-        
         public void DrawTree(CommandBuffer CmdBuffer)
         {
             FTreeBatch TreeBatch;
@@ -125,15 +163,25 @@ namespace Landscape.FoliagePipeline
             for (int i = 0; i < TreeElements.Length; ++i)
             {
                 FTreeElement TreeElement = TreeElements[i];
-                TreeBatch = TreeBatchs[TreeElement.BatchIndex];
+                int ViewTreeBatch = ViewTreeBatchs[TreeElement.BatchIndex];
 
-                if (TreeElement.LODIndex == Tree.LODInfo.Length - 1)
+                if(ViewTreeBatch == 1)
                 {
-                    Mesh Meshe = Tree.Meshes[TreeElement.LODIndex];
-                    Material material = Tree.Materials[TreeElement.MatIndex];
-                    CmdBuffer.DrawMesh(Meshe, TreeBatch.Matrix_World, material, TreeElement.MeshIndex, 0);
+                    TreeBatch = TreeBatchs[TreeElement.BatchIndex];
+
+                    if (TreeElement.LODIndex == Tree.LODInfo.Length - 1)
+                    {
+                        Mesh Meshe = Tree.Meshes[TreeElement.LODIndex];
+                        Material material = Tree.Materials[TreeElement.MatIndex];
+                        CmdBuffer.DrawMesh(Meshe, TreeBatch.Matrix_World, material, TreeElement.MeshIndex, 0);
+                    }
                 }
             }
+        }
+
+        public void ReleaseView()
+        {
+            ViewTreeBatchs.Dispose();
         }
 
 #if UNITY_EDITOR
