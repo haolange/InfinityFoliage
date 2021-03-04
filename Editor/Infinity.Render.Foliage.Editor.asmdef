@@ -6,7 +6,9 @@
         "Unity.Mathematics",
         "Infinity.Render.Foliage.Runtime"
     ],
-    "includePlatforms": [],
+    "includePlatforms": [
+        "Editor"
+    ],
     "excludePlatforms": [],
     "allowUnsafeCode": true,
     "overrideReferences": false,
