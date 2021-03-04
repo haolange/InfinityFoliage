@@ -99,23 +99,21 @@ namespace Landscape.Editor.FoliagePipeline
             GameObject[] SelectObjects = Selection.gameObjects;
             foreach (GameObject SelectObject in SelectObjects)
             {
-                FoliageComponent[] foliageComponents = SelectObject.GetComponents<FoliageComponent>();
-                if(foliageComponents.Length != 0)
+                FoliageComponent foliageComponent = SelectObject.GetComponent<FoliageComponent>();
+                if(foliageComponent == null)
                 {
-                    for (int i = 0; i < foliageComponents.Length; ++i)
-                    {
-                        Object.DestroyImmediate(foliageComponents[i]);
-                    }
+                    foliageComponent = SelectObject.AddComponent<FoliageComponent>();
                 }
 
 
                 Terrain UTerrain = SelectObject.GetComponent<Terrain>();
                 TerrainData UTerrainData = UTerrain.terrainData;
+                foliageComponent.TreeSectors = new FTreeSector[UTerrainData.treePrototypes.Length];
 
                 for (int TreeIndex = 0; TreeIndex < UTerrainData.treePrototypes.Length; ++TreeIndex)
                 {
-                    FoliageComponent foliageComponent = SelectObject.AddComponent<FoliageComponent>();
-                    foliageComponent.TreeIndex = TreeIndex;
+                    foliageComponent.TreeSectors[TreeIndex] = new FTreeSector();
+                    foliageComponent.TreeSectors[TreeIndex].TreeIndex = TreeIndex;
 
                     TreePrototype treePrototype = UTerrainData.treePrototypes[TreeIndex];
                     List<Mesh> Meshes = new List<Mesh>();
@@ -154,31 +152,7 @@ namespace Landscape.Editor.FoliagePipeline
                             MaterialSlot = Materials.IndexOf(renderer.sharedMaterials[m]);
                         }
                     }
-                    foliageComponent.Tree = new FTree(Meshes.ToArray(), Materials.ToArray(), LODInfos);
-
-
-                    //Build InstancesTransfrom
-                    /*List<TreeInstance> treeInstances = new List<TreeInstance>(256);
-                    for (int n = 0; n < UTerrainData.treeInstanceCount; ++n)
-                    {
-                        ref TreeInstance treeInstance = ref UTerrainData.treeInstances[n];
-                        TreePrototype serchTreePrototype = UTerrainData.treePrototypes[treeInstance.prototypeIndex];
-                        if (serchTreePrototype.Equals(treePrototype))
-                        {
-                            treeInstances.Add(treeInstance);
-                        }
-                    }
-
-                    FTransform Transform = new FTransform();
-                    foliageComponent.InstancesTransfrom = new List<FTransform>(treeInstances.Count);
-                    for (int o = 0; o < treeInstances.Count; ++o)
-                    {
-                        Transform.Scale = new float3(treeInstances[o].widthScale, treeInstances[o].heightScale, treeInstances[o].widthScale);
-                        Transform.Rotation = new float3(0, treeInstances[o].rotation, 0);
-                        Transform.Position = treeInstances[o].position * new float3(UTerrainData.heightmapResolution - 1, UTerrainData.heightmapScale.y, UTerrainData.heightmapResolution - 1);
-                        foliageComponent.InstancesTransfrom.Add(Transform);
-                    }*/
-                    Undo.RegisterCreatedObjectUndo(foliageComponent, "BuildFoliage");
+                    foliageComponent.TreeSectors[TreeIndex].Tree = new FTree(Meshes.ToArray(), Materials.ToArray(), LODInfos);
                 }
             }
         }
@@ -193,17 +167,19 @@ namespace Landscape.Editor.FoliagePipeline
                 Terrain UTerrain = SelectObject.GetComponent<Terrain>();
                 TerrainData UTerrainData = UTerrain.terrainData;
 
-                FoliageComponent[] foliageComponents = SelectObject.GetComponents<FoliageComponent>();
-                if (foliageComponents.Length != 0)
+                FoliageComponent foliageComponent = SelectObject.GetComponent<FoliageComponent>();
+                foliageComponent.TreeSectors = new FTreeSector[UTerrainData.treePrototypes.Length];
+
+                if (foliageComponent.TreeSectors.Length != 0)
                 {
-                    for (int i = 0; i < foliageComponents.Length; ++i)
+                    for (int i = 0; i < foliageComponent.TreeSectors.Length; ++i)
                     {
-                        FoliageComponent foliageComponent = foliageComponents[i];
-                        TreePrototype treePrototype = UTerrainData.treePrototypes[foliageComponent.TreeIndex];
+                        FTreeSector TreeSector = foliageComponent.TreeSectors[i];
+                        TreePrototype treePrototype = UTerrainData.treePrototypes[TreeSector.TreeIndex];
 
                         //Build InstancesTransfrom
                         FTransform Transform = new FTransform();
-                        foliageComponent.InstancesTransfrom = new List<FTransform>(512);
+                        TreeSector.Transfroms = new List<FTransform>(512);
 
                         for (int j = 0; j < UTerrainData.treeInstanceCount; ++j)
                         {
@@ -214,7 +190,7 @@ namespace Landscape.Editor.FoliagePipeline
                                 Transform.Scale = new float3(treeInstance.widthScale, treeInstance.heightScale, treeInstance.widthScale);
                                 Transform.Rotation = new float3(0, treeInstance.rotation, 0);
                                 Transform.Position = treeInstance.position * new float3(UTerrainData.heightmapResolution - 1, UTerrainData.heightmapScale.y, UTerrainData.heightmapResolution - 1);
-                                foliageComponent.InstancesTransfrom.Add(Transform);
+                                TreeSector.Transfroms.Add(Transform);
                             }
                         }
                         Undo.RegisterCreatedObjectUndo(foliageComponent, "BuildFoliage");
@@ -237,14 +213,15 @@ namespace Landscape.Editor.FoliagePipeline
                 Terrain UTerrain = SelectObject.GetComponent<Terrain>();
                 TerrainData UTerrainData = UTerrain.terrainData;
 
-                FoliageComponent[] foliageComponents = SelectObject.GetComponents<FoliageComponent>();
-                if (foliageComponents.Length != 0)
+                FoliageComponent foliageComponent = SelectObject.GetComponent<FoliageComponent>();
+
+                if (foliageComponent.TreeSectors.Length != 0)
                 {
-                    for (int i = 0; i < foliageComponents.Length; ++i)
+                    for (int i = 0; i < foliageComponent.TreeSectors.Length; ++i)
                     {
-                        FoliageComponent foliageComponent = foliageComponents[i];
-                        foliageComponent.InstancesTransfrom = new List<FTransform>(512);
-                        TreePrototype treePrototype = UTerrainData.treePrototypes[foliageComponent.TreeIndex];
+                        ref FTreeSector TreeSector = ref foliageComponent.TreeSectors[i];
+                        TreeSector.Transfroms = new List<FTransform>(512);
+                        TreePrototype treePrototype = UTerrainData.treePrototypes[TreeSector.TreeIndex];
 
                         //Build InstancesTransfrom
                         FUpdateTreeTask UpdateTreeTask = new FUpdateTreeTask();
@@ -254,7 +231,7 @@ namespace Landscape.Editor.FoliagePipeline
                             UpdateTreeTask.TreePrototype = treePrototype;
                             UpdateTreeTask.TreeInstances = UTerrainData.treeInstances;
                             UpdateTreeTask.TreePrototypes = UTerrainData.treePrototypes;
-                            UpdateTreeTask.TreeTransfroms = foliageComponent.InstancesTransfrom;
+                            UpdateTreeTask.TreeTransfroms = TreeSector.Transfroms;
                         }
                         TaskHandle = GCHandle.Alloc(UpdateTreeTask);
                         TasksHandle.Add(TaskHandle);
@@ -276,7 +253,7 @@ namespace Landscape.Editor.FoliagePipeline
         }
 
 
-        [MenuItem("GameObject/ActorAction/Landscape/RemoveTreeFormTerrain", false, 12)]
+        /*[MenuItem("GameObject/ActorAction/Landscape/RemoveTreeFormTerrain", false, 12)]
         public static void RemoveTreeForTerrain(MenuCommand menuCommand)
         {
             GameObject[] SelectObjects = Selection.gameObjects;
@@ -292,7 +269,6 @@ namespace Landscape.Editor.FoliagePipeline
                     }
                 }
             }
-        }
-
+        }*/
     }
 }

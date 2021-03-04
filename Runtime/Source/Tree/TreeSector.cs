@@ -11,20 +11,15 @@ namespace Landscape.FoliagePipeline
     [Serializable]
     public class FTreeSector
     {
-        internal FTree Tree;
-        internal NativeList<FTreeBatch> TreeBatchs;
+        public FTree Tree;
+        public int TreeIndex;
+        public float CullDistance = 256;
+        public List<FTransform> Transfroms;
+
+        private NativeList<FTreeBatch> TreeBatchs;
+
         public static List<FTreeSector> TreeSectors = new List<FTreeSector>(64);
 
-
-        public FTreeSector()
-        {
-
-        }
-
-        public void SetTree(FTree InTree)
-        {
-            Tree = InTree;
-        }
 
         public void DrawTree(CommandBuffer CmdBuffer)
         {
@@ -34,7 +29,7 @@ namespace Landscape.FoliagePipeline
             {
                 FTreeBatch TreeBatch = TreeBatchs[i];
 
-                if (TreeBatch.LODIndex == 2)
+                if (TreeBatch.LODIndex == 4)
                 {
                     Mesh Meshe = Tree.Meshes[TreeBatch.LODIndex];
                     Material material = Tree.Materials[TreeBatch.MaterialIndex];
@@ -96,16 +91,16 @@ namespace Landscape.FoliagePipeline
         }
 #endif
 
-        public void BuildMeshBatchs(List<FTransform> Instances)
+        public void BuildMeshBatchs()
         {
             FTreeBatch TreeBatch;
 
-            for (int i = 0; i < Instances.Count; ++i)
+            for (int i = 0; i < Transfroms.Count; ++i)
             {
                 for (int j = 0; j < Tree.Meshes.Length; ++j)
                 {
                     Mesh Meshe = Tree.Meshes[j];
-                    float4x4 Matrix = float4x4.TRS(Instances[i].Position, quaternion.EulerXYZ(Instances[i].Rotation), Instances[i].Scale);
+                    float4x4 Matrix = float4x4.TRS(Transfroms[i].Position, quaternion.EulerXYZ(Transfroms[i].Rotation), Transfroms[i].Scale);
 
                     TreeBatch.LODIndex = j;
                     TreeBatch.Matrix_LocalToWorld = Matrix;

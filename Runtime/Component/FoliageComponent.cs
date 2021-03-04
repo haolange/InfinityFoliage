@@ -10,27 +10,15 @@ namespace Landscape.FoliagePipeline
         [Header("Debug")]
         public bool DisplayBounds = false;
 #endif
-        [Header("Cull")]
-        public float CullDistance = 256;
-        [Header("Instances")]
-        public List<FTransform> InstancesTransfrom;
 
-        [HideInInspector]
-        public FTree Tree;
-        [HideInInspector]
-        public int TreeIndex;
-        [HideInInspector]
-        public FTreeSector TreeSector;
         [HideInInspector]
         public Terrain UnityTerrain;
         [HideInInspector]
         public TerrainData UnityTerrainData;
 
+        [HideInInspector]
+        public FTreeSector[] TreeSectors;
 
-        public FoliageComponent() : base()
-        {
-
-        }
 
         protected override void OnRegister()
         {
@@ -41,10 +29,7 @@ namespace Landscape.FoliagePipeline
                 UnityTerrain.drawTreesAndFoliage = false;
             }
 
-            TreeSector = new FTreeSector();
-            TreeSector.SetTree(Tree);
-            TreeSector.Initialize();
-            TreeSector.BuildMeshBatchs(InstancesTransfrom);
+            InitTreeSectors();
         }
 
         protected override void OnTransformChange()
@@ -64,7 +49,7 @@ namespace Landscape.FoliagePipeline
 
         protected override void UnRegister()
         {
-            TreeSector.Release();
+            ReleaseTreeSectors();
         }
 
 #if UNITY_EDITOR
@@ -75,9 +60,16 @@ namespace Landscape.FoliagePipeline
 
         public void DrawBounds(in bool LODColor = false)
         {
-            if (DisplayBounds && TreeSector != null)
+            if (DisplayBounds)
             {
-                TreeSector.DrawBounds(LODColor);
+                for (int i = 0; i < TreeSectors.Length; ++i)
+                {
+                    FTreeSector TreeSector = TreeSectors[i];
+                    if (TreeSector != null)
+                    {
+                        TreeSector.DrawBounds(LODColor);
+                    }
+                }
             }
         }
 
@@ -86,5 +78,32 @@ namespace Landscape.FoliagePipeline
             DrawBounds(true);
         }
 #endif
+
+        #region Tree
+        void InitTreeSectors()
+        {
+            for (int i = 0; i < TreeSectors.Length; ++i)
+            {
+                FTreeSector TreeSector = TreeSectors[i];
+                if (TreeSector != null)
+                {
+                    TreeSector.Initialize();
+                    TreeSector.BuildMeshBatchs();
+                }
+            }
+        }
+
+        void ReleaseTreeSectors()
+        {
+            for (int i = 0; i < TreeSectors.Length; ++i)
+            {
+                FTreeSector TreeSector = TreeSectors[i];
+                if (TreeSector != null)
+                {
+                    TreeSector.Release();
+                }
+            }
+        }
+        #endregion //Tree
     }
 }
