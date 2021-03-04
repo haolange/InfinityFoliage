@@ -25,14 +25,12 @@ namespace Landscape.FoliagePipeline
         public int LODIndex;
         public int MatIndex;
         public int MeshIndex;
-        public FBound BoundBox;
-        public FSphere BoundSphere;
-        public float4x4 Matrix_LocalToWorld;
+        public int BatchIndex;
 
 
         public bool Equals(FTreeElement Target)
         {
-            return LODIndex.Equals(Target.LODIndex) && MatIndex.Equals(Target.MatIndex) && MeshIndex.Equals(Target.MeshIndex);
+            return LODIndex.Equals(Target.LODIndex) && MatIndex.Equals(Target.MatIndex) && MeshIndex.Equals(Target.MeshIndex) && BatchIndex.Equals(Target.BatchIndex);
         }
 
         public override bool Equals(object obj)
@@ -42,7 +40,7 @@ namespace Landscape.FoliagePipeline
 
         public int CompareTo(FTreeElement Target)
         {
-            return LODIndex.CompareTo(Target.LODIndex) + MatIndex.CompareTo(Target.MatIndex) + MeshIndex.CompareTo(Target.MeshIndex);
+            return LODIndex.CompareTo(Target.LODIndex) + MatIndex.CompareTo(Target.MatIndex) + MeshIndex.CompareTo(Target.MeshIndex) + BatchIndex.CompareTo(Target.BatchIndex);
         }
 
         public override int GetHashCode()
@@ -51,9 +49,7 @@ namespace Landscape.FoliagePipeline
             hashCode += LODIndex;
             hashCode += MatIndex;
             hashCode += MeshIndex;
-            hashCode += BoundBox.GetHashCode();
-            hashCode += BoundSphere.GetHashCode();
-            hashCode += Matrix_LocalToWorld.GetHashCode();
+            BatchIndex += BatchIndex;
 
             return hashCode;
         }

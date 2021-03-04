@@ -94,6 +94,7 @@ namespace Landscape.FoliagePipeline
                 if (TreeSector != null)
                 {
                     TreeSector.Initialize();
+                    TreeSector.BuildMeshBatchs();
                     TreeSector.BuildMeshElements();
                 }
             }

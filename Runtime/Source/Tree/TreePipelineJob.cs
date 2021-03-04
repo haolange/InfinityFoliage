@@ -16,6 +16,10 @@ namespace Landscape.FoliagePipeline
 
         [ReadOnly]
         [NativeDisableUnsafePtrRestriction]
+        public FTreeBatch* TreeBatchs;
+
+        [ReadOnly]
+        [NativeDisableUnsafePtrRestriction]
         public FTreeElement* TreeElements;
 
         [WriteOnly]
@@ -27,14 +31,15 @@ namespace Landscape.FoliagePipeline
             int VisibleState = 1;
             float2 distRadius = new float2(0, 0);
             ref FTreeElement TreeElement = ref TreeElements[index];
+            ref FTreeBatch TreeBatch = ref TreeBatchs[TreeElement.BatchIndex];
 
             for (int i = 0; i < 6; ++i)
             {
                 Unity.Burst.CompilerServices.Loop.ExpectVectorized();
 
                 ref FPlane FrustumPlane = ref FrustumPlanes[i];
-                distRadius.x = math.dot(FrustumPlane.normalDist.xyz, TreeElement.BoundBox.center) + FrustumPlane.normalDist.w;
-                distRadius.y = math.dot(math.abs(FrustumPlane.normalDist.xyz), TreeElement.BoundBox.extents);
+                distRadius.x = math.dot(FrustumPlane.normalDist.xyz, TreeBatch.BoundBox.center) + FrustumPlane.normalDist.w;
+                distRadius.y = math.dot(math.abs(FrustumPlane.normalDist.xyz), TreeBatch.BoundBox.extents);
 
                 VisibleState = math.select(VisibleState, 0, distRadius.x + distRadius.y < 0);
             }
