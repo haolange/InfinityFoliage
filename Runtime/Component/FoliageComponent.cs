@@ -24,8 +24,6 @@ namespace Landscape.FoliagePipeline
         public TerrainData UnityTerrainData;
 
         [HideInInspector]
-        public List<JobHandle> CullRefs;
-        [HideInInspector]
         public FTreeSector[] TreeSectors;
 
 
@@ -40,7 +38,6 @@ namespace Landscape.FoliagePipeline
                 UnityTerrain.drawTreesAndFoliage = false;
             }
 
-            CullRefs = new List<JobHandle>(64);
             InitTreeSectors();
         }
 
@@ -61,8 +58,8 @@ namespace Landscape.FoliagePipeline
 
         protected override void UnRegister()
         {
-            FoliageComponents.Remove(this);
             ReleaseTreeSectors();
+            FoliageComponents.Remove(this);
         }
 
 #if UNITY_EDITOR
@@ -104,24 +101,12 @@ namespace Landscape.FoliagePipeline
             }
         }
 
-        public void InitViewTree(NativeArray<FPlane> Planes)
+        public void InitViewTree(in NativeArray<FPlane> Planes, in NativeList<JobHandle> CullHandles)
         {
-            //Cull
-            CullRefs.Clear();
-
             for (int i = 0; i < TreeSectors.Length; ++i)
             {
                 FTreeSector TreeSector = TreeSectors[i];
-                CullRefs.Add(TreeSector.InitView((FPlane*)Planes.GetUnsafePtr()));
-            }
-        }
-
-        public void WaitViewTree()
-        {
-            //Wait
-            for (int j = 0; j < CullRefs.Count; ++j)
-            {
-                CullRefs[j].Complete();
+                CullHandles.Add(TreeSector.InitView((FPlane*)Planes.GetUnsafePtr()));
             }
         }
 
