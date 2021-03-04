@@ -114,10 +114,17 @@ namespace Landscape.FoliagePipeline
 
         public JobHandle InitView(FPlane* Planes)
         {
-            JobHandle JobRef;
             ViewTreeBatchs = new NativeArray<int>(TreeBatchs.Length, Allocator.TempJob);
 
-            if(ViewTreeBatchs.Length >= 1024)
+            FTreeBatchCullingParallelJob TreeBatchCullingParallelJob = new FTreeBatchCullingParallelJob();
+            {
+                TreeBatchCullingParallelJob.Planes = Planes;
+                TreeBatchCullingParallelJob.TreeBatchs = (FTreeBatch*)TreeBatchs.GetUnsafeList()->Ptr;
+                TreeBatchCullingParallelJob.ViewTreeBatchs = ViewTreeBatchs;
+            }
+            JobHandle JobRef = TreeBatchCullingParallelJob.Schedule(ViewTreeBatchs.Length, 256);
+
+            /*if(ViewTreeBatchs.Length >= 1024)
             {
                 FTreeBatchCullingParallelJob TreeBatchCullingParallelJob = new FTreeBatchCullingParallelJob();
                 {
@@ -151,7 +158,7 @@ namespace Landscape.FoliagePipeline
                     TreeBatchCullingJob.ViewTreeBatchs = ViewTreeBatchs;
                 }
                 JobRef = TreeBatchCullingJob.Schedule();
-            }
+            }*/
 
             return JobRef;
         }
