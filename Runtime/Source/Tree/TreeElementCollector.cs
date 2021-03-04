@@ -6,10 +6,8 @@ using System.Collections.Generic;
 namespace Landscape.FoliagePipeline
 {
     [Serializable]
-    public class FTreeBatchCollector
+    public class FTreeElementCollector
     {
-
-
         public void Initialize()
         {
 

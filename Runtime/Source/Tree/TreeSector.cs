@@ -17,23 +17,20 @@ namespace Landscape.FoliagePipeline
         public List<FTransform> Transfroms;
 
         private NativeList<FTreeBatch> TreeBatchs;
-
-        public static List<FTreeSector> TreeSectors = new List<FTreeSector>(64);
+        private NativeList<FTreeElement> TreeElements;
 
 
         public void DrawTree(CommandBuffer CmdBuffer)
         {
-            if (Application.isPlaying == false) { return; }
-
-            for (int i = 0; i < TreeBatchs.Length; ++i)
+            for (int i = 0; i < TreeElements.Length; ++i)
             {
-                FTreeBatch TreeBatch = TreeBatchs[i];
+                FTreeElement TreeElement = TreeElements[i];
 
-                if (TreeBatch.LODIndex == 4)
+                if (TreeElement.LODIndex == Tree.LODInfo.Length - 1)
                 {
-                    Mesh Meshe = Tree.Meshes[TreeBatch.LODIndex];
-                    Material material = Tree.Materials[TreeBatch.MaterialIndex];
-                    CmdBuffer.DrawMesh(Meshe, TreeBatch.Matrix_LocalToWorld, material, TreeBatch.SubmeshIndex, 0);
+                    Mesh Meshe = Tree.Meshes[TreeElement.LODIndex];
+                    Material material = Tree.Materials[TreeElement.MatIndex];
+                    CmdBuffer.DrawMesh(Meshe, TreeElement.Matrix_LocalToWorld, material, TreeElement.MeshIndex, 0);
                 }
             }
         }
@@ -41,13 +38,13 @@ namespace Landscape.FoliagePipeline
         public void Initialize()
         {
             TreeBatchs = new NativeList<FTreeBatch>(2048, Allocator.Persistent);
-            TreeSectors.Add(this);
+            TreeElements = new NativeList<FTreeElement>(4096, Allocator.Persistent);
         }
 
         public void Release()
         {
             TreeBatchs.Dispose();
-            TreeSectors.Remove(this);
+            TreeElements.Dispose();
         }
 
         public void AddBatch(in FTreeBatch TreeBatch)
@@ -69,6 +66,25 @@ namespace Landscape.FoliagePipeline
             TreeBatchs.Clear();
         }
 
+        public void AddElement(in FTreeElement TreeElement)
+        {
+            TreeElements.Add(TreeElement);
+        }
+
+        public void RemoveElement(in FTreeElement TreeElement)
+        {
+            int index = TreeElements.IndexOf(TreeElement);
+            if (index >= 0)
+            {
+                TreeElements.RemoveAt(index);
+            }
+        }
+
+        public void ClearElement()
+        {
+            TreeElements.Clear();
+        }
+
 #if UNITY_EDITOR
         public static Color[] LODColors = new Color[7] { new Color(1, 1, 1, 1), new Color(1, 0, 0, 1), new Color(0, 1, 0, 1), new Color(0, 0, 1, 1), new Color(1, 1, 0, 1), new Color(1, 0, 1, 1), new Color(0, 1, 1, 1) };
 
@@ -76,16 +92,16 @@ namespace Landscape.FoliagePipeline
         {
             if (Application.isPlaying == false) { return; }
 
-            for (int i = 0; i < TreeBatchs.Length; ++i)
+            for (int i = 0; i < TreeElements.Length; ++i)
             {
-                Geometry.DrawBound(TreeBatchs[i].BoundingBox, LODColor ? LODColors[TreeBatchs[i].LODIndex] : Color.blue);
+                Geometry.DrawBound(TreeElements[i].BoundBox, LODColor ? LODColors[TreeElements[i].LODIndex] : Color.blue);
 
                 if (DrawSphere)
                 {
-                    UnityEditor.Handles.color = LODColor ? LODColors[TreeBatchs[i].LODIndex] : Color.yellow;
-                    UnityEditor.Handles.DrawWireDisc(TreeBatchs[i].BoundingSphere.center, Vector3.up, TreeBatchs[i].BoundingSphere.radius);
-                    UnityEditor.Handles.DrawWireDisc(TreeBatchs[i].BoundingSphere.center, Vector3.back, TreeBatchs[i].BoundingSphere.radius);
-                    UnityEditor.Handles.DrawWireDisc(TreeBatchs[i].BoundingSphere.center, Vector3.right, TreeBatchs[i].BoundingSphere.radius);
+                    UnityEditor.Handles.color = LODColor ? LODColors[TreeElements[i].LODIndex] : Color.yellow;
+                    UnityEditor.Handles.DrawWireDisc(TreeElements[i].BoundSphere.center, Vector3.up, TreeElements[i].BoundSphere.radius);
+                    UnityEditor.Handles.DrawWireDisc(TreeElements[i].BoundSphere.center, Vector3.back, TreeElements[i].BoundSphere.radius);
+                    UnityEditor.Handles.DrawWireDisc(TreeElements[i].BoundSphere.center, Vector3.right, TreeElements[i].BoundSphere.radius);
                 }
             }
         }
@@ -97,28 +113,42 @@ namespace Landscape.FoliagePipeline
 
             for (int i = 0; i < Transfroms.Count; ++i)
             {
+                Mesh Meshe = Tree.Meshes[0];
+                float4x4 Matrix_World = float4x4.TRS(Transfroms[i].Position, quaternion.EulerXYZ(Transfroms[i].Rotation), Transfroms[i].Scale);
+
+                TreeBatch.Matrix_World = Matrix_World;
+                TreeBatch.BoundBox = Geometry.CaculateWorldBound(Meshe.bounds, Matrix_World);
+                TreeBatch.BoundSphere = new FSphere(Geometry.CaculateBoundRadius(TreeBatch.BoundBox), TreeBatch.BoundBox.center);
+                AddBatch(TreeBatch);
+            }
+        }
+
+        public void BuildMeshElements()
+        {
+            FTreeElement TreeElement;
+
+            for (int i = 0; i < Transfroms.Count; ++i)
+            {
                 for (int j = 0; j < Tree.Meshes.Length; ++j)
                 {
                     Mesh Meshe = Tree.Meshes[j];
                     float4x4 Matrix = float4x4.TRS(Transfroms[i].Position, quaternion.EulerXYZ(Transfroms[i].Rotation), Transfroms[i].Scale);
 
-                    TreeBatch.LODIndex = j;
-                    TreeBatch.Matrix_LocalToWorld = Matrix;
-                    TreeBatch.BoundingBox = Geometry.CaculateWorldBound(Meshe.bounds, Matrix);
-                    TreeBatch.BoundingSphere = new FSphere(Geometry.CaculateBoundRadius(TreeBatch.BoundingBox), TreeBatch.BoundingBox.center);
+                    TreeElement.LODIndex = j;
+                    TreeElement.Matrix_LocalToWorld = Matrix;
+                    TreeElement.BoundBox = Geometry.CaculateWorldBound(Meshe.bounds, Matrix);
+                    TreeElement.BoundSphere = new FSphere(Geometry.CaculateBoundRadius(TreeElement.BoundBox), TreeElement.BoundBox.center);
 
                     for (int k = 0; k < Meshe.subMeshCount; ++k)
                     {
-                        TreeBatch.SubmeshIndex = k;
-                        TreeBatch.MaterialIndex = Tree.LODInfo[j].MaterialSlot[k];
-                        AddBatch(TreeBatch);
+                        TreeElement.MeshIndex = k;
+                        TreeElement.MatIndex = Tree.LODInfo[j].MaterialSlot[k];
+                        AddElement(TreeElement);
                     }
                 }
             }
-
-            TreeBatchs.Sort();
         }
-        
+
         private void DoCulling()
         {
 

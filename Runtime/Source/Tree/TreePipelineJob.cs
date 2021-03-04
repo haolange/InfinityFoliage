@@ -8,7 +8,7 @@ using Unity.Collections.LowLevel.Unsafe;
 namespace Landscape.FoliagePipeline
 {
     [BurstCompile]
-    public unsafe struct FTreeBatchCullingJob : IJobParallelFor
+    public unsafe struct FTreeElementCullingJob : IJobParallelFor
     {
         [ReadOnly]
         [NativeDisableUnsafePtrRestriction]
@@ -16,30 +16,30 @@ namespace Landscape.FoliagePipeline
 
         [ReadOnly]
         [NativeDisableUnsafePtrRestriction]
-        public FTreeBatch* TreeBatchs;
+        public FTreeElement* TreeElements;
 
         [WriteOnly]
-        public NativeArray<int> ViewTreeBatchs;
+        public NativeArray<int> ViewTreeElements;
 
 
         public void Execute(int index)
         {
             int VisibleState = 1;
             float2 distRadius = new float2(0, 0);
-            ref FTreeBatch TreeBatch = ref TreeBatchs[index];
+            ref FTreeElement TreeElement = ref TreeElements[index];
 
             for (int i = 0; i < 6; ++i)
             {
                 Unity.Burst.CompilerServices.Loop.ExpectVectorized();
 
                 ref FPlane FrustumPlane = ref FrustumPlanes[i];
-                distRadius.x = math.dot(FrustumPlane.normalDist.xyz, TreeBatch.BoundingBox.center) + FrustumPlane.normalDist.w;
-                distRadius.y = math.dot(math.abs(FrustumPlane.normalDist.xyz), TreeBatch.BoundingBox.extents);
+                distRadius.x = math.dot(FrustumPlane.normalDist.xyz, TreeElement.BoundBox.center) + FrustumPlane.normalDist.w;
+                distRadius.y = math.dot(math.abs(FrustumPlane.normalDist.xyz), TreeElement.BoundBox.extents);
 
                 VisibleState = math.select(VisibleState, 0, distRadius.x + distRadius.y < 0);
             }
 
-            ViewTreeBatchs[index] = VisibleState;
+            ViewTreeElements[index] = VisibleState;
         }
     }
 }

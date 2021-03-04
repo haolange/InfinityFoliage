@@ -1,41 +1,19 @@
 using System;
-using UnityEngine;
 using Unity.Mathematics;
-using System.Collections;
-using System.Collections.Generic;
 using InfinityTech.Core.Geometry;
 
 namespace Landscape.FoliagePipeline
 {
-    [Serializable]
-    public struct FTransform
+    public struct FTreeBatch : IEquatable<FTreeBatch>
     {
-        public float3 Position;
-        public float3 Rotation;
-        public float3 Scale;
-
-
-        public FTransform(float3 Position, float3 Rotation, float3 Scale)
-        {
-            this.Scale = Scale;
-            this.Rotation = Rotation;
-            this.Position = Position;
-        }
-    }
-
-    public struct FTreeBatch : IComparable<FTreeBatch>, IEquatable<FTreeBatch>
-    {
-        public int LODIndex;
-        public int SubmeshIndex;
-        public int MaterialIndex;
-        public FBound BoundingBox;
-        public FSphere BoundingSphere;
-        public float4x4 Matrix_LocalToWorld;
+        public FBound BoundBox;
+        public FSphere BoundSphere;
+        public float4x4 Matrix_World;
 
 
         public bool Equals(FTreeBatch Target)
         {
-            return LODIndex.Equals(Target.LODIndex) && SubmeshIndex.Equals(Target.SubmeshIndex);
+            return BoundBox.Equals(Target.BoundBox) && BoundSphere.Equals(Target.BoundSphere) && Matrix_World.Equals(Target.Matrix_World);
         }
 
         public override bool Equals(object obj)
@@ -43,14 +21,12 @@ namespace Landscape.FoliagePipeline
             return Equals((FTreeBatch)obj);
         }
 
-        public int CompareTo(FTreeBatch Target)
-        {
-            return LODIndex.CompareTo(Target.LODIndex) + SubmeshIndex.CompareTo(Target.SubmeshIndex) + MaterialIndex.CompareTo(Target.MaterialIndex);
-        }
-
         public override int GetHashCode()
         {
             int hashCode = 1;
+            hashCode += BoundBox.GetHashCode();
+            hashCode += BoundSphere.GetHashCode();
+            hashCode += Matrix_World.GetHashCode();
 
             return hashCode;
         }

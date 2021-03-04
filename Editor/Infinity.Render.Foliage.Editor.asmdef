@@ -1,10 +1,10 @@
 {
-    "name": "Infinity.Render.Foliage..Editor",
+    "name": "Infinity.Render.Foliage.Editor",
     "rootNamespace": "",
     "references": [
         "Unity.Collections",
         "Unity.Mathematics",
-        "Infinity.Render.Foliage..Runtime"
+        "Infinity.Render.Foliage.Runtime"
     ],
     "includePlatforms": [],
     "excludePlatforms": [],

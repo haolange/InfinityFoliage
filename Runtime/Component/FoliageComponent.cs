@@ -1,4 +1,5 @@
 ﻿using UnityEngine;
+using UnityEngine.Rendering;
 using System.Collections.Generic;
 
 namespace Landscape.FoliagePipeline
@@ -6,6 +7,8 @@ namespace Landscape.FoliagePipeline
     [AddComponentMenu("HG/Foliage Component")]
     public class FoliageComponent : InstanceMeshComponent
     {
+        public static List<FoliageComponent> FoliageComponents = new List<FoliageComponent>(64);
+
 #if UNITY_EDITOR
         [Header("Debug")]
         public bool DisplayBounds = false;
@@ -22,6 +25,8 @@ namespace Landscape.FoliagePipeline
 
         protected override void OnRegister()
         {
+            FoliageComponents.Add(this);
+
             UnityTerrain = GetComponent<Terrain>();
             UnityTerrainData = GetComponent<TerrainCollider>().terrainData;
             if (UnityTerrain.drawTreesAndFoliage == true)
@@ -49,6 +54,7 @@ namespace Landscape.FoliagePipeline
 
         protected override void UnRegister()
         {
+            FoliageComponents.Remove(this);
             ReleaseTreeSectors();
         }
 
@@ -88,7 +94,21 @@ namespace Landscape.FoliagePipeline
                 if (TreeSector != null)
                 {
                     TreeSector.Initialize();
-                    TreeSector.BuildMeshBatchs();
+                    TreeSector.BuildMeshElements();
+                }
+            }
+        }
+
+        public void DrawTree(CommandBuffer CmdBuffer)
+        {
+            if (Application.isPlaying == false) { return; }
+
+            for (int i = 0; i < TreeSectors.Length; ++i)
+            {
+                FTreeSector TreeSector = TreeSectors[i];
+                if (TreeSector != null)
+                {
+                    TreeSector.DrawTree(CmdBuffer);
                 }
             }
         }
