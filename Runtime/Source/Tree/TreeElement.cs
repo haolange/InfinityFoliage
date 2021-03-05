@@ -25,11 +25,22 @@ namespace Landscape.FoliagePipeline
         public int MatIndex;
         public int MeshIndex;
         public int BatchIndex;
+        //public int InstanceGroupID;
 
+
+        public FTreeElement(in int LODIndex, in int MatIndex, in int MeshIndex, in int BatchIndex, in int InstanceGroupID)
+        {
+            this.LODIndex = LODIndex;
+            this.MatIndex = MatIndex;
+            this.MeshIndex = MeshIndex;
+            this.BatchIndex = BatchIndex;
+            //this.InstanceGroupID = InstanceGroupID;
+        }
 
         public bool Equals(FTreeElement Target)
         {
-            return LODIndex.Equals(Target.LODIndex) && MatIndex.Equals(Target.MatIndex) && MeshIndex.Equals(Target.MeshIndex) && BatchIndex.Equals(Target.BatchIndex);
+            //return InstanceGroupID.Equals(Target.InstanceGroupID);
+            return LODIndex.Equals(Target.LODIndex) && MatIndex.Equals(Target.MatIndex) && MeshIndex.Equals(Target.MeshIndex);
         }
 
         public override bool Equals(object obj)
@@ -39,18 +50,20 @@ namespace Landscape.FoliagePipeline
 
         public int CompareTo(FTreeElement Target)
         {
-            return (LODIndex + MatIndex + MeshIndex).CompareTo(Target.LODIndex + Target.MatIndex + Target.MeshIndex);
+            //return InstanceGroupID;
+            //return (MeshIndex + LODIndex + MatIndex).CompareTo(Target.MeshIndex + Target.LODIndex + Target.MatIndex);
+            return ((MeshIndex >> 16) + (LODIndex << 16 | MatIndex)).CompareTo((Target.MeshIndex >> 16) + (Target.LODIndex << 16 | Target.MatIndex));
         }
 
         public override int GetHashCode()
         {
-            int hashCode = 1;
-            hashCode += LODIndex;
+            /*int hashCode = LODIndex;
             hashCode += MatIndex;
             hashCode += MeshIndex;
-            BatchIndex += BatchIndex;
 
-            return hashCode;
+            return hashCode;*/
+            //return InstanceGroupID;
+            return (MeshIndex >> 16) + (LODIndex << 16 | MatIndex);
         }
     }
 }

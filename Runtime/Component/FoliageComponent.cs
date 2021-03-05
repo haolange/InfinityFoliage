@@ -110,13 +110,23 @@ namespace Landscape.FoliagePipeline
             }
         }
 
-        public void DrawViewTree(CommandBuffer CmdBuffer)
+        public void DispatchSetup(in NativeList<JobHandle> GatherHandles)
         {
-            //Draw Call
+            //Build DrawCall
             for (int l = 0; l < TreeSectors.Length; ++l)
             {
                 FTreeSector TreeSector = TreeSectors[l];
-                TreeSector.DrawTree(CmdBuffer);
+                GatherHandles.Add(TreeSector.DispatchSetup());
+            }
+        }
+
+        public void DispatchDraw(CommandBuffer CmdBuffer)
+        {
+            //Record DrawCall
+            for (int l = 0; l < TreeSectors.Length; ++l)
+            {
+                FTreeSector TreeSector = TreeSectors[l];
+                TreeSector.DispatchDraw(CmdBuffer);
             }
         }
 

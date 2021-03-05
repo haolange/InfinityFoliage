@@ -23,8 +23,7 @@ namespace Landscape.FoliagePipeline
 
         public override int GetHashCode()
         {
-            int hashCode = 1;
-            hashCode += BoundBox.GetHashCode();
+            int hashCode = BoundBox.GetHashCode();
             hashCode += BoundSphere.GetHashCode();
             hashCode += Matrix_World.GetHashCode();
 

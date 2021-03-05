@@ -17,9 +17,12 @@ namespace Landscape.FoliagePipeline
         public float CullDistance = 256;
         public List<FTransform> Transfroms;
 
-        private NativeList<FTreeBatch> TreeBatchs;
         private NativeArray<int> ViewTreeBatchs;
+        private NativeArray<int> TreeBatchIndexs;
+        private NativeList<FTreeBatch> TreeBatchs;
         private NativeList<FTreeElement> TreeElements;
+        private NativeList<FTreeElement> PassTreeElements;
+        private NativeList<FTreeDrawCommand> TreeDrawCommands;
 
 
         public void Initialize()
@@ -32,6 +35,10 @@ namespace Landscape.FoliagePipeline
         {
             TreeBatchs.Dispose();
             TreeElements.Dispose();
+            ViewTreeBatchs.Dispose();
+            TreeBatchIndexs.Dispose();
+            PassTreeElements.Dispose();
+            TreeDrawCommands.Dispose();
         }
 
         public void AddBatch(in FTreeBatch TreeBatch)
@@ -86,6 +93,10 @@ namespace Landscape.FoliagePipeline
                 TreeBatch.BoundSphere = new FSphere(Geometry.CaculateBoundRadius(TreeBatch.BoundBox), TreeBatch.BoundBox.center);
                 AddBatch(TreeBatch);
             }
+
+            ViewTreeBatchs = new NativeArray<int>(TreeBatchs.Length, Allocator.Persistent);
+            TreeDrawCommands = new NativeList<FTreeDrawCommand>(32, Allocator.Persistent);
+            PassTreeElements = new NativeList<FTreeElement>(TreeBatchs.Length, Allocator.Persistent);
         }
 
         public void BuildMeshElements()
@@ -104,68 +115,44 @@ namespace Landscape.FoliagePipeline
                     {
                         TreeElement.MeshIndex = k;
                         TreeElement.MatIndex = Tree.LODInfo[j].MaterialSlot[k];
+                        //TreeElement.InstanceGroupID = (TreeElement.MeshIndex >> 16) + (TreeElement.LODIndex << 16 | TreeElement.MatIndex);
                         AddElement(TreeElement);
                     }
                 }
             }
-
             TreeElements.Sort();
+
+            TreeBatchIndexs = new NativeArray<int>(TreeElements.Length, Allocator.Persistent);
         }
 
         public JobHandle InitView(FPlane* Planes)
         {
-            ViewTreeBatchs = new NativeArray<int>(TreeBatchs.Length, Allocator.TempJob);
-
-            FTreeBatchCullingParallelJob TreeBatchCullingParallelJob = new FTreeBatchCullingParallelJob();
+            FTreeBatchCullingJob TreeBatchCullingJob = new FTreeBatchCullingJob();
             {
-                TreeBatchCullingParallelJob.Planes = Planes;
-                TreeBatchCullingParallelJob.TreeBatchs = (FTreeBatch*)TreeBatchs.GetUnsafeList()->Ptr;
-                TreeBatchCullingParallelJob.ViewTreeBatchs = ViewTreeBatchs;
+                TreeBatchCullingJob.Planes = Planes;
+                TreeBatchCullingJob.TreeBatchs = (FTreeBatch*)TreeBatchs.GetUnsafeList()->Ptr;
+                TreeBatchCullingJob.ViewTreeBatchs = ViewTreeBatchs;
             }
-            JobHandle JobRef = TreeBatchCullingParallelJob.Schedule(ViewTreeBatchs.Length, 256);
-
-            /*if(ViewTreeBatchs.Length >= 1024)
-            {
-                FTreeBatchCullingParallelJob TreeBatchCullingParallelJob = new FTreeBatchCullingParallelJob();
-                {
-                    TreeBatchCullingParallelJob.Planes = Planes;
-                    TreeBatchCullingParallelJob.TreeBatchs = (FTreeBatch*)TreeBatchs.GetUnsafeList()->Ptr;
-                    TreeBatchCullingParallelJob.ViewTreeBatchs = ViewTreeBatchs;
-                }
-                JobRef = TreeBatchCullingParallelJob.Schedule(ViewTreeBatchs.Length, 256);
-            } else if(ViewTreeBatchs.Length >= 512) {
-                FTreeBatchCullingParallelJob TreeBatchCullingParallelJob = new FTreeBatchCullingParallelJob();
-                {
-                    TreeBatchCullingParallelJob.Planes = Planes;
-                    TreeBatchCullingParallelJob.TreeBatchs = (FTreeBatch*)TreeBatchs.GetUnsafeList()->Ptr;
-                    TreeBatchCullingParallelJob.ViewTreeBatchs = ViewTreeBatchs;
-                }
-                JobRef = TreeBatchCullingParallelJob.Schedule(ViewTreeBatchs.Length, 128);
-            } else if (ViewTreeBatchs.Length >= 256) {
-                FTreeBatchCullingParallelJob TreeBatchCullingParallelJob = new FTreeBatchCullingParallelJob();
-                {
-                    TreeBatchCullingParallelJob.Planes = Planes;
-                    TreeBatchCullingParallelJob.TreeBatchs = (FTreeBatch*)TreeBatchs.GetUnsafeList()->Ptr;
-                    TreeBatchCullingParallelJob.ViewTreeBatchs = ViewTreeBatchs;
-                }
-                JobRef = TreeBatchCullingParallelJob.Schedule(ViewTreeBatchs.Length, 64);
-            } else {
-                FTreeBatchCullingJob TreeBatchCullingJob = new FTreeBatchCullingJob();
-                {
-                    TreeBatchCullingJob.Length = ViewTreeBatchs.Length;
-                    TreeBatchCullingJob.Planes = Planes;
-                    TreeBatchCullingJob.TreeBatchs = (FTreeBatch*)TreeBatchs.GetUnsafeList()->Ptr;
-                    TreeBatchCullingJob.ViewTreeBatchs = ViewTreeBatchs;
-                }
-                JobRef = TreeBatchCullingJob.Schedule();
-            }*/
-
-            return JobRef;
+            return TreeBatchCullingJob.Schedule(ViewTreeBatchs.Length, 256);
         }
 
-        public void DrawTree(CommandBuffer CmdBuffer)
+        public JobHandle DispatchSetup()
         {
-            FTreeBatch TreeBatch;
+            FTreeDrawCommandBuildJob TreeDrawCommandBuildJob = new FTreeDrawCommandBuildJob();
+            {
+                TreeDrawCommandBuildJob.MaxLOD = Tree.LODInfo.Length - 2;
+                TreeDrawCommandBuildJob.TreeElements = TreeElements;
+                TreeDrawCommandBuildJob.ViewTreeBatchs = ViewTreeBatchs;
+                TreeDrawCommandBuildJob.TreeBatchIndexs = TreeBatchIndexs;
+                TreeDrawCommandBuildJob.PassTreeElements = PassTreeElements;
+                TreeDrawCommandBuildJob.TreeDrawCommands = TreeDrawCommands;
+            }
+            return TreeDrawCommandBuildJob.Schedule();
+        }
+
+        public void DispatchDraw(CommandBuffer CmdBuffer)
+        {
+            /*FTreeBatch TreeBatch;
 
             for (int i = 0; i < TreeElements.Length; ++i)
             {
@@ -183,12 +170,15 @@ namespace Landscape.FoliagePipeline
                         CmdBuffer.DrawMesh(Meshe, TreeBatch.Matrix_World, material, TreeElement.MeshIndex, 0);
                     }
                 }
-            }
+            }*/
+
+            PassTreeElements.Clear();
+            TreeDrawCommands.Clear();
         }
 
         public void ReleaseView()
         {
-            ViewTreeBatchs.Dispose();
+            //ViewTreeBatchs.Dispose();
         }
 
 #if UNITY_EDITOR
