@@ -19,6 +19,7 @@ namespace Landscape.FoliagePipeline
 
         private NativeArray<int> ViewTreeBatchs;
         private NativeArray<int> TreeBatchIndexs;
+        private NativeArray<float> TreeBatchLODs;
         private NativeList<FTreeBatch> TreeBatchs;
         private NativeList<FTreeElement> TreeElements;
         private NativeList<FTreeElement> PassTreeElements;
@@ -35,6 +36,7 @@ namespace Landscape.FoliagePipeline
         {
             TreeBatchs.Dispose();
             TreeElements.Dispose();
+            TreeBatchLODs.Dispose();
             ViewTreeBatchs.Dispose();
             TreeBatchIndexs.Dispose();
             PassTreeElements.Dispose();
@@ -88,10 +90,17 @@ namespace Landscape.FoliagePipeline
                 Mesh Meshe = Tree.Meshes[0];
                 float4x4 Matrix_World = float4x4.TRS(Transfroms[i].Position, quaternion.EulerXYZ(Transfroms[i].Rotation), Transfroms[i].Scale);
 
+                TreeBatch.LODIndex = 0;
                 TreeBatch.Matrix_World = Matrix_World;
                 TreeBatch.BoundBox = Geometry.CaculateWorldBound(Meshe.bounds, Matrix_World);
                 TreeBatch.BoundSphere = new FSphere(Geometry.CaculateBoundRadius(TreeBatch.BoundBox), TreeBatch.BoundBox.center);
                 AddBatch(TreeBatch);
+            }
+
+            TreeBatchLODs = new NativeArray<float>(Tree.LODInfo.Length, Allocator.Persistent);
+            for (int j = 0; j < Tree.LODInfo.Length; ++j)
+            {
+                TreeBatchLODs[j] = Tree.LODInfo[j].ScreenSize;
             }
 
             ViewTreeBatchs = new NativeArray<int>(TreeBatchs.Length, Allocator.Persistent);
@@ -125,12 +134,15 @@ namespace Landscape.FoliagePipeline
             TreeBatchIndexs = new NativeArray<int>(TreeElements.Length, Allocator.Persistent);
         }
 
-        public JobHandle InitView(FPlane* Planes)
+        public JobHandle InitView(in float3 ViewOringin, in float4x4 Matrix_Proj, FPlane* Planes)
         {
             FTreeBatchCullingJob TreeBatchCullingJob = new FTreeBatchCullingJob();
             {
                 TreeBatchCullingJob.Planes = Planes;
                 TreeBatchCullingJob.TreeBatchs = (FTreeBatch*)TreeBatchs.GetUnsafeList()->Ptr;
+                TreeBatchCullingJob.ViewOringin = ViewOringin;
+                TreeBatchCullingJob.Matrix_Proj = Matrix_Proj;
+                TreeBatchCullingJob.TreeBatchLODs = TreeBatchLODs;
                 TreeBatchCullingJob.ViewTreeBatchs = ViewTreeBatchs;
             }
             return TreeBatchCullingJob.Schedule(ViewTreeBatchs.Length, 256);
@@ -140,8 +152,9 @@ namespace Landscape.FoliagePipeline
         {
             FTreeDrawCommandBuildJob TreeDrawCommandBuildJob = new FTreeDrawCommandBuildJob();
             {
-                TreeDrawCommandBuildJob.MaxLOD = Tree.LODInfo.Length - 2;
+                TreeDrawCommandBuildJob.MaxLOD = Tree.LODInfo.Length - 1;
                 TreeDrawCommandBuildJob.TreeElements = TreeElements;
+                TreeDrawCommandBuildJob.TreeBatchs = (FTreeBatch*)TreeBatchs.GetUnsafeList()->Ptr;
                 TreeDrawCommandBuildJob.ViewTreeBatchs = ViewTreeBatchs;
                 TreeDrawCommandBuildJob.TreeBatchIndexs = TreeBatchIndexs;
                 TreeDrawCommandBuildJob.PassTreeElements = PassTreeElements;
@@ -152,7 +165,7 @@ namespace Landscape.FoliagePipeline
 
         public void DispatchDraw(CommandBuffer CmdBuffer)
         {
-            /*FTreeBatch TreeBatch;
+            FTreeBatch TreeBatch;
 
             for (int i = 0; i < TreeElements.Length; ++i)
             {
@@ -163,14 +176,14 @@ namespace Landscape.FoliagePipeline
                 {
                     TreeBatch = TreeBatchs[TreeElement.BatchIndex];
 
-                    if (TreeElement.LODIndex == Tree.LODInfo.Length - 1)
+                    if (TreeElement.LODIndex == TreeBatch.LODIndex)
                     {
                         Mesh Meshe = Tree.Meshes[TreeElement.LODIndex];
                         Material material = Tree.Materials[TreeElement.MatIndex];
                         CmdBuffer.DrawMesh(Meshe, TreeBatch.Matrix_World, material, TreeElement.MeshIndex, 0);
                     }
                 }
-            }*/
+            }
 
             PassTreeElements.Clear();
             TreeDrawCommands.Clear();
@@ -182,22 +195,22 @@ namespace Landscape.FoliagePipeline
         }
 
 #if UNITY_EDITOR
-        public static Color[] LODColors = new Color[7] { new Color(1, 1, 1, 1), new Color(1, 0, 0, 1), new Color(0, 1, 0, 1), new Color(0, 0, 1, 1), new Color(1, 1, 0, 1), new Color(1, 0, 1, 1), new Color(0, 1, 1, 1) };
-
-        public void DrawBounds(in bool LODColor = false, in bool DrawSphere = false)
+        public void DrawBounds(in bool UseLODColor = false, in bool DrawSphere = false)
         {
             if (Application.isPlaying == false) { return; }
 
             FTreeBatch TreeBatch;
 
-            for (int i = 0; i < TreeElements.Length; ++i)
+            for (int i = 0; i < TreeBatchs.Length; ++i)
             {
-                TreeBatch = TreeBatchs[TreeElements[i].BatchIndex];
-                Geometry.DrawBound(TreeBatch.BoundBox, LODColor ? LODColors[TreeElements[i].LODIndex] : Color.blue);
+                TreeBatch = TreeBatchs[i];
+                ref Color LODColor = ref Geometry.LODColors[TreeBatch.LODIndex];
+
+                Geometry.DrawBound(TreeBatch.BoundBox, UseLODColor ? LODColor : Color.blue);
 
                 if (DrawSphere)
                 {
-                    UnityEditor.Handles.color = LODColor ? LODColors[TreeElements[i].LODIndex] : Color.yellow;
+                    UnityEditor.Handles.color = UseLODColor ? LODColor : Color.yellow;
                     UnityEditor.Handles.DrawWireDisc(TreeBatch.BoundSphere.center, Vector3.up, TreeBatch.BoundSphere.radius);
                     UnityEditor.Handles.DrawWireDisc(TreeBatch.BoundSphere.center, Vector3.back, TreeBatch.BoundSphere.radius);
                     UnityEditor.Handles.DrawWireDisc(TreeBatch.BoundSphere.center, Vector3.right, TreeBatch.BoundSphere.radius);

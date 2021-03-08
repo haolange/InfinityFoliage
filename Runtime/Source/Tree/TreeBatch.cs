@@ -6,6 +6,7 @@ namespace Landscape.FoliagePipeline
 {
     public struct FTreeBatch : IEquatable<FTreeBatch>
     {
+        public int LODIndex;
         public FBound BoundBox;
         public FSphere BoundSphere;
         public float4x4 Matrix_World;

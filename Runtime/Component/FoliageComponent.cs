@@ -1,5 +1,6 @@
 ﻿using Unity.Jobs;
 using UnityEngine;
+using Unity.Mathematics;
 using Unity.Collections;
 using UnityEngine.Rendering;
 using System.Collections.Generic;
@@ -23,7 +24,7 @@ namespace Landscape.FoliagePipeline
         [HideInInspector]
         public TerrainData UnityTerrainData;
 
-        [HideInInspector]
+        //[HideInInspector]
         public FTreeSector[] TreeSectors;
 
 
@@ -101,12 +102,12 @@ namespace Landscape.FoliagePipeline
             }
         }
 
-        public void InitViewTree(in NativeArray<FPlane> Planes, in NativeList<JobHandle> CullHandles)
+        public void InitViewTree(in float3 ViewOringin, in float4x4 Matrix_Proj, in NativeArray<FPlane> Planes, in NativeList<JobHandle> CullHandles)
         {
             for (int i = 0; i < TreeSectors.Length; ++i)
             {
                 FTreeSector TreeSector = TreeSectors[i];
-                CullHandles.Add(TreeSector.InitView((FPlane*)Planes.GetUnsafePtr()));
+                CullHandles.Add(TreeSector.InitView(ViewOringin, Matrix_Proj, (FPlane*)Planes.GetUnsafePtr()));
             }
         }
 
