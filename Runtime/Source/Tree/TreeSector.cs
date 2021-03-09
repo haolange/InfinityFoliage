@@ -171,7 +171,7 @@ namespace Landscape.FoliagePipeline
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public void DispatchDraw(CommandBuffer CmdBuffer)
         {
-            FTreeBatch TreeBatch;
+            /*FTreeBatch TreeBatch;
 
             for (int i = 0; i < TreeElements.Length; ++i)
             {
@@ -189,7 +189,7 @@ namespace Landscape.FoliagePipeline
                         CmdBuffer.DrawMesh(Meshe, TreeBatch.Matrix_World, material, TreeElement.MeshIndex, 0);
                     }
                 }
-            }
+            }*/
 
             PassTreeElements.Clear();
             TreeDrawCommands.Clear();
