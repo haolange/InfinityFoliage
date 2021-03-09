@@ -41,7 +41,7 @@ namespace Landscape.FoliagePipeline
         }
     }
 
-    //[BurstCompile]
+    [BurstCompile]
     public unsafe struct FTreeBatchCullingJob : IJobParallelFor
     {
         [ReadOnly]
