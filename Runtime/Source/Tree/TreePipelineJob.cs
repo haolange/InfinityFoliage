@@ -41,9 +41,12 @@ namespace Landscape.FoliagePipeline
         }
     }
 
-    [BurstCompile]
+    //[BurstCompile]
     public unsafe struct FTreeBatchCullingJob : IJobParallelFor
     {
+        [ReadOnly]
+        public int NumLOD;
+
         [ReadOnly]
         [NativeDisableUnsafePtrRestriction]
         public FPlane* Planes;
@@ -54,40 +57,42 @@ namespace Landscape.FoliagePipeline
         [ReadOnly]
         public float4x4 Matrix_Proj;
 
+        [ReadOnly]
+        [NativeDisableUnsafePtrRestriction]
+        public float* TreeLODInfos;
+
         [NativeDisableUnsafePtrRestriction]
         public FTreeBatch* TreeBatchs;
 
         [WriteOnly]
         public NativeArray<int> ViewTreeBatchs;
 
-        [ReadOnly]
-        public NativeArray<float> TreeBatchLODs;
-
 
         public void Execute(int index)
         {
             ref FTreeBatch TreeBatch = ref TreeBatchs[index];
 
-            float BoundRadius = Geometry.GetBoundRadius(TreeBatch.BoundBox);
-            float ScreenRadiusSquared = Geometry.ComputeBoundsScreenRadiusSquared(BoundRadius, TreeBatch.BoundBox.center, ViewOringin, Matrix_Proj);
-            for (int i = TreeBatchLODs.Length - 1; i >= 0; --i)
+            //Calculate LOD
+            float ScreenRadiusSquared = Geometry.ComputeBoundsScreenRadiusSquared(TreeBatch.BoundSphere.radius, TreeBatch.BoundBox.center, ViewOringin, Matrix_Proj);
+
+            for (int LODIndex = NumLOD; LODIndex >= 0; --LODIndex)
             {
-                //float LODSize = (TreeBatchLODs[i] * TreeBatchLODs[i]) * 0.5f;
-                //LODIndex = math.select(LODIndex, i, ScreenRadiusSquared < LODSize);
-                if (ScreenRadiusSquared < (TreeBatchLODs[i] * TreeBatchLODs[i]) * 0.5f)
+                ref float TreeLODInfo = ref TreeLODInfos[LODIndex];
+
+                if (mathExtent.sqr(TreeLODInfo * 0.5f) >= ScreenRadiusSquared)
                 {
-                    TreeBatch.LODIndex = i;
+                    TreeBatch.LODIndex = LODIndex;
                     break;
                 }
             }
 
+            //Culling Batch
             int VisibleState = 1;
             float2 distRadius = new float2(0, 0);
-            for (int j = 0; j < 6; ++j)
-            {
-                Unity.Burst.CompilerServices.Loop.ExpectVectorized();
 
-                ref FPlane Plane = ref Planes[j];
+            for (int PlaneIndex = 0; PlaneIndex < 6; ++PlaneIndex)
+            {
+                ref FPlane Plane = ref Planes[PlaneIndex];
                 distRadius.x = math.dot(Plane.normalDist.xyz, TreeBatch.BoundBox.center) + Plane.normalDist.w;
                 distRadius.y = math.dot(math.abs(Plane.normalDist.xyz), TreeBatch.BoundBox.extents);
 

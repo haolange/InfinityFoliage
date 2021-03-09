@@ -5,6 +5,7 @@ using Unity.Collections;
 using UnityEngine.Rendering;
 using System.Collections.Generic;
 using InfinityTech.Core.Geometry;
+using System.Runtime.CompilerServices;
 using Unity.Collections.LowLevel.Unsafe;
 
 namespace Landscape.FoliagePipeline
@@ -102,6 +103,7 @@ namespace Landscape.FoliagePipeline
             }
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public void InitViewTree(in float3 ViewOringin, in float4x4 Matrix_Proj, in NativeArray<FPlane> Planes, in NativeList<JobHandle> CullHandles)
         {
             for (int i = 0; i < TreeSectors.Length; ++i)
@@ -111,6 +113,7 @@ namespace Landscape.FoliagePipeline
             }
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public void DispatchSetup(in NativeList<JobHandle> GatherHandles)
         {
             //Build DrawCall
@@ -121,6 +124,7 @@ namespace Landscape.FoliagePipeline
             }
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public void DispatchDraw(CommandBuffer CmdBuffer)
         {
             //Record DrawCall
@@ -131,6 +135,7 @@ namespace Landscape.FoliagePipeline
             }
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public void ReleaseViewTree()
         {
             //Release

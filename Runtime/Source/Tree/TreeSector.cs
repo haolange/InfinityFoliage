@@ -6,6 +6,8 @@ using Unity.Collections;
 using UnityEngine.Rendering;
 using InfinityTech.Core.Geometry;
 using System.Collections.Generic;
+using System.Runtime.CompilerServices;
+using Unity.Collections.LowLevel.Unsafe;
 
 namespace Landscape.FoliagePipeline
 {
@@ -19,7 +21,7 @@ namespace Landscape.FoliagePipeline
 
         private NativeArray<int> ViewTreeBatchs;
         private NativeArray<int> TreeBatchIndexs;
-        private NativeArray<float> TreeBatchLODs;
+        private NativeArray<float> TreeLODInfos;
         private NativeList<FTreeBatch> TreeBatchs;
         private NativeList<FTreeElement> TreeElements;
         private NativeList<FTreeElement> PassTreeElements;
@@ -36,7 +38,7 @@ namespace Landscape.FoliagePipeline
         {
             TreeBatchs.Dispose();
             TreeElements.Dispose();
-            TreeBatchLODs.Dispose();
+            TreeLODInfos.Dispose();
             ViewTreeBatchs.Dispose();
             TreeBatchIndexs.Dispose();
             PassTreeElements.Dispose();
@@ -97,10 +99,10 @@ namespace Landscape.FoliagePipeline
                 AddBatch(TreeBatch);
             }
 
-            TreeBatchLODs = new NativeArray<float>(Tree.LODInfo.Length, Allocator.Persistent);
+            TreeLODInfos = new NativeArray<float>(Tree.LODInfo.Length, Allocator.Persistent);
             for (int j = 0; j < Tree.LODInfo.Length; ++j)
             {
-                TreeBatchLODs[j] = Tree.LODInfo[j].ScreenSize;
+                TreeLODInfos[j] = Tree.LODInfo[j].ScreenSize;
             }
 
             ViewTreeBatchs = new NativeArray<int>(TreeBatchs.Length, Allocator.Persistent);
@@ -134,20 +136,23 @@ namespace Landscape.FoliagePipeline
             TreeBatchIndexs = new NativeArray<int>(TreeElements.Length, Allocator.Persistent);
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public JobHandle InitView(in float3 ViewOringin, in float4x4 Matrix_Proj, FPlane* Planes)
         {
             FTreeBatchCullingJob TreeBatchCullingJob = new FTreeBatchCullingJob();
             {
                 TreeBatchCullingJob.Planes = Planes;
-                TreeBatchCullingJob.TreeBatchs = (FTreeBatch*)TreeBatchs.GetUnsafeList()->Ptr;
+                TreeBatchCullingJob.NumLOD = TreeLODInfos.Length - 1;
                 TreeBatchCullingJob.ViewOringin = ViewOringin;
                 TreeBatchCullingJob.Matrix_Proj = Matrix_Proj;
-                TreeBatchCullingJob.TreeBatchLODs = TreeBatchLODs;
+                TreeBatchCullingJob.TreeLODInfos = (float*)TreeLODInfos.GetUnsafePtr();
                 TreeBatchCullingJob.ViewTreeBatchs = ViewTreeBatchs;
+                TreeBatchCullingJob.TreeBatchs = (FTreeBatch*)TreeBatchs.GetUnsafeList()->Ptr;
             }
             return TreeBatchCullingJob.Schedule(ViewTreeBatchs.Length, 256);
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public JobHandle DispatchSetup()
         {
             FTreeDrawCommandBuildJob TreeDrawCommandBuildJob = new FTreeDrawCommandBuildJob();
@@ -163,6 +168,7 @@ namespace Landscape.FoliagePipeline
             return TreeDrawCommandBuildJob.Schedule();
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public void DispatchDraw(CommandBuffer CmdBuffer)
         {
             FTreeBatch TreeBatch;
@@ -189,6 +195,7 @@ namespace Landscape.FoliagePipeline
             TreeDrawCommands.Clear();
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public void ReleaseView()
         {
             //ViewTreeBatchs.Dispose();
