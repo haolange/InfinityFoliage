@@ -89,9 +89,8 @@ namespace Landscape.Editor.FoliagePipeline
             if (Foliage.gameObject.activeSelf == false) { return; }
             if (Foliage.enabled == false) { return; }
 
-            Foliage.Serialize();
+            //Foliage.Serialize();
         }
-
 
         [MenuItem("GameObject/ActorAction/Landscape/BuildTreesForTerrain", false, 10)]
         public static void BuildTreeFromTerrainData(MenuCommand menuCommand)
@@ -108,12 +107,12 @@ namespace Landscape.Editor.FoliagePipeline
 
                 Terrain UTerrain = SelectObject.GetComponent<Terrain>();
                 TerrainData UTerrainData = UTerrain.terrainData;
-                foliageComponent.TreeSectors = new FTreeSector[UTerrainData.treePrototypes.Length];
+                foliageComponent.treeSectors = new FTreeSector[UTerrainData.treePrototypes.Length];
 
                 for (int TreeIndex = 0; TreeIndex < UTerrainData.treePrototypes.Length; ++TreeIndex)
                 {
-                    foliageComponent.TreeSectors[TreeIndex] = new FTreeSector();
-                    foliageComponent.TreeSectors[TreeIndex].TreeIndex = TreeIndex;
+                    foliageComponent.treeSectors[TreeIndex] = new FTreeSector();
+                    foliageComponent.treeSectors[TreeIndex].treeIndex = TreeIndex;
 
                     TreePrototype treePrototype = UTerrainData.treePrototypes[TreeIndex];
                     List<Mesh> Meshes = new List<Mesh>();
@@ -145,14 +144,16 @@ namespace Landscape.Editor.FoliagePipeline
                         ref FTreeLODInfo LODInfo = ref LODInfos[l];
                         Renderer renderer = lod.renderers[0];
 
+                        LODInfo.ScreenSize = 1 - (l * 0.25f);
                         LODInfo.MaterialSlot = new int[renderer.sharedMaterials.Length];
+                        
                         for (int m = 0; m < renderer.sharedMaterials.Length; ++m)
                         {
                             ref int MaterialSlot = ref LODInfo.MaterialSlot[m];
                             MaterialSlot = Materials.IndexOf(renderer.sharedMaterials[m]);
                         }
                     }
-                    foliageComponent.TreeSectors[TreeIndex].Tree = new FTree(Meshes.ToArray(), Materials.ToArray(), LODInfos);
+                    foliageComponent.treeSectors[TreeIndex].tree = new FTree(Meshes.ToArray(), Materials.ToArray(), LODInfos);
                 }
             }
         }
@@ -203,52 +204,51 @@ namespace Landscape.Editor.FoliagePipeline
         [MenuItem("GameObject/ActorAction/Landscape/UpdateTreesForTerrain", false, 11)]
         public static void UpdateTreeFromTerrainDataParallel(MenuCommand menuCommand)
         {
-            GCHandle TaskHandle;
-            List<GCHandle> TasksHandle = new List<GCHandle>(32);
-            List<JobHandle> JobsHandle = new List<JobHandle>(32);
-            GameObject[] SelectObjects = Selection.gameObjects;
+            var tasksHandle = new List<GCHandle>(32);
+            var jobsHandle = new List<JobHandle>(32);
+            var selectObjects = Selection.gameObjects;
 
-            foreach (GameObject SelectObject in SelectObjects)
+            foreach (var selectObject in selectObjects)
             {
-                Terrain UTerrain = SelectObject.GetComponent<Terrain>();
-                TerrainData UTerrainData = UTerrain.terrainData;
+                var terrain = selectObject.GetComponent<Terrain>();
+                var terrainData = terrain.terrainData;
 
-                FoliageComponent foliageComponent = SelectObject.GetComponent<FoliageComponent>();
+                var foliageComponent = selectObject.GetComponent<FoliageComponent>();
 
-                if (foliageComponent.TreeSectors.Length != 0)
+                if (foliageComponent.treeSectors.Length != 0)
                 {
-                    for (int i = 0; i < foliageComponent.TreeSectors.Length; ++i)
+                    for (var i = 0; i < foliageComponent.treeSectors.Length; ++i)
                     {
-                        ref FTreeSector TreeSector = ref foliageComponent.TreeSectors[i];
-                        TreeSector.Transfroms = new List<FTransform>(512);
-                        TreePrototype treePrototype = UTerrainData.treePrototypes[TreeSector.TreeIndex];
+                        ref var treeSector = ref foliageComponent.treeSectors[i];
+                        treeSector.transforms = new List<FTransform>(512);
+                        var treePrototype = terrainData.treePrototypes[treeSector.treeIndex];
 
-                        //Build InstancesTransfrom
-                        FUpdateTreeTask UpdateTreeTask = new FUpdateTreeTask();
+                        //Build Transforms
+                        var updateTreeTask = new FUpdateTreeTask();
                         {
-                            UpdateTreeTask.length = UTerrainData.treeInstanceCount;
-                            UpdateTreeTask.Scale = new float2(UTerrainData.heightmapResolution - 1, UTerrainData.heightmapScale.y);
-                            UpdateTreeTask.TreePrototype = treePrototype;
-                            UpdateTreeTask.TreeInstances = UTerrainData.treeInstances;
-                            UpdateTreeTask.TreePrototypes = UTerrainData.treePrototypes;
-                            UpdateTreeTask.TreeTransfroms = TreeSector.Transfroms;
+                            updateTreeTask.length = terrainData.treeInstanceCount;
+                            updateTreeTask.Scale = new float2(terrainData.heightmapResolution - 1, terrainData.heightmapScale.y);
+                            updateTreeTask.TreePrototype = treePrototype;
+                            updateTreeTask.TreeInstances = terrainData.treeInstances;
+                            updateTreeTask.TreePrototypes = terrainData.treePrototypes;
+                            updateTreeTask.TreeTransfroms = treeSector.transforms;
                         }
-                        TaskHandle = GCHandle.Alloc(UpdateTreeTask);
-                        TasksHandle.Add(TaskHandle);
+                        var taskHandle = GCHandle.Alloc(updateTreeTask);
+                        tasksHandle.Add(taskHandle);
 
-                        FUpdateTreeJob UpdateTreeJob = new FUpdateTreeJob();
+                        var updateTreeJob = new FUpdateTreeJob();
                         {
-                            UpdateTreeJob.TaskHandle = TaskHandle;
+                            updateTreeJob.TaskHandle = taskHandle;
                         }
-                        JobsHandle.Add(UpdateTreeJob.Schedule());
+                        jobsHandle.Add(updateTreeJob.Schedule());
                     }
                 }
             }
 
-            for (int j = 0; j < JobsHandle.Count; ++j)
+            for (var j = 0; j < jobsHandle.Count; ++j)
             {
-                JobsHandle[j].Complete();
-                TasksHandle[j].Free();
+                jobsHandle[j].Complete();
+                tasksHandle[j].Free();
             }
         }
 

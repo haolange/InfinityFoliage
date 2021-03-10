@@ -13,34 +13,35 @@ namespace Landscape.FoliagePipeline
     [AddComponentMenu("HG/Foliage Component")]
     public unsafe class FoliageComponent : InstanceMeshComponent
     {
-        public static List<FoliageComponent> FoliageComponents = new List<FoliageComponent>(64);
+        public static List<FoliageComponent> s_foliageComponents = new List<FoliageComponent>(64);
+        
 
 #if UNITY_EDITOR
         [Header("Debug")]
-        public bool DisplayBounds = false;
+        public bool showBounds = false;
 #endif
 
         [HideInInspector]
-        public Terrain UnityTerrain;
+        public Terrain terrain;
+        
         [HideInInspector]
-        public TerrainData UnityTerrainData;
+        public TerrainData terrainData;
 
-        //[HideInInspector]
-        public FTreeSector[] TreeSectors;
+        [HideInInspector]
+        public FTreeSector[] treeSectors;
 
 
         protected override void OnRegister()
         {
-            FoliageComponents.Add(this);
-
-            UnityTerrain = GetComponent<Terrain>();
-            UnityTerrainData = GetComponent<TerrainCollider>().terrainData;
-            if (UnityTerrain.drawTreesAndFoliage == true)
+            terrain = GetComponent<Terrain>();
+            terrainData = GetComponent<TerrainCollider>().terrainData;
+            if (terrain.drawTreesAndFoliage == true)
             {
-                UnityTerrain.drawTreesAndFoliage = false;
+                terrain.drawTreesAndFoliage = false;
             }
 
             InitTreeSectors();
+            s_foliageComponents.Add(this);
         }
 
         protected override void OnTransformChange()
@@ -61,96 +62,80 @@ namespace Landscape.FoliagePipeline
         protected override void UnRegister()
         {
             ReleaseTreeSectors();
-            FoliageComponents.Remove(this);
+            s_foliageComponents.Remove(this);
         }
 
 #if UNITY_EDITOR
-        public void Serialize()
+        private  void DrawBounds(in bool color = false)
         {
-
-        }
-
-        public void DrawBounds(in bool LODColor = false)
-        {
-            if (DisplayBounds)
+            if (!showBounds) return;
+            
+            foreach (var treeSector in treeSectors)
             {
-                for (int i = 0; i < TreeSectors.Length; ++i)
-                {
-                    FTreeSector TreeSector = TreeSectors[i];
-                    if (TreeSector != null)
-                    {
-                        TreeSector.DrawBounds(LODColor);
-                    }
-                }
+                treeSector.DrawBounds(color);
             }
         }
 
-        void OnDrawGizmosSelected()
+        protected  virtual  void OnDrawGizmosSelected()
         {
             DrawBounds(true);
         }
 #endif
 
         #region Tree
-        void InitTreeSectors()
+        private void InitTreeSectors()
         {
-            for (int i = 0; i < TreeSectors.Length; ++i)
+            foreach (var treeSector in treeSectors)
             {
-                FTreeSector TreeSector = TreeSectors[i];
-                TreeSector.Initialize();
-                TreeSector.BuildMeshBatchs();
-                TreeSector.BuildMeshElements();
+                treeSector.Initialize();
+                treeSector.BuildMeshBatch();
+                treeSector.BuildMeshElement();
             }
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public void InitViewTree(in float3 ViewOringin, in float4x4 Matrix_Proj, in NativeArray<FPlane> Planes, in NativeList<JobHandle> CullHandles)
+        public void InitViewTree(in float3 viewPos, in float4x4 matrixProj, in NativeArray<FPlane> planes, in NativeList<JobHandle> taskHandles)
         {
-            for (int i = 0; i < TreeSectors.Length; ++i)
+            foreach (var treeSector in treeSectors)
             {
-                FTreeSector TreeSector = TreeSectors[i];
-                CullHandles.Add(TreeSector.InitView(ViewOringin, Matrix_Proj, (FPlane*)Planes.GetUnsafePtr()));
+                var taskHandle = treeSector.InitView(viewPos, matrixProj, (FPlane*) planes.GetUnsafePtr());
+                taskHandles.Add(taskHandle); 
             }
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public void DispatchSetup(in NativeList<JobHandle> GatherHandles)
+        public void DispatchSetup(in NativeList<JobHandle> taskHandles)
         {
-            //Build DrawCall
-            for (int l = 0; l < TreeSectors.Length; ++l)
+            foreach (var treeSector in treeSectors)
             {
-                FTreeSector TreeSector = TreeSectors[l];
-                GatherHandles.Add(TreeSector.DispatchSetup());
+                var taskHandle = treeSector.DispatchSetup();
+                taskHandles.Add(taskHandle); 
             }
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public void DispatchDraw(CommandBuffer CmdBuffer)
+        public void DispatchDraw(CommandBuffer cmdBuffer)
         {
-            //Record DrawCall
-            for (int l = 0; l < TreeSectors.Length; ++l)
+            foreach (var treeSector in treeSectors)
             {
-                FTreeSector TreeSector = TreeSectors[l];
-                TreeSector.DispatchDraw(CmdBuffer);
+                treeSector.DispatchDraw(cmdBuffer);
             }
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public void ReleaseViewTree()
         {
-            //Release
-            for (int k = 0; k < TreeSectors.Length; ++k)
+            foreach (var treeSector in treeSectors)
             {
-                TreeSectors[k].ReleaseView();
+                treeSector.ReleaseView();
             }
         }
 
-        void ReleaseTreeSectors()
+        private  void ReleaseTreeSectors()
         {
-            for (int i = 0; i < TreeSectors.Length; ++i)
+            foreach (var treeSector in treeSectors)
             {
-                FTreeSector TreeSector = TreeSectors[i];
-                TreeSector.Release();
+                treeSector.Release();
             }
         }
         #endregion //Tree
