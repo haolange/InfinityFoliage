@@ -8,136 +8,120 @@ using InfinityTech.Core.Geometry;
 using System.Runtime.CompilerServices;
 using Unity.Collections.LowLevel.Unsafe;
 
-namespace Landscape.FoliagePipeline
+#if UNITY_EDITOR
+using UnityEditor;
+#endif
+
+internal struct RenderTransfrom
 {
-    [AddComponentMenu("HG/Foliage Component")]
-    public unsafe class FoliageComponent : InstanceMeshComponent
+    public Vector3 position;
+    public Quaternion rotation;
+    public Vector3 scale;
+
+    public override int GetHashCode()
     {
-        public static List<FoliageComponent> s_foliageComponents = new List<FoliageComponent>(64);
-        
-
-#if UNITY_EDITOR
-        [Header("Debug")]
-        public bool showBounds = false;
-#endif
-
-        [HideInInspector]
-        public Terrain terrain;
-        
-        [HideInInspector]
-        public TerrainData terrainData;
-
-        [HideInInspector]
-        public FTreeSector[] treeSectors;
-
-
-        protected override void OnRegister()
-        {
-            terrain = GetComponent<Terrain>();
-            terrainData = GetComponent<TerrainCollider>().terrainData;
-            if (terrain.drawTreesAndFoliage == true)
-            {
-                terrain.drawTreesAndFoliage = false;
-            }
-
-            InitTreeSectors();
-            s_foliageComponents.Add(this);
-        }
-
-        protected override void OnTransformChange()
-        {
-
-        }
-
-        protected override void EventPlay()
-        {
-
-        }
-
-        protected override void EventTick()
-        {
-
-        }
-
-        protected override void UnRegister()
-        {
-            ReleaseTreeSectors();
-            s_foliageComponents.Remove(this);
-        }
-
-#if UNITY_EDITOR
-        private  void DrawBounds(in bool color = false)
-        {
-            if (!showBounds) return;
-            
-            foreach (var treeSector in treeSectors)
-            {
-                treeSector.DrawBounds(color);
-            }
-        }
-
-        protected  virtual  void OnDrawGizmosSelected()
-        {
-            DrawBounds(true);
-        }
-#endif
-
-        #region Tree
-        private void InitTreeSectors()
-        {
-            foreach (var treeSector in treeSectors)
-            {
-                treeSector.Initialize();
-                treeSector.BuildMeshBatch();
-                treeSector.BuildMeshElement();
-            }
-        }
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public void InitViewTree(in float3 viewPos, in float4x4 matrixProj, in NativeArray<FPlane> planes, in NativeList<JobHandle> taskHandles)
-        {
-            foreach (var treeSector in treeSectors)
-            {
-                var taskHandle = treeSector.InitView(viewPos, matrixProj, (FPlane*) planes.GetUnsafePtr());
-                taskHandles.Add(taskHandle); 
-            }
-        }
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public void DispatchSetup(in NativeList<JobHandle> taskHandles)
-        {
-            foreach (var treeSector in treeSectors)
-            {
-                var taskHandle = treeSector.DispatchSetup();
-                taskHandles.Add(taskHandle); 
-            }
-        }
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public void DispatchDraw(CommandBuffer cmdBuffer)
-        {
-            foreach (var treeSector in treeSectors)
-            {
-                treeSector.DispatchDraw(cmdBuffer);
-            }
-        }
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public void ReleaseViewTree()
-        {
-            foreach (var treeSector in treeSectors)
-            {
-                treeSector.ReleaseView();
-            }
-        }
-
-        private  void ReleaseTreeSectors()
-        {
-            foreach (var treeSector in treeSectors)
-            {
-                treeSector.Release();
-            }
-        }
-        #endregion //Tree
+        return position.GetHashCode() + rotation.GetHashCode() + scale.GetHashCode();
     }
+
+    public override bool Equals(object obj)
+    {
+        RenderTransfrom target = (RenderTransfrom)obj;
+        return position != target.position || rotation != target.rotation || scale != target.scale;
+    }
+
+    public bool Equals(RenderTransfrom target)
+    {
+        return position != target.position || rotation != target.rotation || scale != target.scale;
+    }
+};
+
+//[ExecuteInEditMode]
+#if UNITY_EDITOR
+[CanEditMultipleObjects]
+#endif
+public abstract unsafe class FoliageComponent : MonoBehaviour
+{
+    [HideInInspector]
+    public Transform EntityTransform;
+
+    [HideInInspector]
+    internal RenderTransfrom CurrTransform;
+
+    [HideInInspector]
+    internal RenderTransfrom LastTransform;
+    
+    public static List<FoliageComponent> s_foliageComponents = new List<FoliageComponent>(128);
+
+    
+    void OnEnable()
+    {
+        s_foliageComponents.Add(this);
+        EntityTransform = GetComponent<Transform>();
+        OnRegister();
+        EventPlay();
+    }
+
+    void EventUpdate()
+    {
+        if (TransfromStateDirty())
+        {
+            OnTransformChange();
+        }
+        EventTick();
+    }
+
+    void OnDisable()
+    {
+        UnRegister();
+        s_foliageComponents.Remove(this);
+    }
+
+    private bool TransfromStateDirty()
+    {
+        CurrTransform.position = EntityTransform.position;
+        CurrTransform.rotation = EntityTransform.rotation;
+        CurrTransform.scale = EntityTransform.localScale;
+
+        if (CurrTransform.Equals(LastTransform))
+        {
+            LastTransform = CurrTransform;
+            return true;
+        }
+
+        return false;
+    }
+
+    protected virtual void OnRegister()
+    {
+
+    }
+
+    protected virtual void EventPlay()
+    {
+
+    }
+
+    protected virtual void EventTick()
+    {
+
+    }
+
+    protected virtual void OnTransformChange()
+    {
+
+    }
+
+    protected virtual void UnRegister()
+    {
+
+    }
+    
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public abstract void InitViewFoliage(in float3 viewPos, in float4x4 matrixProj, FPlane* planes, in NativeList<JobHandle> taskHandles);
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public abstract void DispatchSetup(in NativeList<JobHandle> taskHandles);
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public abstract void DispatchDraw(CommandBuffer cmdBuffer);
 }

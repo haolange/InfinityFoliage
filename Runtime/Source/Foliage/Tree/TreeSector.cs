@@ -14,7 +14,7 @@ namespace Landscape.FoliagePipeline
     [Serializable]
     public unsafe class FTreeSector
     {
-        public FTree tree;
+        public FMesh tree;
         public int treeIndex;
         public float cullDistance = 256;
         public List<FTransform> transforms;
@@ -209,12 +209,6 @@ namespace Landscape.FoliagePipeline
 
             m_passTreeElements.Clear();
             m_treeDrawCommands.Clear();
-        }
-        
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public void ReleaseView()
-        {
-            //m_viewTreeBatchs.Dispose();
         }
 
 #if UNITY_EDITOR

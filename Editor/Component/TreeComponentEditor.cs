@@ -54,10 +54,10 @@ namespace Landscape.Editor.FoliagePipeline
     }
 
     [CanEditMultipleObjects]
-    [CustomEditor(typeof(FoliageComponent))]
-    public class FoliageComponentEditor : UnityEditor.Editor
+    [CustomEditor(typeof(TreeComponent))]
+    public class TreeComponentEditor : UnityEditor.Editor
     {
-        FoliageComponent Foliage { get { return target as FoliageComponent; } }
+        TreeComponent Foliage { get { return target as TreeComponent; } }
 
 
         void OnEnable()
@@ -92,16 +92,16 @@ namespace Landscape.Editor.FoliagePipeline
             //Foliage.Serialize();
         }
 
-        [MenuItem("GameObject/ActorAction/Landscape/BuildTreesForTerrain", false, 10)]
+        [MenuItem("GameObject/EntityAction/Landscape/BuildTreesForTerrain", false, 8)]
         public static void BuildTreeFromTerrainData(MenuCommand menuCommand)
         {
             GameObject[] SelectObjects = Selection.gameObjects;
             foreach (GameObject SelectObject in SelectObjects)
             {
-                FoliageComponent foliageComponent = SelectObject.GetComponent<FoliageComponent>();
+                TreeComponent foliageComponent = SelectObject.GetComponent<TreeComponent>();
                 if(foliageComponent == null)
                 {
-                    foliageComponent = SelectObject.AddComponent<FoliageComponent>();
+                    foliageComponent = SelectObject.AddComponent<TreeComponent>();
                 }
 
 
@@ -137,14 +137,14 @@ namespace Landscape.Editor.FoliagePipeline
                     }
 
                     //Build LODInfo
-                    FTreeLODInfo[] LODInfos = new FTreeLODInfo[lods.Length];
+                    FMeshLODInfo[] LODInfos = new FMeshLODInfo[lods.Length];
                     for (int l = 0; l < lods.Length; ++l)
                     {
                         ref LOD lod = ref lods[l];
-                        ref FTreeLODInfo LODInfo = ref LODInfos[l];
+                        ref FMeshLODInfo LODInfo = ref LODInfos[l];
                         Renderer renderer = lod.renderers[0];
 
-                        LODInfo.ScreenSize = 1 - (l * 0.25f);
+                        LODInfo.ScreenSize = 1 - (l * 0.125f);
                         LODInfo.MaterialSlot = new int[renderer.sharedMaterials.Length];
                         
                         for (int m = 0; m < renderer.sharedMaterials.Length; ++m)
@@ -153,55 +153,12 @@ namespace Landscape.Editor.FoliagePipeline
                             MaterialSlot = Materials.IndexOf(renderer.sharedMaterials[m]);
                         }
                     }
-                    foliageComponent.treeSectors[TreeIndex].tree = new FTree(Meshes.ToArray(), Materials.ToArray(), LODInfos);
+                    foliageComponent.treeSectors[TreeIndex].tree = new FMesh(Meshes.ToArray(), Materials.ToArray(), LODInfos);
                 }
             }
         }
-
-
-        /*[MenuItem("GameObject/Tool/Landscape/UpdateTreesForTerrain", false, 11)]
-        public static void UpdateTreeFromTerrainData(MenuCommand menuCommand)
-        {
-            GameObject[] SelectObjects = Selection.gameObjects;
-            foreach (GameObject SelectObject in SelectObjects)
-            {
-                Terrain UTerrain = SelectObject.GetComponent<Terrain>();
-                TerrainData UTerrainData = UTerrain.terrainData;
-
-                FoliageComponent foliageComponent = SelectObject.GetComponent<FoliageComponent>();
-                foliageComponent.TreeSectors = new FTreeSector[UTerrainData.treePrototypes.Length];
-
-                if (foliageComponent.TreeSectors.Length != 0)
-                {
-                    for (int i = 0; i < foliageComponent.TreeSectors.Length; ++i)
-                    {
-                        FTreeSector TreeSector = foliageComponent.TreeSectors[i];
-                        TreePrototype treePrototype = UTerrainData.treePrototypes[TreeSector.TreeIndex];
-
-                        //Build InstancesTransfrom
-                        FTransform Transform = new FTransform();
-                        TreeSector.Transfroms = new List<FTransform>(512);
-
-                        for (int j = 0; j < UTerrainData.treeInstanceCount; ++j)
-                        {
-                            ref TreeInstance treeInstance = ref UTerrainData.treeInstances[j];
-                            TreePrototype serchTreePrototype = UTerrainData.treePrototypes[treeInstance.prototypeIndex];
-                            if (serchTreePrototype.Equals(treePrototype))
-                            {
-                                Transform.Scale = new float3(treeInstance.widthScale, treeInstance.heightScale, treeInstance.widthScale);
-                                Transform.Rotation = new float3(0, treeInstance.rotation, 0);
-                                Transform.Position = treeInstance.position * new float3(UTerrainData.heightmapResolution - 1, UTerrainData.heightmapScale.y, UTerrainData.heightmapResolution - 1);
-                                TreeSector.Transfroms.Add(Transform);
-                            }
-                        }
-                        Undo.RegisterCreatedObjectUndo(foliageComponent, "BuildFoliage");
-                    }
-                }
-            }
-        }*/
-
-
-        [MenuItem("GameObject/ActorAction/Landscape/UpdateTreesForTerrain", false, 11)]
+        
+        [MenuItem("GameObject/EntityAction/Landscape/UpdateTreesForTerrain", false, 9)]
         public static void UpdateTreeFromTerrainDataParallel(MenuCommand menuCommand)
         {
             var tasksHandle = new List<GCHandle>(32);
@@ -213,7 +170,7 @@ namespace Landscape.Editor.FoliagePipeline
                 var terrain = selectObject.GetComponent<Terrain>();
                 var terrainData = terrain.terrainData;
 
-                var foliageComponent = selectObject.GetComponent<FoliageComponent>();
+                var foliageComponent = selectObject.GetComponent<TreeComponent>();
 
                 if (foliageComponent.treeSectors.Length != 0)
                 {
@@ -251,24 +208,5 @@ namespace Landscape.Editor.FoliagePipeline
                 tasksHandle[j].Free();
             }
         }
-
-
-        /*[MenuItem("GameObject/ActorAction/Landscape/RemoveTreeFormTerrain", false, 12)]
-        public static void RemoveTreeForTerrain(MenuCommand menuCommand)
-        {
-            GameObject[] SelectObjects = Selection.gameObjects;
-            foreach (GameObject SelectObject in SelectObjects)
-            {
-                FoliageComponent[] foliageComponents = SelectObject.GetComponents<FoliageComponent>();
-                if (foliageComponents.Length != 0)
-                {
-                    for (int i = 0; i < foliageComponents.Length; ++i)
-                    {
-                        Object.DestroyImmediate(foliageComponents[i]);
-                        Undo.RegisterCreatedObjectUndo(SelectObject, "RemoveTreeComponent");
-                    }
-                }
-            }
-        }*/
     }
 }
