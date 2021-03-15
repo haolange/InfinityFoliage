@@ -1,9 +1,7 @@
 using Unity.Jobs;
 using UnityEngine;
-using Unity.Mathematics;
 using Unity.Collections;
 using UnityEngine.Rendering;
-using Landscape.FoliagePipeline;
 using InfinityTech.Core.Geometry;
 using UnityEngine.Rendering.Universal;
 using Unity.Collections.LowLevel.Unsafe;
