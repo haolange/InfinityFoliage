@@ -8,12 +8,12 @@ namespace Landscape.FoliagePipeline
     [Serializable]
     public struct FMeshLODInfo : IEquatable<FMeshLODInfo>
     {
-        public float ScreenSize;
-        public int[] MaterialSlot;
+        public float screenSize;
+        public int[] materialSlot;
 
         public bool Equals(FMeshLODInfo Target)
         {
-            return ScreenSize.Equals(Target.ScreenSize) && MaterialSlot.Equals(Target.MaterialSlot);
+            return screenSize.Equals(Target.screenSize) && materialSlot.Equals(Target.materialSlot);
         }
 
         public override bool Equals(object obj)
@@ -23,8 +23,8 @@ namespace Landscape.FoliagePipeline
 
         public override int GetHashCode()
         {
-            int hashCode = ScreenSize.GetHashCode();
-            hashCode += MaterialSlot.GetHashCode();
+            int hashCode = screenSize.GetHashCode();
+            hashCode += materialSlot.GetHashCode();
 
             return hashCode;
         }
@@ -35,24 +35,24 @@ namespace Landscape.FoliagePipeline
     {
         public bool IsCreated;
 
-        public Mesh[] Meshes;
+        public Mesh[] meshes;
 
-        public Material[] Materials;
+        public Material[] materials;
 
-        public FMeshLODInfo[] LODInfo;
+        public FMeshLODInfo[] lODInfo;
         
 
-        public FMesh(Mesh[] Meshes, Material[] Materials, FMeshLODInfo[] LODInfo)
+        public FMesh(Mesh[] meshes, Material[] materials, FMeshLODInfo[] lODInfo)
         {
             this.IsCreated = true;
-            this.Meshes = Meshes;
-            this.Materials = Materials;
-            this.LODInfo = LODInfo;
+            this.meshes = meshes;
+            this.materials = materials;
+            this.lODInfo = lODInfo;
         }
 
         public bool Equals(FMesh Target)
         {
-            return IsCreated.Equals(Target.IsCreated) && Meshes.Equals(Target.Meshes) && LODInfo.Equals(Target.LODInfo) && Materials.Equals(Target.Materials);
+            return IsCreated.Equals(Target.IsCreated) && meshes.Equals(Target.meshes) && lODInfo.Equals(Target.lODInfo) && materials.Equals(Target.materials);
         }
 
         public override bool Equals(object obj)
@@ -63,9 +63,9 @@ namespace Landscape.FoliagePipeline
         public override int GetHashCode()
         {
             int hashCode = IsCreated ? 0 : 1;
-            hashCode += Meshes.GetHashCode();
-            hashCode += LODInfo.GetHashCode();
-            hashCode += Materials.GetHashCode();
+            hashCode += meshes.GetHashCode();
+            hashCode += lODInfo.GetHashCode();
+            hashCode += materials.GetHashCode();
 
             return hashCode;
         }
@@ -75,13 +75,13 @@ namespace Landscape.FoliagePipeline
     public class MeshAsset : ScriptableObject
     {
         [Header("Mesh")]
-        public Mesh[] Meshes;
+        public Mesh[] meshes;
 
         [Header("Material")]
-        public Material[] Materials;
+        public Material[] materials;
 
         [Header("Culling")]
-        public FMeshLODInfo[] LODInfo;
+        public FMeshLODInfo[] lODInfo;
 
         /*[HideInInspector]
         public FMesh Tree;*/

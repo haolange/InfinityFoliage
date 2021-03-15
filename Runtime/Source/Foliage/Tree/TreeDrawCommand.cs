@@ -5,26 +5,26 @@ namespace Landscape.FoliagePipeline
 {
     public struct FTreeDrawCommand : IEquatable<FTreeDrawCommand>
     {
-        public int LODIndex;
-        public int MatIndex;
-        public int MeshIndex;
-        public int2 CountOffset;
+        public int lODIndex;
+        public int matIndex;
+        public int meshIndex;
+        public int2 countOffset;
         //public int InstanceGroupID;
 
 
-        public FTreeDrawCommand(in int LODIndex, in int MatIndex, in int MeshIndex, in int2 CountOffset)
+        public FTreeDrawCommand(in int lODIndex, in int matIndex, in int meshIndex, in int2 countOffset)
         {
-            this.LODIndex = LODIndex;
-            this.MatIndex = MatIndex;
-            this.MeshIndex = MeshIndex;
-            this.CountOffset = CountOffset;
+            this.lODIndex = lODIndex;
+            this.matIndex = matIndex;
+            this.meshIndex = meshIndex;
+            this.countOffset = countOffset;
             //this.InstanceGroupID = 0;
         }
 
         public bool Equals(FTreeDrawCommand Target)
         {
             //return InstanceGroupID.Equals(Target.InstanceGroupID);
-            return LODIndex.Equals(Target.LODIndex) && MatIndex.Equals(Target.MatIndex) && MeshIndex.Equals(Target.MeshIndex) && CountOffset.Equals(Target.CountOffset);
+            return lODIndex.Equals(Target.lODIndex) && matIndex.Equals(Target.matIndex) && meshIndex.Equals(Target.meshIndex);
         }
 
         public override bool Equals(object obj)
@@ -40,7 +40,7 @@ namespace Landscape.FoliagePipeline
 
             return hashCode;*/
             //return InstanceGroupID;
-            return (MeshIndex >> 16) + (LODIndex << 16 | MatIndex);
+            return (meshIndex >> 16) + (lODIndex << 16 | matIndex);
         }
     }
 }

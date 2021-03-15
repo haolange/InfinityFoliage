@@ -6,41 +6,41 @@ namespace Landscape.FoliagePipeline
     [Serializable]
     public struct FTransform
     {
-        public float3 Position;
-        public float3 Rotation;
-        public float3 Scale;
+        public float3 position;
+        public float3 rotation;
+        public float3 scale;
 
 
-        public FTransform(float3 Position, float3 Rotation, float3 Scale)
+        public FTransform(float3 position, float3 rotation, float3 scale)
         {
-            this.Scale = Scale;
-            this.Rotation = Rotation;
-            this.Position = Position;
+            this.scale = scale;
+            this.rotation = rotation;
+            this.position = position;
         }
     }
 
     public struct FTreeElement : IComparable<FTreeElement>, IEquatable<FTreeElement>
     {
-        public int LODIndex;
-        public int MatIndex;
-        public int MeshIndex;
-        public int BatchIndex;
+        public int lODIndex;
+        public int matIndex;
+        public int meshIndex;
+        public int batchIndex;
         //public int InstanceGroupID;
 
 
-        public FTreeElement(in int LODIndex, in int MatIndex, in int MeshIndex, in int BatchIndex, in int InstanceGroupID)
+        public FTreeElement(in int lODIndex, in int matIndex, in int meshIndex, in int batchIndex, in int instanceGroupID)
         {
-            this.LODIndex = LODIndex;
-            this.MatIndex = MatIndex;
-            this.MeshIndex = MeshIndex;
-            this.BatchIndex = BatchIndex;
+            this.lODIndex = lODIndex;
+            this.matIndex = matIndex;
+            this.meshIndex = meshIndex;
+            this.batchIndex = batchIndex;
             //this.InstanceGroupID = InstanceGroupID;
         }
 
         public bool Equals(FTreeElement Target)
         {
             //return InstanceGroupID.Equals(Target.InstanceGroupID);
-            return LODIndex.Equals(Target.LODIndex) && MatIndex.Equals(Target.MatIndex) && MeshIndex.Equals(Target.MeshIndex);
+            return lODIndex.Equals(Target.lODIndex) && matIndex.Equals(Target.matIndex) && meshIndex.Equals(Target.meshIndex);
         }
 
         public override bool Equals(object obj)
@@ -52,7 +52,7 @@ namespace Landscape.FoliagePipeline
         {
             //return InstanceGroupID;
             //return (MeshIndex + LODIndex + MatIndex).CompareTo(Target.MeshIndex + Target.LODIndex + Target.MatIndex);
-            return ((MeshIndex >> 16) + (LODIndex << 16 | MatIndex)).CompareTo((Target.MeshIndex >> 16) + (Target.LODIndex << 16 | Target.MatIndex));
+            return ((meshIndex >> 16) + (lODIndex << 16 | matIndex)).CompareTo((Target.meshIndex >> 16) + (Target.lODIndex << 16 | Target.matIndex));
         }
 
         public override int GetHashCode()
@@ -63,7 +63,7 @@ namespace Landscape.FoliagePipeline
 
             return hashCode;*/
             //return InstanceGroupID;
-            return (MeshIndex >> 16) + (LODIndex << 16 | MatIndex);
+            return (meshIndex >> 16) + (lODIndex << 16 | matIndex);
         }
     }
 }

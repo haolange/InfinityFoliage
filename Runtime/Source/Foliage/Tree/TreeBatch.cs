@@ -6,15 +6,15 @@ namespace Landscape.FoliagePipeline
 {
     public struct FTreeBatch : IEquatable<FTreeBatch>
     {
-        public int LODIndex;
-        public FBound BoundBox;
-        public FSphere BoundSphere;
-        public float4x4 Matrix_World;
+        public int lODIndex;
+        public FBound boundBox;
+        public FSphere boundSphere;
+        public float4x4 matrix_World;
 
 
         public bool Equals(FTreeBatch Target)
         {
-            return BoundBox.Equals(Target.BoundBox) && BoundSphere.Equals(Target.BoundSphere) && Matrix_World.Equals(Target.Matrix_World);
+            return lODIndex.Equals(Target.lODIndex) && boundBox.Equals(Target.boundBox) && boundSphere.Equals(Target.boundSphere) && matrix_World.Equals(Target.matrix_World);
         }
 
         public override bool Equals(object obj)
@@ -24,9 +24,10 @@ namespace Landscape.FoliagePipeline
 
         public override int GetHashCode()
         {
-            int hashCode = BoundBox.GetHashCode();
-            hashCode += BoundSphere.GetHashCode();
-            hashCode += Matrix_World.GetHashCode();
+            int hashCode = lODIndex.GetHashCode();
+            hashCode += boundBox.GetHashCode();
+            hashCode += boundSphere.GetHashCode();
+            hashCode += matrix_World.GetHashCode();
 
             return hashCode;
         }

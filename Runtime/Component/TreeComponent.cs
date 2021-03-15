@@ -3,10 +3,8 @@ using UnityEngine;
 using Unity.Mathematics;
 using Unity.Collections;
 using UnityEngine.Rendering;
-using System.Collections.Generic;
 using InfinityTech.Core.Geometry;
 using System.Runtime.CompilerServices;
-using Unity.Collections.LowLevel.Unsafe;
 
 namespace Landscape.FoliagePipeline
 {

@@ -87,21 +87,21 @@ namespace Landscape.FoliagePipeline
         {
             for (var i = 0; i < transforms.Count; ++i)
             {
-                var mesh = tree.Meshes[0];
-                var matrixWorld = float4x4.TRS(transforms[i].Position, quaternion.EulerXYZ(transforms[i].Rotation), transforms[i].Scale);
+                var mesh = tree.meshes[0];
+                var matrixWorld = float4x4.TRS(transforms[i].position, quaternion.EulerXYZ(transforms[i].rotation), transforms[i].scale);
 
                 FTreeBatch treeBatch;
-                treeBatch.LODIndex = 0;
-                treeBatch.Matrix_World = matrixWorld;
-                treeBatch.BoundBox = Geometry.CaculateWorldBound(mesh.bounds, matrixWorld);
-                treeBatch.BoundSphere = new FSphere(Geometry.CaculateBoundRadius(treeBatch.BoundBox), treeBatch.BoundBox.center);
+                treeBatch.lODIndex = 0;
+                treeBatch.matrix_World = matrixWorld;
+                treeBatch.boundBox = Geometry.CaculateWorldBound(mesh.bounds, matrixWorld);
+                treeBatch.boundSphere = new FSphere(Geometry.CaculateBoundRadius(treeBatch.boundBox), treeBatch.boundBox.center);
                 AddBatch(treeBatch);
             }
 
-            m_treeLODInfos = new NativeArray<float>(tree.LODInfo.Length, Allocator.Persistent);
-            for (var j = 0; j < tree.LODInfo.Length; ++j)
+            m_treeLODInfos = new NativeArray<float>(tree.lODInfo.Length, Allocator.Persistent);
+            for (var j = 0; j < tree.lODInfo.Length; ++j)
             {
-                m_treeLODInfos[j] = tree.LODInfo[j].ScreenSize;
+                m_treeLODInfos[j] = tree.lODInfo[j].screenSize;
             }
 
             m_viewTreeBatchs = new NativeArray<int>(m_treeBatchs.Length, Allocator.Persistent);
@@ -114,16 +114,16 @@ namespace Landscape.FoliagePipeline
             for (var i = 0; i < transforms.Count; ++i)
             {
                 FTreeElement treeElement;
-                treeElement.BatchIndex = i;
+                treeElement.batchIndex = i;
 
-                for (var j = 0; j < tree.Meshes.Length; ++j)
+                for (var j = 0; j < tree.meshes.Length; ++j)
                 {
-                    treeElement.LODIndex = j;
+                    treeElement.lODIndex = j;
 
-                    for (var k = 0; k < tree.Meshes[j].subMeshCount; ++k)
+                    for (var k = 0; k < tree.meshes[j].subMeshCount; ++k)
                     {
-                        treeElement.MeshIndex = k;
-                        treeElement.MatIndex = tree.LODInfo[j].MaterialSlot[k];
+                        treeElement.meshIndex = k;
+                        treeElement.matIndex = tree.lODInfo[j].materialSlot[k];
                         //TreeElement.InstanceGroupID = (TreeElement.MeshIndex >> 16) + (TreeElement.LODIndex << 16 | TreeElement.MatIndex);
                         AddElement(treeElement);
                     }
@@ -140,13 +140,13 @@ namespace Landscape.FoliagePipeline
         {
             var treeViewProcessJob = new FTreeBatchCullingJob();
             {
-                treeViewProcessJob.Planes = planes;
-                treeViewProcessJob.NumLOD = m_treeLODInfos.Length - 1;
-                treeViewProcessJob.ViewOringin = viewPos;
-                treeViewProcessJob.Matrix_Proj = matrixProj;
-                treeViewProcessJob.TreeLODInfos = (float*)m_treeLODInfos.GetUnsafePtr();
-                treeViewProcessJob.ViewTreeBatchs = m_viewTreeBatchs;
-                treeViewProcessJob.TreeBatchs = (FTreeBatch*)m_treeBatchs.GetUnsafeList()->Ptr;
+                treeViewProcessJob.planes = planes;
+                treeViewProcessJob.numLOD = m_treeLODInfos.Length - 1;
+                treeViewProcessJob.viewOringin = viewPos;
+                treeViewProcessJob.matrix_Proj = matrixProj;
+                treeViewProcessJob.treeLODInfos = (float*)m_treeLODInfos.GetUnsafePtr();
+                treeViewProcessJob.viewTreeBatchs = m_viewTreeBatchs;
+                treeViewProcessJob.treeBatchs = (FTreeBatch*)m_treeBatchs.GetUnsafeList()->Ptr;
             }
             return treeViewProcessJob.Schedule(m_viewTreeBatchs.Length, 256);
         }
@@ -156,13 +156,13 @@ namespace Landscape.FoliagePipeline
         {
             var treeDrawCommandBuildJob = new FTreeDrawCommandBuildJob();
             {
-                treeDrawCommandBuildJob.MaxLOD = tree.LODInfo.Length - 1;
-                treeDrawCommandBuildJob.TreeElements = m_treeElements;
-                treeDrawCommandBuildJob.TreeBatchs = (FTreeBatch*)m_treeBatchs.GetUnsafeList()->Ptr;
-                treeDrawCommandBuildJob.ViewTreeBatchs = m_viewTreeBatchs;
-                treeDrawCommandBuildJob.TreeBatchIndexs = m_treeBatchIndexs;
-                treeDrawCommandBuildJob.PassTreeElements = m_passTreeElements;
-                treeDrawCommandBuildJob.TreeDrawCommands = m_treeDrawCommands;
+                treeDrawCommandBuildJob.maxLOD = tree.lODInfo.Length - 1;
+                treeDrawCommandBuildJob.treeElements = m_treeElements;
+                treeDrawCommandBuildJob.treeBatchs = (FTreeBatch*)m_treeBatchs.GetUnsafeList()->Ptr;
+                treeDrawCommandBuildJob.viewTreeBatchs = m_viewTreeBatchs;
+                treeDrawCommandBuildJob.treeBatchIndexs = m_treeBatchIndexs;
+                treeDrawCommandBuildJob.passTreeElements = m_passTreeElements;
+                treeDrawCommandBuildJob.treeDrawCommands = m_treeDrawCommands;
             }
             return treeDrawCommandBuildJob.Schedule();
         }
@@ -196,14 +196,14 @@ namespace Landscape.FoliagePipeline
         {
             foreach (var treeDrawCommand in m_treeDrawCommands)
             {
-                var mesh = tree.Meshes[treeDrawCommand.LODIndex];
-                var material = tree.Materials[treeDrawCommand.MatIndex];
+                var mesh = tree.meshes[treeDrawCommand.lODIndex];
+                var material = tree.materials[treeDrawCommand.matIndex];
                 
-                for (var instanceId = 0; instanceId < treeDrawCommand.CountOffset.x; ++instanceId)
+                for (var instanceId = 0; instanceId < treeDrawCommand.countOffset.x; ++instanceId)
                 {
-                    var index = m_treeBatchIndexs[treeDrawCommand.CountOffset.y + instanceId];
+                    var index = m_treeBatchIndexs[treeDrawCommand.countOffset.y + instanceId];
                     var treeBatch = m_treeBatchs[index];
-                    cmdBuffer.DrawMesh(mesh, treeBatch.Matrix_World, material, treeDrawCommand.MeshIndex, 0);
+                    cmdBuffer.DrawMesh(mesh, treeBatch.matrix_World, material, treeDrawCommand.meshIndex, 0);
                 }
             }
 
@@ -219,16 +219,16 @@ namespace Landscape.FoliagePipeline
             for (var i = 0; i < m_treeBatchs.Length; ++i)
             {
                 var treeBatch = m_treeBatchs[i];
-                ref var color = ref Geometry.LODColors[treeBatch.LODIndex];
+                ref var color = ref Geometry.LODColors[treeBatch.lODIndex];
 
-                Geometry.DrawBound(treeBatch.BoundBox, lodColorState ? color : Color.blue);
+                Geometry.DrawBound(treeBatch.boundBox, lodColorState ? color : Color.blue);
 
                 if (showSphere)
                 {
                     UnityEditor.Handles.color = lodColorState ? color : Color.yellow;
-                    UnityEditor.Handles.DrawWireDisc(treeBatch.BoundSphere.center, Vector3.up, treeBatch.BoundSphere.radius);
-                    UnityEditor.Handles.DrawWireDisc(treeBatch.BoundSphere.center, Vector3.back, treeBatch.BoundSphere.radius);
-                    UnityEditor.Handles.DrawWireDisc(treeBatch.BoundSphere.center, Vector3.right, treeBatch.BoundSphere.radius);
+                    UnityEditor.Handles.DrawWireDisc(treeBatch.boundSphere.center, Vector3.up, treeBatch.boundSphere.radius);
+                    UnityEditor.Handles.DrawWireDisc(treeBatch.boundSphere.center, Vector3.back, treeBatch.boundSphere.radius);
+                    UnityEditor.Handles.DrawWireDisc(treeBatch.boundSphere.center, Vector3.right, treeBatch.boundSphere.radius);
                 }
             }
         }

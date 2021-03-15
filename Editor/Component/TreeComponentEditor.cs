@@ -8,51 +8,6 @@ using System.Runtime.InteropServices;
 
 namespace Landscape.Editor.FoliagePipeline
 {
-    interface ITask
-    {
-        void Execute();
-    }
-
-    public struct FUpdateTreeTask : ITask
-    {
-        public int length;
-        public float2 Scale;
-        public TreePrototype TreePrototype;
-        public TreeInstance[] TreeInstances;
-        public TreePrototype[] TreePrototypes;
-        public List<FTransform> TreeTransfroms;
-
-
-        public void Execute()
-        {
-            FTransform Transform = new FTransform();
-
-            for (int i = 0; i < length; ++i)
-            {
-                ref TreeInstance treeInstance = ref TreeInstances[i];
-                TreePrototype serchTreePrototype = TreePrototypes[treeInstance.prototypeIndex];
-                if (serchTreePrototype.Equals(TreePrototype))
-                {
-                    Transform.Rotation = new float3(0, treeInstance.rotation, 0);
-                    Transform.Position = treeInstance.position * new float3(Scale.x, Scale.y, Scale.x);
-                    Transform.Scale = new float3(treeInstance.widthScale, treeInstance.heightScale, treeInstance.widthScale);
-                    TreeTransfroms.Add(Transform);
-                }
-            }
-        }
-    }
-
-    public struct FUpdateTreeJob : IJob
-    {
-        public GCHandle TaskHandle;
-
-        public void Execute()
-        {
-            ITask Task = (ITask)TaskHandle.Target;
-            Task.Execute();
-        }
-    }
-
     [CanEditMultipleObjects]
     [CustomEditor(typeof(TreeComponent))]
     public class TreeComponentEditor : UnityEditor.Editor
@@ -144,12 +99,12 @@ namespace Landscape.Editor.FoliagePipeline
                         ref FMeshLODInfo LODInfo = ref LODInfos[l];
                         Renderer renderer = lod.renderers[0];
 
-                        LODInfo.ScreenSize = 1 - (l * 0.125f);
-                        LODInfo.MaterialSlot = new int[renderer.sharedMaterials.Length];
+                        LODInfo.screenSize = 1 - (l * 0.125f);
+                        LODInfo.materialSlot = new int[renderer.sharedMaterials.Length];
                         
                         for (int m = 0; m < renderer.sharedMaterials.Length; ++m)
                         {
-                            ref int MaterialSlot = ref LODInfo.MaterialSlot[m];
+                            ref int MaterialSlot = ref LODInfo.materialSlot[m];
                             MaterialSlot = Materials.IndexOf(renderer.sharedMaterials[m]);
                         }
                     }
@@ -184,18 +139,18 @@ namespace Landscape.Editor.FoliagePipeline
                         var updateTreeTask = new FUpdateTreeTask();
                         {
                             updateTreeTask.length = terrainData.treeInstanceCount;
-                            updateTreeTask.Scale = new float2(terrainData.heightmapResolution - 1, terrainData.heightmapScale.y);
-                            updateTreeTask.TreePrototype = treePrototype;
-                            updateTreeTask.TreeInstances = terrainData.treeInstances;
-                            updateTreeTask.TreePrototypes = terrainData.treePrototypes;
-                            updateTreeTask.TreeTransfroms = treeSector.transforms;
+                            updateTreeTask.scale = new float2(terrainData.heightmapResolution - 1, terrainData.heightmapScale.y);
+                            updateTreeTask.treePrototype = treePrototype;
+                            updateTreeTask.treeInstances = terrainData.treeInstances;
+                            updateTreeTask.treePrototypes = terrainData.treePrototypes;
+                            updateTreeTask.treeTransfroms = treeSector.transforms;
                         }
                         var taskHandle = GCHandle.Alloc(updateTreeTask);
                         tasksHandle.Add(taskHandle);
 
                         var updateTreeJob = new FUpdateTreeJob();
                         {
-                            updateTreeJob.TaskHandle = taskHandle;
+                            updateTreeJob.taskHandle = taskHandle;
                         }
                         jobsHandle.Add(updateTreeJob.Schedule());
                     }

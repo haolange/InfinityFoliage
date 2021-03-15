@@ -5,7 +5,9 @@
         "Unity.Jobs",
         "Unity.Burst",
         "Unity.Collections",
-        "Unity.Mathematics"
+        "Unity.Mathematics",
+        "Unity.RenderPipelines.Core.Runtime",
+        "Unity.RenderPipelines.Universal.Runtime"
     ],
     "includePlatforms": [],
     "excludePlatforms": [],
