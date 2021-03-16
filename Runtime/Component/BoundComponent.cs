@@ -71,8 +71,17 @@ namespace Landscape.FoliagePipeline
             TerrainTexture HeightTexture = new TerrainTexture(SectorSize);
             HeightTexture.TerrainDataToHeightmap(terrainData);
 
+            if(BoundSector != null)
+            {
+                if (BoundSector.NativeSections.IsCreated == true)
+                {
+                    BoundSector.ReleaseNativeCollection();
+                }
+            }
+
             BoundSector = new FBoundSector(SectorSize, NumSection, SectionSize, transform.position, terrainData.bounds);
             BoundSector.BuildBounds(SectorSize, SectionSize, TerrainScaleY, transform.position, HeightTexture.HeightMap);
+            BoundSector.BuildNativeCollection();
 
             HeightTexture.Release();
         }
