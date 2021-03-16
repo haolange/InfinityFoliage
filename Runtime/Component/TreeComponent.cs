@@ -8,8 +8,8 @@ using System.Runtime.CompilerServices;
 
 namespace Landscape.FoliagePipeline
 {
-    [RequireComponent(typeof(Terrain))]
-    [AddComponentMenu("HG/Tree Component")]
+    [RequireComponent(typeof(BoundComponent))]
+    [AddComponentMenu("HG/Foliage/Tree Component")]
     public unsafe class TreeComponent : FoliageComponent
     {
 #if UNITY_EDITOR

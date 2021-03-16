@@ -16,7 +16,7 @@ namespace Landscape.FoliagePipeline
     {
         public FMesh tree;
         public int treeIndex;
-        public float cullDistance = 256;
+        public int cullDistance = 256;
         public List<FTransform> transforms;
 
         private NativeArray<int> m_viewTreeBatchs;

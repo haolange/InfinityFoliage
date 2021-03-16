@@ -10,8 +10,8 @@ using Unity.Collections.LowLevel.Unsafe;
 
 namespace Landscape.FoliagePipeline
 {
-    [RequireComponent(typeof(Terrain))]
-    [AddComponentMenu("HG/Grass Component")]
+    [RequireComponent(typeof(BoundComponent))]
+    [AddComponentMenu("HG/Foliage/Grass Component")]
     public unsafe class GrassComponent : FoliageComponent
     {
 #if UNITY_EDITOR
@@ -25,17 +25,25 @@ namespace Landscape.FoliagePipeline
         [HideInInspector]
         public TerrainData terrainData;
 
+        [HideInInspector]
+        public FGrassSector grassSector;
+
+        [HideInInspector]
+        public BoundComponent boundComponent;
+
 
         protected override void OnRegister()
         {
             terrain = GetComponent<Terrain>();
-            terrainData = GetComponent<TerrainCollider>().terrainData;
+            terrainData = terrain.terrainData;
+            boundComponent = GetComponent<BoundComponent>();
+
+            InitGrassSectors();
+
             if (terrain.drawTreesAndFoliage == true)
             {
                 terrain.drawTreesAndFoliage = false;
             }
-
-            InitTreeSectors();
         }
 
         protected override void OnTransformChange()
@@ -55,7 +63,7 @@ namespace Landscape.FoliagePipeline
 
         protected override void UnRegister()
         {
-            ReleaseTreeSectors();
+            ReleaseGrassSectors();
         }
 
 #if UNITY_EDITOR
@@ -71,12 +79,12 @@ namespace Landscape.FoliagePipeline
 #endif
 
         #region Grass
-        private void InitTreeSectors()
+        private void InitGrassSectors()
         {
 
         }
         
-        private void ReleaseTreeSectors()
+        private void ReleaseGrassSectors()
         {
 
         }
