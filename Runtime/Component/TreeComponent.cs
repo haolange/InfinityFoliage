@@ -30,7 +30,7 @@ namespace Landscape.FoliagePipeline
         protected override void OnRegister()
         {
             terrain = GetComponent<Terrain>();
-            terrainData = GetComponent<TerrainCollider>().terrainData;
+            terrainData = terrain.terrainData;
             if (terrain.drawTreesAndFoliage == true)
             {
                 terrain.drawTreesAndFoliage = false;

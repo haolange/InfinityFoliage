@@ -21,13 +21,10 @@ namespace Landscape.FoliagePipeline
 
         [HideInInspector]
         public Terrain terrain;
-        
         [HideInInspector]
         public TerrainData terrainData;
-
         [HideInInspector]
-        public FGrassSector grassSector;
-
+        public FGrassSector[] grassSectors;
         [HideInInspector]
         public BoundComponent boundComponent;
 

@@ -71,7 +71,7 @@ namespace Landscape.FoliagePipeline
         }
     }
 
-    [CreateAssetMenu(menuName = "Landscape/MeshAsset", order = 10)]
+    [CreateAssetMenu(menuName = "Landscape/MeshAsset", order = 256)]
     public class MeshAsset : ScriptableObject
     {
         [Header("Mesh")]
@@ -120,6 +120,13 @@ namespace Landscape.FoliagePipeline
         void OnDestroy()
         {
             //Debug.Log("OnDestroy");
+        }
+
+        public void BuildMeshAsset(Mesh[] meshes, Material[] materials, FMeshLODInfo[] lODInfo)
+        {
+            this.meshes = meshes;
+            this.materials = materials;
+            this.lODInfo = lODInfo;
         }
     }
 }

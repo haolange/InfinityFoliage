@@ -18,14 +18,19 @@ namespace Landscape.FoliagePipeline
         public int grassIndex;
         public int cullDistance = 128;
 
-        internal FBoundSector boundSector;
+        [SerializeField]
         internal FGrassSection[] details;
+        internal FBoundSector boundSector;
 
 
-        public FGrassSector(FBoundSector boundSector)
+        public FGrassSector(in int length)
+        {
+            this.details = new FGrassSection[length];
+        }
+
+        public void SetBound(FBoundSector boundSector)
         {
             this.boundSector = boundSector;
-            this.details = new FGrassSection[boundSector.Sections.Length];
         }
     }
 }

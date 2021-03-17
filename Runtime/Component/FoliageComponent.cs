@@ -42,7 +42,6 @@ public abstract unsafe class FoliageComponent : MonoBehaviour
 {
     [HideInInspector]
     internal MTransfrom currTransform;
-
     [HideInInspector]
     internal MTransfrom prevTransform;
     

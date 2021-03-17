@@ -5,7 +5,6 @@ namespace Landscape.FoliagePipeline
 {
     [RequireComponent(typeof(Terrain))]
     [AddComponentMenu("HG/Foliage/Bound Component")]
-
     public class BoundComponent : MonoBehaviour
     {
         [Header("Setting")]
@@ -47,8 +46,7 @@ namespace Landscape.FoliagePipeline
         void OnEnable()
         {
             terrain = GetComponent<Terrain>();
-            terrainData = GetComponent<TerrainCollider>().terrainData;
-
+            terrainData = terrain.terrainData;
             BoundSector.BuildNativeCollection();
         }
 
@@ -71,24 +69,15 @@ namespace Landscape.FoliagePipeline
             TerrainTexture HeightTexture = new TerrainTexture(SectorSize);
             HeightTexture.TerrainDataToHeightmap(terrainData);
 
-            if(BoundSector != null)
-            {
-                if (BoundSector.NativeSections.IsCreated == true)
-                {
-                    BoundSector.ReleaseNativeCollection();
-                }
-            }
-
             BoundSector = new FBoundSector(SectorSize, NumSection, SectionSize, transform.position, terrainData.bounds);
             BoundSector.BuildBounds(SectorSize, SectionSize, TerrainScaleY, transform.position, HeightTexture.HeightMap);
-            BoundSector.BuildNativeCollection();
 
             HeightTexture.Release();
         }
 
         void OnDrawGizmosSelected()
         {
-            if (showBounds)
+            if (showBounds && enabled && gameObject.activeSelf)
             {
                 BoundSector.DrawBound();
             }
