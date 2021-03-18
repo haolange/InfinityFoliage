@@ -11,8 +11,8 @@ namespace Landscape.Editor.FoliagePipeline
     public class FoliageActorAction
     {
         #region Tree
-        [MenuItem("GameObject/EntityAction/Landscape/BuildTreesForTerrain", false, 8)]
-        public static void BuildTreeFromTerrainData(MenuCommand menuCommand)
+        [MenuItem("GameObject/EntityAction/Landscape/BuildTerrainTree", false, 9)]
+        public static void BuildTerrainTree(MenuCommand menuCommand)
         {
             GameObject[] SelectObjects = Selection.gameObjects;
             foreach (GameObject SelectObject in SelectObjects)
@@ -22,7 +22,6 @@ namespace Landscape.Editor.FoliagePipeline
                 {
                     foliageComponent = SelectObject.AddComponent<TreeComponent>();
                 }
-
 
                 Terrain UTerrain = SelectObject.GetComponent<Terrain>();
                 TerrainData UTerrainData = UTerrain.terrainData;
@@ -77,8 +76,8 @@ namespace Landscape.Editor.FoliagePipeline
             }
         }
 
-        [MenuItem("GameObject/EntityAction/Landscape/UpdateTreesFromTerrain", false, 9)]
-        public static void UpdateTreeFromTerrainData(MenuCommand menuCommand)
+        [MenuItem("GameObject/EntityAction/Landscape/UpdateTerrainTree", false, 11)]
+        public static void UpdateTerrainTree(MenuCommand menuCommand)
         {
             var tasksHandle = new List<GCHandle>(32);
             var jobsHandle = new List<JobHandle>(32);
@@ -131,7 +130,17 @@ namespace Landscape.Editor.FoliagePipeline
 
 
         #region Grass
+        [MenuItem("GameObject/EntityAction/Landscape/BuildTerrainGrass", false, 10)]
+        public static void BuildTerrainGrass(MenuCommand menuCommand)
+        {
 
+        }
+
+        [MenuItem("GameObject/EntityAction/Landscape/UpdateTerrainGrass", false, 12)]
+        public static void UpdateTerrainGrass(MenuCommand menuCommand)
+        {
+
+        }
         #endregion //Grass
     }
 }

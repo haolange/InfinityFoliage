@@ -106,13 +106,13 @@ namespace Landscape.FoliagePipeline
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public override void DispatchSetup(in NativeList<JobHandle> taskHandles)
         {
-
+            
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public override void DispatchDraw(CommandBuffer cmdBuffer)
         {
-
+            
         }
         #endregion //Grass
     }

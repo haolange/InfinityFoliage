@@ -28,21 +28,32 @@ namespace Landscape.Editor.FoliagePipeline
                 return;
             }
 
+            bool buildOK = false;
             GameObject prefab = (GameObject)activeObject;
+
             if (prefab.GetComponent<LODGroup>() == null)
             {
-                Debug.LogWarning("select prefab doesn't have LODGroup component");
-                return;
+                buildOK = true;
             }
 
-            MeshAsset meshAsset = ScriptableObject.CreateInstance<MeshAsset>();
-            meshAsset.target = prefab;
-            MeshAsset.BuildMeshAsset(prefab, meshAsset);
+            if (prefab.GetComponent<MeshFilter>() == null || prefab.GetComponent<MeshRenderer>() == null)
+            {
+                buildOK = true;
+            }
 
-            CreateMeshAsset meshAssetFactory = ScriptableObject.CreateInstance<CreateMeshAsset>();
-            meshAssetFactory.meshAsset = meshAsset;
+            if (buildOK)
+            {
+                MeshAsset meshAsset = ScriptableObject.CreateInstance<MeshAsset>();
+                meshAsset.target = prefab;
+                MeshAsset.BuildMeshAsset(prefab, meshAsset);
 
-            ProjectWindowUtil.StartNameEditingIfProjectWindowExists(0, meshAssetFactory, "SM_" + prefab.name + ".asset", null, null);
+                CreateMeshAsset meshAssetFactory = ScriptableObject.CreateInstance<CreateMeshAsset>();
+                meshAssetFactory.meshAsset = meshAsset;
+
+                ProjectWindowUtil.StartNameEditingIfProjectWindowExists(0, meshAssetFactory, "SM_" + prefab.name + ".asset", null, null);
+            } else {
+                Debug.LogWarning("select prefab doesn't have LODGroup or MeshRenderer");
+            }
         }
 
         [MenuItem("Assets/AssetActions/Landscape/UpdateMeshAssetFromPrefab", priority = 32)]

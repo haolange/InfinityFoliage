@@ -87,10 +87,11 @@ namespace Landscape.FoliagePipeline
         public Material[] materials;
 
         [Header("Culling")]
-        public FMeshLODInfo[] lODInfo;
+        public FMeshLODInfo[] lODInfos;
 
-        /*[HideInInspector]
-        public FMesh Tree;*/
+        [Header("Proxy")]
+        [HideInInspector]
+        public FMesh Tree;
 
 
         public MeshAsset()
@@ -101,21 +102,25 @@ namespace Landscape.FoliagePipeline
         void Awake()
         {
             //Debug.Log("Awake");
+            BuildMeshProxy();
         }
 
         void Reset()
         {
             //Debug.Log("Reset");
+            BuildMeshProxy();
         }
 
         void OnEnable()
         {
             //Debug.Log("OnEnable");
+            BuildMeshProxy();
         }
 
         void OnValidate()
         {
             //Debug.Log("OnValidate");
+            BuildMeshProxy();
         }
 
         void OnDisable()
@@ -128,21 +133,20 @@ namespace Landscape.FoliagePipeline
             //Debug.Log("OnDestroy");
         }
 
-        public void BuildMeshAsset(Mesh[] meshes, Material[] materials, FMeshLODInfo[] lODInfo)
+        void BuildMeshProxy()
+        {
+            this.Tree = new FMesh(meshes, materials, lODInfos);
+        }
+
+        void BuildMeshAsset(Mesh[] meshes, Material[] materials, FMeshLODInfo[] lODInfos)
         {
             this.meshes = meshes;
             this.materials = materials;
-            this.lODInfo = lODInfo;
+            this.lODInfos = lODInfos;
         }
 
-        public static void BuildMeshAsset(GameObject cloneTarget, MeshAsset meshAsset)
+        internal static void BuildMeshAssetFromLODGroup(GameObject cloneTarget, MeshAsset meshAsset)
         {
-            if (cloneTarget == null)
-            {
-                Debug.LogWarning("source prefab is null");
-                return;
-            }
-
             List<Mesh> meshes = new List<Mesh>();
             List<Material> materials = new List<Material>();
             LOD[] lods = cloneTarget.GetComponent<LODGroup>().GetLODs();
@@ -180,7 +184,68 @@ namespace Landscape.FoliagePipeline
             }
 
             meshAsset.BuildMeshAsset(meshes.ToArray(), materials.ToArray(), lODInfos);
+            meshAsset.BuildMeshProxy();
             EditorUtility.SetDirty(meshAsset);
+        }
+
+        internal static void BuildMeshAssetFromMeshRenderer(GameObject cloneTarget, MeshAsset meshAsset)
+        {
+            List<Mesh> meshes = new List<Mesh>();
+            List<Material> materials = new List<Material>();
+
+            //Collector Meshes&Materials
+            Renderer renderer = cloneTarget.GetComponent<MeshRenderer>();
+            MeshFilter meshFilter = cloneTarget.GetComponent<MeshFilter>();
+
+            meshes.AddUnique(meshFilter.sharedMesh);
+            for (int k = 0; k < renderer.sharedMaterials.Length; ++k)
+            {
+                materials.AddUnique(renderer.sharedMaterials[k]);
+            }
+
+            //Build LODInfo
+            FMeshLODInfo[] lODInfos = new FMeshLODInfo[1];
+
+            ref FMeshLODInfo lODInfo = ref lODInfos[0];
+            lODInfo.screenSize = 1;
+            lODInfo.materialSlot = new int[renderer.sharedMaterials.Length];
+
+            for (int m = 0; m < renderer.sharedMaterials.Length; ++m)
+            {
+                ref int MaterialSlot = ref lODInfo.materialSlot[m];
+                MaterialSlot = materials.IndexOf(renderer.sharedMaterials[m]);
+            }
+
+            meshAsset.BuildMeshAsset(meshes.ToArray(), materials.ToArray(), lODInfos);
+            meshAsset.BuildMeshProxy();
+            EditorUtility.SetDirty(meshAsset);
+        }
+
+        public static void BuildMeshAsset(GameObject cloneTarget, MeshAsset meshAsset)
+        {
+            if (cloneTarget == null)
+            {
+                Debug.LogWarning("source prefab is null");
+                return;
+            }
+
+            bool buildOK = false;
+
+            if(cloneTarget.GetComponent<LODGroup>() != null)
+            {
+                buildOK = true;
+                meshAsset.target = cloneTarget;
+                BuildMeshAssetFromLODGroup(cloneTarget, meshAsset);
+            }
+
+            if (cloneTarget.GetComponent<MeshFilter>() != null && cloneTarget.GetComponent<MeshRenderer>() != null)
+            {
+                buildOK = true;
+                meshAsset.target = cloneTarget;
+                BuildMeshAssetFromMeshRenderer(cloneTarget, meshAsset);
+            }
+
+            if (!buildOK) { Debug.LogWarning("source prefab doesn't have LODGroup or MeshRenderer"); }
         }
     }
 }

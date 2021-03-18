@@ -29,7 +29,6 @@ namespace Landscape.Editor.FoliagePipeline
             base.OnInspectorGUI();
             serializedObject.Update();
 
-
             serializedObject.ApplyModifiedProperties();
         }
 
