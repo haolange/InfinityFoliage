@@ -20,6 +20,7 @@ namespace Landscape.FoliagePipeline
 
         [SerializeField]
         internal FGrassSection[] details;
+
         internal FBoundSector boundSector;
 
 
