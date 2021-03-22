@@ -5,7 +5,7 @@ using System.Collections.Generic;
 
 namespace Landscape.FoliagePipeline
 {
-    public class FTreePassProcessor
+    public class FMeshPassProcessor
     {
 
 

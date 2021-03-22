@@ -3,7 +3,7 @@ using Unity.Mathematics;
 
 namespace Landscape.FoliagePipeline
 {
-    public struct FTreeDrawCommand : IEquatable<FTreeDrawCommand>
+    public struct FMeshDrawCommand : IEquatable<FMeshDrawCommand>
     {
         public int lODIndex;
         public int matIndex;
@@ -12,7 +12,7 @@ namespace Landscape.FoliagePipeline
         //public int InstanceGroupID;
 
 
-        public FTreeDrawCommand(in int lODIndex, in int matIndex, in int meshIndex, in int2 countOffset)
+        public FMeshDrawCommand(in int lODIndex, in int matIndex, in int meshIndex, in int2 countOffset)
         {
             this.lODIndex = lODIndex;
             this.matIndex = matIndex;
@@ -21,7 +21,7 @@ namespace Landscape.FoliagePipeline
             //this.InstanceGroupID = 0;
         }
 
-        public bool Equals(FTreeDrawCommand Target)
+        public bool Equals(FMeshDrawCommand Target)
         {
             //return InstanceGroupID.Equals(Target.InstanceGroupID);
             return lODIndex.Equals(Target.lODIndex) && matIndex.Equals(Target.matIndex) && meshIndex.Equals(Target.meshIndex);
@@ -29,7 +29,7 @@ namespace Landscape.FoliagePipeline
 
         public override bool Equals(object obj)
         {
-            return Equals((FTreeDrawCommand)obj);
+            return Equals((FMeshDrawCommand)obj);
         }
 
         public override int GetHashCode()

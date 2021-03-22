@@ -4,7 +4,7 @@ using InfinityTech.Core.Geometry;
 
 namespace Landscape.FoliagePipeline
 {
-    public struct FTreeBatch : IEquatable<FTreeBatch>
+    public struct FMeshBatch : IEquatable<FMeshBatch>
     {
         public int lODIndex;
         public FBound boundBox;
@@ -12,14 +12,14 @@ namespace Landscape.FoliagePipeline
         public float4x4 matrix_World;
 
 
-        public bool Equals(FTreeBatch Target)
+        public bool Equals(FMeshBatch Target)
         {
             return lODIndex.Equals(Target.lODIndex) && boundBox.Equals(Target.boundBox) && boundSphere.Equals(Target.boundSphere) && matrix_World.Equals(Target.matrix_World);
         }
 
         public override bool Equals(object obj)
         {
-            return Equals((FTreeBatch)obj);
+            return Equals((FMeshBatch)obj);
         }
 
         public override int GetHashCode()

@@ -7,7 +7,7 @@ namespace Landscape.FoliagePipeline
     public class FGrassSection
     {
         public int BoundIndex;
-        internal int[] DensityMap;
+        public int[] DensityMap;
         internal NativeArray<int> NativeDensityMap;
 
 

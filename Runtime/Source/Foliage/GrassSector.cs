@@ -17,21 +17,31 @@ namespace Landscape.FoliagePipeline
         public FMesh grass;
         public int grassIndex;
         public int cullDistance = 128;
-
-        [SerializeField]
-        internal FGrassSection[] details;
-
-        internal FBoundSector boundSector;
+        public FBoundSector boundSector;
+        public FGrassSection[] sections;
 
 
         public FGrassSector(in int length)
         {
-            this.details = new FGrassSection[length];
+            this.sections = new FGrassSection[length];
         }
 
-        public void SetBound(FBoundSector boundSector)
+        public void Init(FBoundSector boundSector)
         {
             this.boundSector = boundSector;
+
+            foreach (FGrassSection section in sections)
+            {
+                section.BuildNativeCollection();
+            }
+        }
+
+        public void Release()
+        {
+            foreach (FGrassSection section in sections)
+            {
+                section.ReleaseNativeCollection();
+            }
         }
     }
 }

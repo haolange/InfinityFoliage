@@ -20,6 +20,7 @@ namespace Landscape.FoliagePipeline
     {
         public int length;
         public float2 scale;
+        public float3 terrainPosition;
         public TreePrototype treePrototype;
         public TreeInstance[] treeInstances;
         public TreePrototype[] treePrototypes;
@@ -37,7 +38,7 @@ namespace Landscape.FoliagePipeline
                 if (serchTreePrototype.Equals(treePrototype))
                 {
                     transform.rotation = new float3(0, treeInstance.rotation, 0);
-                    transform.position = treeInstance.position * new float3(scale.x, scale.y, scale.x);
+                    transform.position = (treeInstance.position * new float3(scale.x, scale.y, scale.x)) + terrainPosition;
                     transform.scale = new float3(treeInstance.widthScale, treeInstance.heightScale, treeInstance.widthScale);
                     treeTransfroms.Add(transform);
                 }
@@ -45,7 +46,27 @@ namespace Landscape.FoliagePipeline
         }
     }
 
-    public struct FUpdateTreeJob : IJob
+    public struct FUpdateGrassTask : ITask
+    {
+        public int length;
+        public int[] dscMap;
+        public int[,] srcMap;
+
+
+        public void Execute()
+        {
+            for (int j = 0; j < length; ++j)
+            {
+                for (int k = 0; k < length; ++k)
+                {
+                    int densityIndex = j * length + k;
+                    dscMap[densityIndex] = srcMap[j, k];
+                }
+            }
+        }
+    }
+
+    public struct FUpdateFoliageJob : IJob
     {
         public GCHandle taskHandle;
 
@@ -69,13 +90,13 @@ namespace Landscape.FoliagePipeline
         public NativeArray<float> treeBatchLODs;
 
         [NativeDisableUnsafePtrRestriction]
-        public FTreeBatch* treeBatchs;
+        public FMeshBatch* treeBatchs;
 
 
         public void Execute(int index)
         {
             float screenRadiusSquared = 0;
-            ref FTreeBatch treeBatch = ref treeBatchs[index];
+            ref FMeshBatch treeBatch = ref treeBatchs[index];
 
             for (int i = treeBatchLODs.Length - 1; i >= 0; --i)
             {
@@ -111,7 +132,7 @@ namespace Landscape.FoliagePipeline
         public float* treeLODInfos;
 
         [NativeDisableUnsafePtrRestriction]
-        public FTreeBatch* treeBatchs;
+        public FMeshBatch* treeBatchs;
 
         [WriteOnly]
         public NativeArray<int> viewTreeBatchs;
@@ -119,7 +140,7 @@ namespace Landscape.FoliagePipeline
 
         public void Execute(int index)
         {
-            ref FTreeBatch treeBatch = ref treeBatchs[index];
+            ref FMeshBatch treeBatch = ref treeBatchs[index];
 
             //Calculate LOD
             float ScreenRadiusSquared = Geometry.ComputeBoundsScreenRadiusSquared(treeBatch.boundSphere.radius, treeBatch.boundBox.center, viewOringin, matrix_Proj);
@@ -158,7 +179,7 @@ namespace Landscape.FoliagePipeline
 
         [ReadOnly]
         [NativeDisableUnsafePtrRestriction]
-        public FTreeBatch* treeBatchs;
+        public FMeshBatch* treeBatchs;
 
         [ReadOnly]
         public NativeArray<int> viewTreeBatchs;
@@ -167,23 +188,23 @@ namespace Landscape.FoliagePipeline
         public NativeArray<int> treeBatchIndexs;
 
         [ReadOnly]
-        public NativeList<FTreeElement> treeElements;
+        public NativeList<FMeshElement> treeElements;
 
-        public NativeList<FTreeElement> passTreeElements;
+        public NativeList<FMeshElement> passTreeElements;
 
-        public NativeList<FTreeDrawCommand> treeDrawCommands;
+        public NativeList<FMeshDrawCommand> treeDrawCommands;
 
 
         public void Execute()
         {
             //Gather PassTreeElement
-            FTreeElement treeElement;
+            FMeshElement treeElement;
             for (int i = 0; i < treeElements.Length; ++i)
             {
                 treeElement = treeElements[i];
-                ref FTreeBatch TreeBatch = ref treeBatchs[treeElement.batchIndex];
+                ref FMeshBatch treeBatch = ref treeBatchs[treeElement.batchIndex];
 
-                if (viewTreeBatchs[treeElement.batchIndex] != 0 && treeElement.lODIndex == TreeBatch.lODIndex)
+                if (viewTreeBatchs[treeElement.batchIndex] != 0 && treeElement.lODIndex == treeBatch.lODIndex)
                 {
                     passTreeElements.Add(treeElement);
                 }
@@ -193,11 +214,11 @@ namespace Landscape.FoliagePipeline
             //PassTreeElements.Sort();
 
             //Build TreeDrawCommand
-            FTreeElement passTreeElement;
-            FTreeElement cachePassTreeElement = new FTreeElement(-1, -1, -1, -1, -1);
+            FMeshElement passTreeElement;
+            FMeshElement cachePassTreeElement = new FMeshElement(-1, -1, -1, -1, -1);
 
-            FTreeDrawCommand treeDrawCommand;
-            FTreeDrawCommand cacheTreeDrawCommand;
+            FMeshDrawCommand treeDrawCommand;
+            FMeshDrawCommand cacheTreeDrawCommand;
 
             for (int i = 0; i < passTreeElements.Length; ++i)
             {

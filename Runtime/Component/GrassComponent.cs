@@ -23,7 +23,7 @@ namespace Landscape.FoliagePipeline
         public Terrain terrain;
         [HideInInspector]
         public TerrainData terrainData;
-        //[HideInInspector]
+        [HideInInspector]
         public FGrassSector[] grassSectors;
         [HideInInspector]
         public BoundComponent boundComponent;
@@ -80,21 +80,16 @@ namespace Landscape.FoliagePipeline
         {
             foreach(FGrassSector grassSector in grassSectors)
             {
-                grassSector.SetBound(boundComponent.BoundSector);
-                grassSector.details = new FGrassSection[boundComponent.BoundSector.Sections.Length];
-
-                for (int i = 0; i < grassSector.details.Length; ++i)
-                {
-                    grassSector.details[i] = new FGrassSection();
-                    FGrassSection grassSection = grassSector.details[i];
-                    grassSection.BoundIndex = i;
-                }
+                grassSector.Init(boundComponent.BoundSector);
             }
         }
         
         private void ReleaseGrassSectors()
         {
-
+            foreach (FGrassSector grassSector in grassSectors)
+            {
+                grassSector.Release();
+            }
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]

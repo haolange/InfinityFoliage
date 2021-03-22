@@ -19,7 +19,7 @@ namespace Landscape.FoliagePipeline
         }
     }
 
-    public struct FTreeElement : IComparable<FTreeElement>, IEquatable<FTreeElement>
+    public struct FMeshElement : IComparable<FMeshElement>, IEquatable<FMeshElement>
     {
         public int lODIndex;
         public int matIndex;
@@ -28,7 +28,7 @@ namespace Landscape.FoliagePipeline
         //public int InstanceGroupID;
 
 
-        public FTreeElement(in int lODIndex, in int matIndex, in int meshIndex, in int batchIndex, in int instanceGroupID)
+        public FMeshElement(in int lODIndex, in int matIndex, in int meshIndex, in int batchIndex, in int instanceGroupID)
         {
             this.lODIndex = lODIndex;
             this.matIndex = matIndex;
@@ -37,7 +37,7 @@ namespace Landscape.FoliagePipeline
             //this.InstanceGroupID = InstanceGroupID;
         }
 
-        public bool Equals(FTreeElement Target)
+        public bool Equals(FMeshElement Target)
         {
             //return InstanceGroupID.Equals(Target.InstanceGroupID);
             return lODIndex.Equals(Target.lODIndex) && matIndex.Equals(Target.matIndex) && meshIndex.Equals(Target.meshIndex);
@@ -45,10 +45,10 @@ namespace Landscape.FoliagePipeline
 
         public override bool Equals(object obj)
         {
-            return Equals((FTreeElement)obj);
+            return Equals((FMeshElement)obj);
         }
 
-        public int CompareTo(FTreeElement Target)
+        public int CompareTo(FMeshElement Target)
         {
             //return InstanceGroupID;
             //return (MeshIndex + LODIndex + MatIndex).CompareTo(Target.MeshIndex + Target.LODIndex + Target.MatIndex);

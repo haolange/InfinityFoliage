@@ -9,11 +9,9 @@ namespace Landscape.FoliagePipeline
     [Serializable]
     public class FBoundSector
     {
-        [SerializeField]
-        internal FBound Bound;
-        [SerializeField]
-        internal FBoundSection[] Sections;
-        internal NativeArray<FBoundSection> NativeSections;
+        public FBound Bound;
+        public FBoundSection[] Sections;
+        public NativeArray<FBoundSection> NativeSections;
 
 
         public FBoundSector(in int SectorSize, in int NumSection, in int SectionSize, in float3 SectorPivotPosition, in FAABB SectorBound)

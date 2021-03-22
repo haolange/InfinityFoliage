@@ -6,7 +6,7 @@ using System.Collections.Generic;
 namespace Landscape.FoliagePipeline
 {
     [Serializable]
-    public class FTreeElementCollector
+    public class FMeshElementCollector
     {
         public void Initialize()
         {
