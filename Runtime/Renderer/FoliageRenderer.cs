@@ -5,6 +5,8 @@ using UnityEngine.Rendering;
 using InfinityTech.Core.Geometry;
 using UnityEngine.Rendering.Universal;
 using Unity.Collections.LowLevel.Unsafe;
+using Landscape.FoliagePipeline;
+using Unity.Mathematics;
 
 internal unsafe class FoliagePass : ScriptableRenderPass
 {
@@ -29,43 +31,55 @@ internal unsafe class FoliagePass : ScriptableRenderPass
             planes[i] = cullingParams.cameraProperties.GetCameraCullingPlane(i);
         }
 
-        var cullHandles = new NativeList<JobHandle>(256, Allocator.Temp);
+        FPlane* planesPtr = (FPlane*)planes.GetUnsafePtr();
+        float3 viewPos = renderingData.cameraData.camera.transform.position;
         var matrixProj = Geometry.GetProjectionMatrix(renderingData.cameraData.camera.fieldOfView, renderingData.cameraData.camera.pixelWidth, renderingData.cameraData.camera.pixelHeight, renderingData.cameraData.camera.nearClipPlane, renderingData.cameraData.camera.farClipPlane);
-        FPlane* planesPtr = (FPlane*) planes.GetUnsafePtr();
-        
-        foreach (var foliageComponent in FoliageComponent.s_foliageComponents)
-        {
-            foliageComponent.InitViewFoliage(renderingData.cameraData.camera.transform.position, matrixProj, planesPtr, cullHandles);
-        }
 
-        JobHandle.CompleteAll(cullHandles);
-        cullHandles.Dispose();
+        // Culling LandscapeSector
+        NativeArray<int> boundsVisible = default;
+        NativeArray<FBound> sectorsBound = default;
+        var taskHandles = new NativeList<JobHandle>(256, Allocator.Temp);
+        BoundComponent.InitSectorView(viewPos, planesPtr, ref boundsVisible, ref sectorsBound);
+
+        for (int i = 0; i < sectorsBound.Length; ++i)
+        {
+            if(boundsVisible[i] == 0) { continue; }
+
+            BoundComponent boundComponent = BoundComponent.s_boundComponents[i];
+
+            #region InitViewSectorBound
+            boundComponent.InitSectionView(viewPos, planesPtr, taskHandles);
+            JobHandle.CompleteAll(taskHandles);
+            taskHandles.Clear();
+            #endregion //InitViewSectorBound
+
+            #region InitViewSectionBound
+            boundComponent.treeComponent?.InitViewFoliage(viewPos, matrixProj, planesPtr, taskHandles);
+            boundComponent.grassComponent?.InitViewFoliage(viewPos, matrixProj, planesPtr, taskHandles);
+            JobHandle.CompleteAll(taskHandles);
+            taskHandles.Clear();
+            #endregion //InitViewSectionBound
+
+            #region InitViewCommand
+            boundComponent.treeComponent?.DispatchSetup(taskHandles);
+            JobHandle.CompleteAll(taskHandles);
+            taskHandles.Clear();
+            #endregion //InitViewCommand
+
+            #region ExecuteViewCommand
+            cmdBuffer.BeginSample("Foliage Batch");
+            boundComponent.treeComponent?.DispatchDraw(cmdBuffer);
+            boundComponent.grassComponent?.DispatchDraw(cmdBuffer);
+            cmdBuffer.EndSample("Foliage Batch");
+            #endregion //ExecuteViewCommand
+        }
         #endregion //InitViewContext
-
-        #region ExecuteViewContext
-        var gatherHandles = new NativeList<JobHandle>(256, Allocator.Temp);
-
-        foreach (var foliageComponent in FoliageComponent.s_foliageComponents)
-        {
-            foliageComponent.DispatchSetup(gatherHandles);
-        }
-
-        JobHandle.CompleteAll(gatherHandles);
-        gatherHandles.Dispose();
-        #endregion //ExecuteViewContext
-
-        #region InitViewCommand
-        cmdBuffer.BeginSample("TreePipeline");
-        foreach (var foliageComponent in FoliageComponent.s_foliageComponents)
-        {
-            //foliageComponent.DrawBounds(true);
-            foliageComponent.DispatchDraw(cmdBuffer);
-        }
-        cmdBuffer.EndSample("TreePipeline");
-        #endregion //InitViewCommand
 
         #region ReleaseViewContext
         planes.Dispose();
+        taskHandles.Dispose();
+        sectorsBound.Dispose();
+        boundsVisible.Dispose();
         #endregion //ReleaseViewContext
 
         renderContext.ExecuteCommandBuffer(cmdBuffer);

@@ -138,6 +138,7 @@ namespace Landscape.FoliagePipeline
             this.Tree = new FMesh(meshes, materials, lODInfos);
         }
 
+#if UNITY_EDITOR
         void BuildMeshAsset(Mesh[] meshes, Material[] materials, FMeshLODInfo[] lODInfos)
         {
             this.meshes = meshes;
@@ -247,5 +248,6 @@ namespace Landscape.FoliagePipeline
 
             if (!buildOK) { Debug.LogWarning("source prefab doesn't have LODGroup or MeshRenderer"); }
         }
+#endif
     }
 }

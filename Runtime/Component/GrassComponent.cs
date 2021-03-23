@@ -34,6 +34,7 @@ namespace Landscape.FoliagePipeline
             terrain = GetComponent<Terrain>();
             terrainData = terrain.terrainData;
             boundComponent = GetComponent<BoundComponent>();
+            boundComponent.grassComponent = this;
 
             InitGrassSectors();
 
@@ -95,13 +96,16 @@ namespace Landscape.FoliagePipeline
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public override void InitViewFoliage(in float3 viewPos, in float4x4 matrixProj, FPlane* planes, in NativeList<JobHandle> taskHandles)
         {
-
+            foreach (FGrassSector grassSector in grassSectors)
+            {
+                grassSector.BuildInstance(boundComponent.SectionSize, taskHandles);
+            }
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public override void DispatchSetup(in NativeList<JobHandle> taskHandles)
         {
-            
+
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]

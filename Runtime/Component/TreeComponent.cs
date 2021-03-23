@@ -19,24 +19,28 @@ namespace Landscape.FoliagePipeline
 
         [HideInInspector]
         public Terrain terrain;
-        
         [HideInInspector]
         public TerrainData terrainData;
-
         [HideInInspector]
         public FTreeSector[] treeSectors;
+        [HideInInspector]
+        public BoundComponent boundComponent;
 
 
         protected override void OnRegister()
         {
             terrain = GetComponent<Terrain>();
             terrainData = terrain.terrainData;
+            boundComponent = GetComponent<BoundComponent>();
+            boundComponent.treeComponent = this;
+
+            InitTreeSectors();
+
             if (terrain.drawTreesAndFoliage == true)
             {
                 terrain.drawTreesAndFoliage = false;
             }
 
-            InitTreeSectors();
         }
 
         protected override void OnTransformChange()
@@ -60,7 +64,7 @@ namespace Landscape.FoliagePipeline
         }
 
 #if UNITY_EDITOR
-        private  void DrawBounds(in bool color = false)
+        private void DrawBounds(in bool color = false)
         {
             if (!showBounds) return;
             

@@ -1,17 +1,21 @@
 using System;
+using Unity.Jobs;
 using UnityEngine;
 using Unity.Mathematics;
 using Unity.Collections;
 using InfinityTech.Core.Geometry;
+using System.Runtime.CompilerServices;
+using Unity.Collections.LowLevel.Unsafe;
 
 namespace Landscape.FoliagePipeline
 {
     [Serializable]
-    public class FBoundSector
+    public unsafe class FBoundSector
     {
-        public FBound Bound;
-        public FBoundSection[] Sections;
-        public NativeArray<FBoundSection> NativeSections;
+        public FBound bound;
+        public FBoundSection[] sections;
+        public NativeArray<int> sectionsVisbible;
+        public NativeArray<FBoundSection> nativeSections;
 
 
         public FBoundSector(in int SectorSize, in int NumSection, in int SectionSize, in float3 SectorPivotPosition, in FAABB SectorBound)
@@ -19,8 +23,8 @@ namespace Landscape.FoliagePipeline
             int SectorSize_Half = SectorSize / 2;
             int SectionSize_Half = SectionSize / 2;
 
-            Bound = new FBound(new float3(SectorPivotPosition.x + SectorSize_Half, SectorPivotPosition.y + (SectorBound.size.y / 2), SectorPivotPosition.z + SectorSize_Half), SectorBound.size * 0.5f);
-            Sections = new FBoundSection[NumSection * NumSection];
+            bound = new FBound(new float3(SectorPivotPosition.x + SectorSize_Half, SectorPivotPosition.y + (SectorBound.size.y / 2), SectorPivotPosition.z + SectorSize_Half), SectorBound.size * 0.5f);
+            sections = new FBoundSection[NumSection * NumSection];
 
             for (int SectorSizeX = 0; SectorSizeX <= NumSection - 1; SectorSizeX++)
             {
@@ -30,37 +34,52 @@ namespace Landscape.FoliagePipeline
                     float3 SectionPivotPosition = SectorPivotPosition + new float3(SectionSize * SectorSizeX, 0, SectionSize * SectorSizeY);
                     float3 SectionCenterPosition = SectionPivotPosition + new float3(SectionSize_Half, 0, SectionSize_Half);
 
-                    Sections[SectionIndex] = new FBoundSection();
-                    Sections[SectionIndex].PivotPosition = SectionPivotPosition;
-                    Sections[SectionIndex].CenterPosition = SectionCenterPosition;
-                    Sections[SectionIndex].BoundBox = new FAABB(SectionCenterPosition, new float3(SectionSize, 1, SectionSize));
+                    sections[SectionIndex] = new FBoundSection();
+                    sections[SectionIndex].PivotPosition = SectionPivotPosition;
+                    sections[SectionIndex].CenterPosition = SectionCenterPosition;
+                    sections[SectionIndex].BoundBox = new FAABB(SectionCenterPosition, new float3(SectionSize, 1, SectionSize));
                 }
             }
         }
 
         public void BuildNativeCollection()
         {
-            NativeSections = new NativeArray<FBoundSection>(Sections.Length, Allocator.Persistent);
+            nativeSections = new NativeArray<FBoundSection>(sections.Length, Allocator.Persistent);
+            sectionsVisbible = new NativeArray<int>(sections.Length, Allocator.Persistent);
 
-            for (int i = 0; i < Sections.Length; i++)
+            for (int i = 0; i < sections.Length; i++)
             {
-                NativeSections[i] = Sections[i];
+                nativeSections[i] = sections[i];
             }
         }
 
         public void ReleaseNativeCollection()
         {
-            NativeSections.Dispose();
+            nativeSections.Dispose();
+            sectionsVisbible.Dispose();
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public JobHandle InitView(in float3 viewPos, FPlane* planes)
+        {
+            var sectionCullingJob = new FBoundSectionCullingJob();
+            {
+                sectionCullingJob.planes = planes;
+                sectionCullingJob.viewPos = viewPos;
+                sectionCullingJob.visibleMap = sectionsVisbible;
+                sectionCullingJob.sectionBounds = (FBoundSection*)nativeSections.GetUnsafePtr();
+            }
+            return sectionCullingJob.Schedule(nativeSections.Length, 32);
         }
 
 #if UNITY_EDITOR
         public void DrawBound()
         {
-            Geometry.DrawBound(Bound, Color.white);
+            Geometry.DrawBound(bound, Color.white);
 
-            for (int i = 0; i < Sections.Length; i++)
+            for (int i = 0; i < nativeSections.Length; i++)
             {
-                Geometry.DrawBound(Sections[i].BoundBox, Color.yellow);
+                Geometry.DrawBound(nativeSections[i].BoundBox, sectionsVisbible[i] == 1 ? Color.green : Color.red);
             }
         }
 
@@ -68,9 +87,9 @@ namespace Landscape.FoliagePipeline
         {
             int SectorSize_Half = SectorSize / 2;
 
-            for (int i = 0; i < Sections.Length; i++)
+            for (int i = 0; i < sections.Length; i++)
             {
-                ref FBoundSection Section = ref Sections[i];
+                ref FBoundSection Section = ref sections[i];
 
                 float2 PositionScale = new float2(TerrianPosition.x, TerrianPosition.z) + new float2(SectorSize_Half, SectorSize_Half);
                 float2 RectUV = new float2((Section.PivotPosition.x - PositionScale.x) + SectorSize_Half, (Section.PivotPosition.z - PositionScale.y) + SectorSize_Half);

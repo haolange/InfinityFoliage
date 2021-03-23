@@ -201,9 +201,9 @@ namespace Landscape.FoliagePipeline
                 
                 for (var instanceId = 0; instanceId < treeDrawCommand.countOffset.x; ++instanceId)
                 {
-                    var index = m_treeBatchIndexs[treeDrawCommand.countOffset.y + instanceId];
+                    /*var index = m_treeBatchIndexs[treeDrawCommand.countOffset.y + instanceId];
                     var treeBatch = m_treeBatchs[index];
-                    cmdBuffer.DrawMesh(mesh, treeBatch.matrix_World, material, treeDrawCommand.meshIndex, 0);
+                    cmdBuffer.DrawMesh(mesh, treeBatch.matrix_World, material, treeDrawCommand.meshIndex, 0);*/
                 }
             }
 

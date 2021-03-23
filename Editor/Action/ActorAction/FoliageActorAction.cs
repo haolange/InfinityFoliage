@@ -68,7 +68,7 @@ namespace Landscape.Editor.FoliagePipeline
                         ref FMeshLODInfo LODInfo = ref LODInfos[l];
                         Renderer renderer = lod.renderers[0];
 
-                        LODInfo.screenSize = 1 - (l * 0.125f);
+                        LODInfo.screenSize = 1 - (l * 0.0625f);
                         LODInfo.materialSlot = new int[renderer.sharedMaterials.Length];
 
                         for (int m = 0; m < renderer.sharedMaterials.Length; ++m)
@@ -167,7 +167,7 @@ namespace Landscape.Editor.FoliagePipeline
 
                 for (int index = 0; index < UTerrainData.detailPrototypes.Length; ++index)
                 {
-                    grassComponent.grassSectors[index] = new FGrassSector(boundComponent.BoundSector.Sections.Length);
+                    grassComponent.grassSectors[index] = new FGrassSector(boundComponent.BoundSector.sections.Length);
                     grassComponent.grassSectors[index].grassIndex = index;
 
                     DetailPrototype detailPrototype = UTerrainData.detailPrototypes[index];
@@ -202,10 +202,10 @@ namespace Landscape.Editor.FoliagePipeline
                     grassComponent.grassSectors[index].grassIndex = index;
 
 
-                    for (int k = 0; k < boundComponent.BoundSector.Sections.Length; ++k)
+                    for (int k = 0; k < boundComponent.BoundSector.sections.Length; ++k)
                     {
                         FGrassSection grassSection = new FGrassSection();
-                        grassSection.BoundIndex = k;
+                        grassSection.boundIndex = k;
                         grassComponent.grassSectors[index].sections[k] = grassSection;
                     }
                 }
@@ -250,9 +250,9 @@ namespace Landscape.Editor.FoliagePipeline
                     for (int i = 0; i < grassSector.sections.Length; ++i)
                     {
                         FGrassSection grassSection = grassSector.sections[i];
-                        FBoundSection boundSection = boundSector.Sections[grassSection.BoundIndex];
+                        FBoundSection boundSection = boundSector.sections[grassSection.boundIndex];
 
-                        grassSection.DensityMap = new int[boundComponent.SectionSize * boundComponent.SectionSize];
+                        grassSection.densityMap = new int[boundComponent.SectionSize * boundComponent.SectionSize];
                         int2 uv = (int2)boundSection.PivotPosition.zx - new int2((int)selectObject.transform.position.z, (int)selectObject.transform.position.x);
                         int[,] densityMap = terrainData.GetDetailLayer(uv.x, uv.y, boundComponent.SectionSize, boundComponent.SectionSize, grassIndex);
 
@@ -260,7 +260,7 @@ namespace Landscape.Editor.FoliagePipeline
                         var updategrassTask = new FUpdateGrassTask();
                         {
                             updategrassTask.srcMap = densityMap;
-                            updategrassTask.dscMap = grassSection.DensityMap;
+                            updategrassTask.dscMap = grassSection.densityMap;
                             updategrassTask.length = boundComponent.SectionSize;
                         }
                         var taskHandle = GCHandle.Alloc(updategrassTask);

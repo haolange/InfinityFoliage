@@ -44,7 +44,7 @@ namespace Landscape.Editor.FoliagePipeline
             if (BoundTarget.gameObject.activeSelf == false) { return; }
             if (BoundTarget.enabled == false) { return; }
 
-            BoundTarget.Serialize();
+            BoundTarget.OnSave();
         }
     }
 }

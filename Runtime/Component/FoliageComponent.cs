@@ -45,12 +45,12 @@ public abstract unsafe class FoliageComponent : MonoBehaviour
     [HideInInspector]
     internal MTransfrom prevTransform;
     
-    public static List<FoliageComponent> s_foliageComponents = new List<FoliageComponent>(128);
+    //public static List<FoliageComponent> s_foliageComponents = new List<FoliageComponent>(128);
 
     
     void OnEnable()
     {
-        s_foliageComponents.Add(this);
+        //s_foliageComponents.Add(this);
         OnRegister();
         EventPlay();
     }
@@ -67,7 +67,7 @@ public abstract unsafe class FoliageComponent : MonoBehaviour
     void OnDisable()
     {
         UnRegister();
-        s_foliageComponents.Remove(this);
+        //s_foliageComponents.Remove(this);
     }
 
     private bool TransfromStateDirty()

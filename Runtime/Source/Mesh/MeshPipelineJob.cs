@@ -77,6 +77,7 @@ namespace Landscape.FoliagePipeline
         }
     }
 #endif
+
     [BurstCompile]
     public unsafe struct FTreeBatchLODJob : IJobParallelFor
     {
@@ -108,6 +109,95 @@ namespace Landscape.FoliagePipeline
                     break;
                 }
             }
+        }
+    }
+
+    [BurstCompile]
+    public unsafe struct FGrassScatterJob : IJob
+    {
+        [ReadOnly]
+        public int split;
+
+        [ReadOnly]
+        public float2 pivotPosition;
+
+        [ReadOnly]
+        public NativeArray<int> nativeDensityMap;
+
+
+        public void Execute()
+        {
+            for (int i = 0; i < nativeDensityMap.Length; ++i)
+            {
+                float2 position = pivotPosition + new float2(i / split, i % split);
+            }
+        }
+    }
+
+    [BurstCompile]
+    public unsafe struct FBoundSectorCullingJob : IJobParallelFor
+    {
+        [ReadOnly]
+        [NativeDisableUnsafePtrRestriction]
+        public FPlane* planes;
+
+        [NativeDisableUnsafePtrRestriction]
+        public FBound* sectorBounds;
+
+        [WriteOnly]
+        public NativeArray<int> visibleMap;
+
+
+        public void Execute(int index)
+        {
+            int visible = 1;
+            float2 distRadius = new float2(0, 0);
+            ref FBound sectorBound = ref sectorBounds[index];
+
+            for (int PlaneIndex = 0; PlaneIndex < 6; ++PlaneIndex)
+            {
+                ref FPlane plane = ref planes[PlaneIndex];
+                distRadius.x = math.dot(plane.normalDist.xyz, sectorBound.center) + plane.normalDist.w;
+                distRadius.y = math.dot(math.abs(plane.normalDist.xyz), sectorBound.extents);
+
+                visible = math.select(visible, 0, distRadius.x + distRadius.y < 0);
+            }
+            visibleMap[index] = visible;
+        }
+    }
+
+    [BurstCompile]
+    public unsafe struct FBoundSectionCullingJob : IJobParallelFor
+    {
+        [ReadOnly]
+        public float3 viewPos;
+
+        [ReadOnly]
+        [NativeDisableUnsafePtrRestriction]
+        public FPlane* planes;
+
+        [NativeDisableUnsafePtrRestriction]
+        public FBoundSection* sectionBounds;
+
+        [WriteOnly]
+        public NativeArray<int> visibleMap;
+
+
+        public void Execute(int index)
+        {
+            int visible = 1;
+            float2 distRadius = new float2(0, 0);
+            ref FBoundSection sectionBound = ref sectionBounds[index];
+
+            for (int PlaneIndex = 0; PlaneIndex < 6; ++PlaneIndex)
+            {
+                ref FPlane plane = ref planes[PlaneIndex];
+                distRadius.x = math.dot(plane.normalDist.xyz, sectionBound.BoundBox.center) + plane.normalDist.w;
+                distRadius.y = math.dot(math.abs(plane.normalDist.xyz), sectionBound.BoundBox.extents);
+
+                visible = math.select(visible, 0, distRadius.x + distRadius.y < 0);
+            }
+            visibleMap[index] = math.select(visible, 0, math.distance(viewPos, sectionBound.BoundBox.center) > 96);
         }
     }
 
