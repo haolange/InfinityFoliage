@@ -61,13 +61,14 @@ namespace Landscape.FoliagePipeline
         protected override void UnRegister()
         {
             ReleaseTreeSectors();
+            boundComponent.treeComponent = null;
         }
 
 #if UNITY_EDITOR
         private void DrawBounds(in bool color = false)
         {
-            if (!showBounds) return;
-            
+            if (showBounds == false || Application.isPlaying == false || this.enabled == false || this.gameObject.activeSelf == false) return;
+
             foreach (var treeSector in treeSectors)
             {
                 treeSector.DrawBounds(color);

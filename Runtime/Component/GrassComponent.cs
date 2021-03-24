@@ -62,12 +62,13 @@ namespace Landscape.FoliagePipeline
         protected override void UnRegister()
         {
             ReleaseGrassSectors();
+            boundComponent.grassComponent = null;
         }
 
 #if UNITY_EDITOR
         private void DrawBounds()
         {
-            if (showBounds == false || Application.isPlaying == false) return;
+            if (showBounds == false || Application.isPlaying == false || this.enabled == false || this.gameObject.activeSelf == false) return;
 
             foreach (FGrassSector grassSector in grassSectors)
             {

@@ -61,6 +61,8 @@ namespace Landscape.FoliagePipeline
         {
             foreach (FGrassSection section in sections)
             {
+                if (boundSector.sectionsVisbible[section.boundIndex] == 0) { continue; }
+
                 section.DrawBounds();
             }
         }

@@ -82,7 +82,7 @@ namespace Landscape.FoliagePipeline
             foreach (FGrassElement grassElement in nativegrassElements)
             {
                 Gizmos.color = Color.red;
-                Gizmos.DrawSphere(grassElement.position, 0.025f);
+                Gizmos.DrawSphere(grassElement.position, 0.05f);
             }
         }
 #endif

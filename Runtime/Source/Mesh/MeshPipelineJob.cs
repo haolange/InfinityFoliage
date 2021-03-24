@@ -148,13 +148,14 @@ namespace Landscape.FoliagePipeline
                     newPosition = position + new float3(random.y, position.y, random.x);
                     modelMatrix = float4x4.TRS(newPosition, quaternion.identity, 1);
 
-                    grassElement.position = position;
+                    grassElement.position = newPosition;
                     grassElement.worldMatrix = modelMatrix;
                     nativegrassElements.Add(grassElement);
                 }
             }
         }
     }
+    
     [BurstCompile]
     public unsafe struct FBoundSectorCullingJob : IJobParallelFor
     {
