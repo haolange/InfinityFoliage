@@ -44,7 +44,7 @@ namespace Landscape.FoliagePipeline
                 if (boundSector.sectionsVisbible[section.boundIndex] == 0) { continue; }
 
                 FBoundSection boundSection = boundSector.nativeSections[section.boundIndex];
-                taskHandles.Add(section.BuildInstance(split, boundSection.PivotPosition.zx + 0.5f));
+                taskHandles.Add(section.BuildInstance(split, boundSection.PivotPosition));
             }
         }
 

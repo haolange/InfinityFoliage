@@ -1,4 +1,5 @@
 using System;
+using static Unity.Mathematics.math;
 using System.Runtime.InteropServices;
 using System.Runtime.CompilerServices;
 
@@ -29,5 +30,25 @@ namespace Unity.Mathematics
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static double4 sqr(double4 x) { return new double4(sqr(x.x), sqr(x.y), sqr(x.z), sqr(x.w)); }
+
+        //
+        public static readonly float hashScale1 = 0.1031f;
+        public static readonly float3 hashScale2 = new float3(0.1031f, 0.1030f, 0.0973f);
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static float randomFloat(float p)
+        {
+            float3 p3 = frac(abs(float3(p, p, p)) * hashScale1);
+            p3 += dot(p3, p3.yzx + 19.19f);
+            return frac((p3.x + p3.y) * p3.z);
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static float2 randomFloat2(float2 p)
+        {
+            float3 p3 = frac(abs(p.xyx) * hashScale2);
+            p3 += dot(p3, p3.yzx + 19.19f);
+            return frac((p3.xx + p3.yz) * p3.zy);
+        }
     }
 }

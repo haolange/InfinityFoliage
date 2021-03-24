@@ -7,6 +7,7 @@ using InfinityTech.Core.Geometry;
 using System.Collections.Generic;
 using System.Runtime.InteropServices;
 using Unity.Collections.LowLevel.Unsafe;
+using static Unity.Mathematics.mathExtent;
 
 namespace Landscape.FoliagePipeline
 {
@@ -113,27 +114,43 @@ namespace Landscape.FoliagePipeline
     }
 
     [BurstCompile]
-    public unsafe struct FGrassScatterJob : IJob
+    public struct FGrassScatterJob : IJob
     {
         [ReadOnly]
         public int split;
 
         [ReadOnly]
-        public float2 pivotPosition;
+        public float3 sectionPivot;
 
         [ReadOnly]
         public NativeArray<int> nativeDensityMap;
 
+        [WriteOnly]
+        public NativeList<float4x4> nativeWorldMatrixs;
+
 
         public void Execute()
         {
+            int density = default;
+            float3 position = default;
+            float3 newPosition = default;
+            float4x4 modelMatrix = default;
+
             for (int i = 0; i < nativeDensityMap.Length; ++i)
             {
-                float2 position = pivotPosition + new float2(i / split, i % split);
+                density = nativeDensityMap[i];
+                position = sectionPivot + new float3(i % split, 0, i / split);
+
+                for(int j = 0; j < density; ++j)
+                {
+                    float2 random = randomFloat2(new float2(position.z + 0.5f, (position.x + 0.5f) * (j + 1)));
+                    newPosition = position + new float3(random.y, position.y, random.x);
+                    modelMatrix = float4x4.TRS(newPosition, quaternion.identity, 1);
+                    nativeWorldMatrixs.Add(modelMatrix);
+                }
             }
         }
     }
-
     [BurstCompile]
     public unsafe struct FBoundSectorCullingJob : IJobParallelFor
     {
@@ -170,6 +187,9 @@ namespace Landscape.FoliagePipeline
     public unsafe struct FBoundSectionCullingJob : IJobParallelFor
     {
         [ReadOnly]
+        public float maxDistance;
+
+        [ReadOnly]
         public float3 viewPos;
 
         [ReadOnly]
@@ -197,7 +217,7 @@ namespace Landscape.FoliagePipeline
 
                 visible = math.select(visible, 0, distRadius.x + distRadius.y < 0);
             }
-            visibleMap[index] = math.select(visible, 0, math.distance(viewPos, sectionBound.BoundBox.center) > 96);
+            visibleMap[index] = math.select(visible, 0, math.distance(viewPos, sectionBound.BoundBox.center) > maxDistance);
         }
     }
 

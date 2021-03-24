@@ -35,11 +35,12 @@ internal unsafe class FoliagePass : ScriptableRenderPass
         float3 viewPos = renderingData.cameraData.camera.transform.position;
         var matrixProj = Geometry.GetProjectionMatrix(renderingData.cameraData.camera.fieldOfView, renderingData.cameraData.camera.pixelWidth, renderingData.cameraData.camera.pixelHeight, renderingData.cameraData.camera.nearClipPlane, renderingData.cameraData.camera.farClipPlane);
 
-        // Culling LandscapeSector
+        #region InitViewSectorBound
         NativeArray<int> boundsVisible = default;
         NativeArray<FBound> sectorsBound = default;
         var taskHandles = new NativeList<JobHandle>(256, Allocator.Temp);
         BoundComponent.InitSectorView(viewPos, planesPtr, ref boundsVisible, ref sectorsBound);
+        #endregion //InitViewSectorBound
 
         for (int i = 0; i < sectorsBound.Length; ++i)
         {
@@ -47,18 +48,18 @@ internal unsafe class FoliagePass : ScriptableRenderPass
 
             BoundComponent boundComponent = BoundComponent.s_boundComponents[i];
 
-            #region InitViewSectorBound
+            #region InitViewSectionBound
             boundComponent.InitSectionView(viewPos, planesPtr, taskHandles);
             JobHandle.CompleteAll(taskHandles);
             taskHandles.Clear();
-            #endregion //InitViewSectorBound
+            #endregion //InitViewSectionBound
 
-            #region InitViewSectionBound
+            #region InitViewFoliage
             boundComponent.treeComponent?.InitViewFoliage(viewPos, matrixProj, planesPtr, taskHandles);
             boundComponent.grassComponent?.InitViewFoliage(viewPos, matrixProj, planesPtr, taskHandles);
             JobHandle.CompleteAll(taskHandles);
             taskHandles.Clear();
-            #endregion //InitViewSectionBound
+            #endregion //InitViewFoliage
 
             #region InitViewCommand
             boundComponent.treeComponent?.DispatchSetup(taskHandles);

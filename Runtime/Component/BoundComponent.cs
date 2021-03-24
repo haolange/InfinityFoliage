@@ -36,6 +36,13 @@ namespace Landscape.FoliagePipeline
                 return terrainData.size.y;
             }
         }
+        public float drawDistance
+        {
+            get
+            {
+                return terrain.detailObjectDistance + (terrain.detailObjectDistance * 0.5f);
+            }
+        }
 
         [HideInInspector]
         public Terrain terrain;
@@ -67,7 +74,7 @@ namespace Landscape.FoliagePipeline
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public void InitSectionView(in float3 viewPos, FPlane* planes, in NativeList<JobHandle> taskHandles)
         {
-            taskHandles.Add(BoundSector.InitView(viewPos, planes));
+            taskHandles.Add(BoundSector.InitView(drawDistance, viewPos, planes));
         }
 
         void OnDisable()
