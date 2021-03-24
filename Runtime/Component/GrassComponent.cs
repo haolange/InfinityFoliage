@@ -65,14 +65,19 @@ namespace Landscape.FoliagePipeline
         }
 
 #if UNITY_EDITOR
-        private void DrawBounds(in bool color = false)
+        private void DrawBounds()
         {
-            if (!showBounds) return;
+            if (showBounds == false || Application.isPlaying == false) return;
+
+            foreach (FGrassSector grassSector in grassSectors)
+            {
+                grassSector.DrawBounds();
+            }
         }
 
         protected virtual void OnDrawGizmosSelected()
         {
-            DrawBounds(true);
+            DrawBounds();
         }
 #endif
 

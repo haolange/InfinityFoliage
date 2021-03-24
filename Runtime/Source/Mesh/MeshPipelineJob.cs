@@ -126,7 +126,7 @@ namespace Landscape.FoliagePipeline
         public NativeArray<int> nativeDensityMap;
 
         [WriteOnly]
-        public NativeList<float4x4> nativeWorldMatrixs;
+        public NativeList<FGrassElement> nativegrassElements;
 
 
         public void Execute()
@@ -135,6 +135,7 @@ namespace Landscape.FoliagePipeline
             float3 position = default;
             float3 newPosition = default;
             float4x4 modelMatrix = default;
+            FGrassElement grassElement = default;
 
             for (int i = 0; i < nativeDensityMap.Length; ++i)
             {
@@ -146,7 +147,10 @@ namespace Landscape.FoliagePipeline
                     float2 random = randomFloat2(new float2(position.z + 0.5f, (position.x + 0.5f) * (j + 1)));
                     newPosition = position + new float3(random.y, position.y, random.x);
                     modelMatrix = float4x4.TRS(newPosition, quaternion.identity, 1);
-                    nativeWorldMatrixs.Add(modelMatrix);
+
+                    grassElement.position = position;
+                    grassElement.worldMatrix = modelMatrix;
+                    nativegrassElements.Add(grassElement);
                 }
             }
         }

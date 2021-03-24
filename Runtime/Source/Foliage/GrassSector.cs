@@ -55,5 +55,15 @@ namespace Landscape.FoliagePipeline
                 section.ReleaseNativeCollection();
             }
         }
+
+#if UNITY_EDITOR
+        public void DrawBounds()
+        {
+            foreach (FGrassSection section in sections)
+            {
+                section.DrawBounds();
+            }
+        }
+#endif
     }
 }
