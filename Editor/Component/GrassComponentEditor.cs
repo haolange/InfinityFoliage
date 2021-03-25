@@ -12,7 +12,7 @@ namespace Landscape.Editor.FoliagePipeline
     [CustomEditor(typeof(GrassComponent))]
     public class GrassComponentEditor : UnityEditor.Editor
     {
-        GrassComponent Grass { get { return target as GrassComponent; } }
+        GrassComponent grassTarget { get { return target as GrassComponent; } }
 
 
         void OnEnable()
@@ -41,8 +41,8 @@ namespace Landscape.Editor.FoliagePipeline
 
         void PreSave(UnityEngine.SceneManagement.Scene InScene, string InPath)
         {
-            if (Grass.gameObject.activeSelf == false) { return; }
-            if (Grass.enabled == false) { return; }
+            if (grassTarget.gameObject.activeSelf == false) { return; }
+            if (grassTarget.enabled == false) { return; }
 
             //Grass.Serialize();
         }

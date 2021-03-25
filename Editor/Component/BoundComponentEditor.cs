@@ -12,7 +12,7 @@ namespace Landscape.Editor.FoliagePipeline
     [CustomEditor(typeof(BoundComponent))]
     public class BoundComponentEditor : UnityEditor.Editor
     {
-        BoundComponent BoundTarget { get { return target as BoundComponent; } }
+        BoundComponent boundTarget { get { return target as BoundComponent; } }
 
 
         void OnEnable()
@@ -41,10 +41,10 @@ namespace Landscape.Editor.FoliagePipeline
 
         void PreSave(UnityEngine.SceneManagement.Scene InScene, string InPath)
         {
-            if (BoundTarget.gameObject.activeSelf == false) { return; }
-            if (BoundTarget.enabled == false) { return; }
+            if (boundTarget.gameObject.activeSelf == false) { return; }
+            if (boundTarget.enabled == false) { return; }
 
-            BoundTarget.OnSave();
+            boundTarget.OnSave();
         }
     }
 }

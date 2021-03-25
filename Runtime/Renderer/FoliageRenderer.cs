@@ -32,14 +32,14 @@ internal unsafe class FoliagePass : ScriptableRenderPass
         }
 
         FPlane* planesPtr = (FPlane*)planes.GetUnsafePtr();
-        float3 viewPos = renderingData.cameraData.camera.transform.position;
+        float3 viewOrigin = renderingData.cameraData.camera.transform.position;
         var matrixProj = Geometry.GetProjectionMatrix(renderingData.cameraData.camera.fieldOfView, renderingData.cameraData.camera.pixelWidth, renderingData.cameraData.camera.pixelHeight, renderingData.cameraData.camera.nearClipPlane, renderingData.cameraData.camera.farClipPlane);
 
         #region InitViewSectorBound
         NativeArray<int> boundsVisible = default;
         NativeArray<FBound> sectorsBound = default;
         var taskHandles = new NativeList<JobHandle>(256, Allocator.Temp);
-        BoundComponent.InitSectorView(viewPos, planesPtr, ref boundsVisible, ref sectorsBound);
+        BoundComponent.InitSectorView(viewOrigin, planesPtr, ref boundsVisible, ref sectorsBound);
         #endregion //InitViewSectorBound
 
         for (int i = 0; i < sectorsBound.Length; ++i)
@@ -49,14 +49,14 @@ internal unsafe class FoliagePass : ScriptableRenderPass
             BoundComponent boundComponent = BoundComponent.s_boundComponents[i];
 
             #region InitViewSectionBound
-            boundComponent.InitSectionView(viewPos, planesPtr, taskHandles);
+            boundComponent.InitSectionView(viewOrigin, planesPtr, taskHandles);
             JobHandle.CompleteAll(taskHandles);
             taskHandles.Clear();
             #endregion //InitViewSectionBound
 
             #region InitViewFoliage
-            boundComponent.treeComponent?.InitViewFoliage(viewPos, matrixProj, planesPtr, taskHandles);
-            boundComponent.grassComponent?.InitViewFoliage(viewPos, matrixProj, planesPtr, taskHandles);
+            boundComponent.treeComponent?.InitViewFoliage(viewOrigin, matrixProj, planesPtr, taskHandles);
+            boundComponent.grassComponent?.InitViewFoliage(viewOrigin, matrixProj, planesPtr, taskHandles);
             JobHandle.CompleteAll(taskHandles);
             taskHandles.Clear();
             #endregion //InitViewFoliage

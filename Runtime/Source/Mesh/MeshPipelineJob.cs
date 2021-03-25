@@ -126,10 +126,10 @@ namespace Landscape.FoliagePipeline
         public float3 sectionPivot;
 
         [ReadOnly]
-        public NativeArray<int> nativeDensityMap;
+        public NativeArray<int> densityMap;
 
         [WriteOnly]
-        public NativeList<FGrassElement> nativegrassElements;
+        public NativeList<FGrassElement> grassElements;
 
 
         public void Execute()
@@ -140,9 +140,9 @@ namespace Landscape.FoliagePipeline
             float4x4 modelMatrix = default;
             FGrassElement grassElement = default;
 
-            for (int i = 0; i < nativeDensityMap.Length; ++i)
+            for (int i = 0; i < densityMap.Length; ++i)
             {
-                density = (int)((float)nativeDensityMap[i] * densityScale);
+                density = (int)((float)densityMap[i] * densityScale);
                 position = sectionPivot + new float3(i % split, 0, i / split);
 
                 for(int j = 0; j < density; ++j)
@@ -153,7 +153,7 @@ namespace Landscape.FoliagePipeline
 
                     grassElement.position = newPosition;
                     grassElement.worldMatrix = modelMatrix;
-                    nativegrassElements.Add(grassElement);
+                    grassElements.Add(grassElement);
                 }
             }
         }
@@ -198,7 +198,7 @@ namespace Landscape.FoliagePipeline
         public float maxDistance;
 
         [ReadOnly]
-        public float3 viewPos;
+        public float3 viewOrigin;
 
         [ReadOnly]
         [NativeDisableUnsafePtrRestriction]
@@ -220,12 +220,12 @@ namespace Landscape.FoliagePipeline
             for (int PlaneIndex = 0; PlaneIndex < 6; ++PlaneIndex)
             {
                 ref FPlane plane = ref planes[PlaneIndex];
-                distRadius.x = math.dot(plane.normalDist.xyz, sectionBound.BoundBox.center) + plane.normalDist.w;
-                distRadius.y = math.dot(math.abs(plane.normalDist.xyz), sectionBound.BoundBox.extents);
+                distRadius.x = math.dot(plane.normalDist.xyz, sectionBound.boundBox.center) + plane.normalDist.w;
+                distRadius.y = math.dot(math.abs(plane.normalDist.xyz), sectionBound.boundBox.extents);
 
                 visible = math.select(visible, 0, distRadius.x + distRadius.y < 0);
             }
-            visibleMap[index] = math.select(visible, 0, math.distance(viewPos, sectionBound.BoundBox.center) > maxDistance);
+            visibleMap[index] = math.select(visible, 0, math.distance(viewOrigin, sectionBound.boundBox.center) > maxDistance);
         }
     }
 

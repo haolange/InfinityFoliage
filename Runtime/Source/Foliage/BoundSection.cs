@@ -7,14 +7,14 @@ namespace Landscape.FoliagePipeline
     [Serializable]
     public struct FBoundSection : IEquatable<FBoundSection>
     {
-        public FBound BoundBox;
-        public float3 PivotPosition;
-        public float3 CenterPosition;
+        public FBound boundBox;
+        public float3 pivotPosition;
+        public float3 centerPosition;
 
 
         public bool Equals(FBoundSection Target)
         {
-            return BoundBox.Equals(Target.BoundBox) && PivotPosition.Equals(Target.PivotPosition) && CenterPosition.Equals(Target.CenterPosition);
+            return boundBox.Equals(Target.boundBox) && pivotPosition.Equals(Target.pivotPosition) && centerPosition.Equals(Target.centerPosition);
         }
 
         public override bool Equals(object obj)
@@ -24,7 +24,7 @@ namespace Landscape.FoliagePipeline
 
         public override int GetHashCode()
         {
-            return BoundBox.GetHashCode() + PivotPosition.GetHashCode() + CenterPosition.GetHashCode();
+            return boundBox.GetHashCode() + pivotPosition.GetHashCode() + centerPosition.GetHashCode();
         }
     }
 }

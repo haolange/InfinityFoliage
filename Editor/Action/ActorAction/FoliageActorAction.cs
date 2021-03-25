@@ -253,7 +253,7 @@ namespace Landscape.Editor.FoliagePipeline
                         FBoundSection boundSection = boundSector.sections[grassSection.boundIndex];
 
                         grassSection.densityMap = new int[boundComponent.SectionSize * boundComponent.SectionSize];
-                        int2 uv = (int2)boundSection.PivotPosition.zx - new int2((int)selectObject.transform.position.z, (int)selectObject.transform.position.x);
+                        int2 uv = (int2)boundSection.pivotPosition.zx - new int2((int)selectObject.transform.position.z, (int)selectObject.transform.position.x);
                         int[,] densityMap = terrainData.GetDetailLayer(uv.x, uv.y, boundComponent.SectionSize, boundComponent.SectionSize, grassIndex);
 
                         //Build Densitys

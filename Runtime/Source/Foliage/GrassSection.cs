@@ -71,8 +71,8 @@ namespace Landscape.FoliagePipeline
                 grassScatterJob.split = split;
                 grassScatterJob.densityScale = densityScale;
                 grassScatterJob.sectionPivot = sectionPivot;
-                grassScatterJob.nativeDensityMap = nativeDensityMap;
-                grassScatterJob.nativegrassElements = nativegrassElements;
+                grassScatterJob.densityMap = nativeDensityMap;
+                grassScatterJob.grassElements = nativegrassElements;
             }
             return grassScatterJob.Schedule();
         }

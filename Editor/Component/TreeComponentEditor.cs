@@ -12,7 +12,7 @@ namespace Landscape.Editor.FoliagePipeline
     [CustomEditor(typeof(TreeComponent))]
     public class TreeComponentEditor : UnityEditor.Editor
     {
-        TreeComponent Foliage { get { return target as TreeComponent; } }
+        TreeComponent treeTarget { get { return target as TreeComponent; } }
 
 
         void OnEnable()
@@ -41,8 +41,8 @@ namespace Landscape.Editor.FoliagePipeline
 
         void PreSave(UnityEngine.SceneManagement.Scene InScene, string InPath)
         {
-            if (Foliage.gameObject.activeSelf == false) { return; }
-            if (Foliage.enabled == false) { return; }
+            if (treeTarget.gameObject.activeSelf == false) { return; }
+            if (treeTarget.enabled == false) { return; }
 
             //Foliage.Serialize();
         }

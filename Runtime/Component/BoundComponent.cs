@@ -72,9 +72,9 @@ namespace Landscape.FoliagePipeline
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public void InitSectionView(in float3 viewPos, FPlane* planes, in NativeList<JobHandle> taskHandles)
+        public void InitSectionView(in float3 viewOrigin, FPlane* planes, in NativeList<JobHandle> taskHandles)
         {
-            taskHandles.Add(BoundSector.InitView(drawDistance, viewPos, planes));
+            taskHandles.Add(BoundSector.InitView(drawDistance, viewOrigin, planes));
         }
 
         void OnDisable()
