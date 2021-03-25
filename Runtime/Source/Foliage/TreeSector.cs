@@ -200,12 +200,12 @@ namespace Landscape.FoliagePipeline
                 var mesh = tree.meshes[treeDrawCommand.lODIndex];
                 var material = tree.materials[treeDrawCommand.matIndex];
                 
-                for (var instanceId = 0; instanceId < treeDrawCommand.countOffset.x; ++instanceId)
+                /*for (var instanceId = 0; instanceId < treeDrawCommand.countOffset.x; ++instanceId)
                 {
                     var index = m_treeBatchIndexs[treeDrawCommand.countOffset.y + instanceId];
                     var treeBatch = m_treeBatchs[index];
                     cmdBuffer.DrawMesh(mesh, treeBatch.matrix_World, material, treeDrawCommand.meshIndex, 0);
-                }
+                }*/
             }
 
             m_passTreeElements.Clear();
