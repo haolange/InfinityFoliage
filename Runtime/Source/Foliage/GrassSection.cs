@@ -62,13 +62,14 @@ namespace Landscape.FoliagePipeline
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public JobHandle BuildInstance(in int split, in float3 sectionPivot)
+        public JobHandle BuildInstance(in int split, in float densityScale, in float3 sectionPivot)
         {
             nativegrassElements.Clear();
 
             var grassScatterJob = new FGrassScatterJob();
             {
                 grassScatterJob.split = split;
+                grassScatterJob.densityScale = densityScale;
                 grassScatterJob.sectionPivot = sectionPivot;
                 grassScatterJob.nativeDensityMap = nativeDensityMap;
                 grassScatterJob.nativegrassElements = nativegrassElements;

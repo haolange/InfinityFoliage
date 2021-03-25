@@ -136,7 +136,7 @@ namespace Landscape.FoliagePipeline
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public JobHandle InitView(in float3 viewPos, in float4x4 matrixProj, FPlane* planes)
+        public JobHandle InitView(in float cullDistance, in float3 viewPos, in float4x4 matrixProj, FPlane* planes)
         {
             var treeViewProcessJob = new FTreeBatchCullingJob();
             {
@@ -144,6 +144,7 @@ namespace Landscape.FoliagePipeline
                 treeViewProcessJob.numLOD = m_treeLODInfos.Length - 1;
                 treeViewProcessJob.viewOringin = viewPos;
                 treeViewProcessJob.matrix_Proj = matrixProj;
+                treeViewProcessJob.maxDistance = cullDistance;
                 treeViewProcessJob.treeLODInfos = (float*)m_treeLODInfos.GetUnsafePtr();
                 treeViewProcessJob.viewTreeBatchs = m_viewTreeBatchs;
                 treeViewProcessJob.treeBatchs = (FMeshBatch*)m_treeBatchs.GetUnsafeList()->Ptr;
@@ -201,9 +202,9 @@ namespace Landscape.FoliagePipeline
                 
                 for (var instanceId = 0; instanceId < treeDrawCommand.countOffset.x; ++instanceId)
                 {
-                    /*var index = m_treeBatchIndexs[treeDrawCommand.countOffset.y + instanceId];
+                    var index = m_treeBatchIndexs[treeDrawCommand.countOffset.y + instanceId];
                     var treeBatch = m_treeBatchs[index];
-                    cmdBuffer.DrawMesh(mesh, treeBatch.matrix_World, material, treeDrawCommand.meshIndex, 0);*/
+                    cmdBuffer.DrawMesh(mesh, treeBatch.matrix_World, material, treeDrawCommand.meshIndex, 0);
                 }
             }
 

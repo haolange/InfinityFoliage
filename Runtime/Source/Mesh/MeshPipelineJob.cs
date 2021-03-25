@@ -114,10 +114,13 @@ namespace Landscape.FoliagePipeline
     }
 
     [BurstCompile]
-    public struct FGrassScatterJob : IJob
+    public unsafe struct FGrassScatterJob : IJob
     {
         [ReadOnly]
         public int split;
+
+        [ReadOnly]
+        public float densityScale;
 
         [ReadOnly]
         public float3 sectionPivot;
@@ -139,7 +142,7 @@ namespace Landscape.FoliagePipeline
 
             for (int i = 0; i < nativeDensityMap.Length; ++i)
             {
-                density = nativeDensityMap[i];
+                density = (int)((float)nativeDensityMap[i] * densityScale);
                 position = sectionPivot + new float3(i % split, 0, i / split);
 
                 for(int j = 0; j < density; ++j)
@@ -233,6 +236,9 @@ namespace Landscape.FoliagePipeline
         public int numLOD;
 
         [ReadOnly]
+        public float maxDistance;
+
+        [ReadOnly]
         [NativeDisableUnsafePtrRestriction]
         public FPlane* planes;
 
@@ -283,7 +289,7 @@ namespace Landscape.FoliagePipeline
 
                 visible = math.select(visible, 0, distRadius.x + distRadius.y < 0);
             }
-            viewTreeBatchs[index] = visible;
+            viewTreeBatchs[index] = math.select(visible, 0, math.distance(viewOringin, treeBatch.boundBox.center) > maxDistance);
         }
     }
 

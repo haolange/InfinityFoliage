@@ -16,6 +16,13 @@ namespace Landscape.FoliagePipeline
         [Header("Debug")]
         public bool showBounds = false;
 #endif
+        public float drawDistance
+        {
+            get
+            {
+                return terrain.treeDistance;
+            }
+        }
 
         [HideInInspector]
         public Terrain terrain;
@@ -105,7 +112,7 @@ namespace Landscape.FoliagePipeline
         {
             foreach (var treeSector in treeSectors)
             {
-                var taskHandle = treeSector.InitView(viewPos, matrixProj, planes);
+                var taskHandle = treeSector.InitView(drawDistance, viewPos, matrixProj, planes);
                 taskHandles.Add(taskHandle); 
             }
         }

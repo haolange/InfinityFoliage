@@ -104,7 +104,7 @@ namespace Landscape.FoliagePipeline
         {
             foreach (FGrassSector grassSector in grassSectors)
             {
-                grassSector.BuildInstance(boundComponent.SectionSize, taskHandles);
+                grassSector.BuildInstance(boundComponent.SectionSize, terrain.detailObjectDensity, taskHandles);
             }
         }
 
