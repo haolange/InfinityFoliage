@@ -137,7 +137,7 @@ Shader "Landscape/Tree"
 
 			float4 frag(Varyings In) : SV_Target
 			{
-				float3 WS_PixelPos = In.worldPos.xyz;
+				float3 WS_PixelPos = In.worldPos.xyz;//
 				return _AlbedoTexture.Sample(sampler_AlbedoTexture, In.uv0);
 			}
             ENDHLSL

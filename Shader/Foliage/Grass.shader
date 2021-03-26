@@ -125,12 +125,12 @@ Shader "Landscape/Grass"
 			Varyings vert(Attributes In)
 			{
 				Varyings Out = (Varyings)0;
-				Out.PrimitiveId  = _TreeIndexBuffer[In.InstanceId + _TreeIndexOffset];
-				FTreeBatch treeBatch = _TreeBatchBuffer[Out.PrimitiveId];
+				Out.PrimitiveId = In.InstanceId;
+				FGrassBatch grassBatch = _GrassBatchBuffer[In.InstanceId];
 
 				Out.uv0 = In.uv0;
 				//Out.normal = normalize(mul(In.normal, (float3x3)unity_WorldToObject));
-				Out.worldPos = mul(treeBatch.matrix_World, In.vertex);
+				Out.worldPos = mul(grassBatch.matrix_World, In.vertex);
 				Out.vertex = mul(unity_MatrixVP, Out.worldPos);
 				return Out;
 			}

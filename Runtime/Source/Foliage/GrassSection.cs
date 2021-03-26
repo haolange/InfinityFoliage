@@ -4,6 +4,7 @@ using UnityEngine;
 using Unity.Collections;
 using Unity.Mathematics;
 using UnityEngine.Rendering;
+using System.Runtime.InteropServices;
 using System.Runtime.CompilerServices;
 
 namespace Landscape.FoliagePipeline
@@ -56,9 +57,12 @@ namespace Landscape.FoliagePipeline
 
         public void Init()
         {
+            if(totalDensity == 0) { return; }
+
             m_propertyBlock = new MaterialPropertyBlock();
             m_nativeDensityMap = new NativeArray<int>(densityMap.Length, Allocator.Persistent);
             m_nativeGrassbatchs = new NativeList<FGrassBatch>(densityMap.Length, Allocator.Persistent);
+            m_grassBatchBuffer = new ComputeBuffer(totalDensity, Marshal.SizeOf(typeof(FGrassBatch)));
 
             for (int i = 0; i < densityMap.Length; i++)
             {
@@ -68,6 +72,9 @@ namespace Landscape.FoliagePipeline
 
         public void Release()
         {
+            if (totalDensity == 0) { return; }
+
+            m_grassBatchBuffer.Dispose();
             m_nativeDensityMap.Dispose();
             m_nativeGrassbatchs.Dispose();
         }
@@ -75,6 +82,8 @@ namespace Landscape.FoliagePipeline
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public JobHandle BuildInstance(in int split, in float densityScale, in float3 sectionPivot)
         {
+            if (totalDensity == 0 || densityScale == 0) { return default; }
+
             m_nativeGrassbatchs.Clear();
 
             var grassScatterJob = new FGrassScatterJob();
@@ -90,19 +99,24 @@ namespace Landscape.FoliagePipeline
 
         public void DispatchDraw(CommandBuffer cmdBuffer, Mesh mesh, Material material, in int passIndex)
         {
-            /*cmdBuffer.SetComputeBufferData<FGrassBatch>(m_grassBatchBuffer, m_nativeGrassbatchs);
+            if (totalDensity == 0 || m_nativeGrassbatchs.Length == 0) { return; }
+
+            //cmdBuffer.SetComputeBufferData<FGrassBatch>(m_grassBatchBuffer, m_nativeGrassbatchs);
+            cmdBuffer.SetComputeBufferData<FGrassBatch>(m_grassBatchBuffer, m_nativeGrassbatchs, 0, 0, m_nativeGrassbatchs.Length);
 
             using (new ProfilingScope(cmdBuffer, ProfilingSampler.Get(EFoliageSamplerId.GrassBatch)))
             {
                 m_propertyBlock.Clear();
                 m_propertyBlock.SetBuffer(GrassShaderID.primitiveBuffer, m_grassBatchBuffer);
                 cmdBuffer.DrawMeshInstancedProcedural(mesh, 0, material, passIndex, m_nativeGrassbatchs.Length, m_propertyBlock);
-            }*/
+            }
         }
 
 #if UNITY_EDITOR
         public void DrawBounds()
         {
+            if (totalDensity == 0) { return; }
+
             foreach (FGrassBatch grassbatch in m_nativeGrassbatchs)
             {
                 Gizmos.color = Color.red;
