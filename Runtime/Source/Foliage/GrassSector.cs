@@ -32,7 +32,7 @@ namespace Landscape.FoliagePipeline
 
             foreach (FGrassSection section in sections)
             {
-                section.BuildNativeCollection();
+                section.Init();
             }
         }
 
@@ -52,7 +52,15 @@ namespace Landscape.FoliagePipeline
         {
             foreach (FGrassSection section in sections)
             {
-                section.ReleaseNativeCollection();
+                section.Release();
+            }
+        }
+
+        public void DispatchDraw(CommandBuffer cmdBuffer, in int passIndex)
+        {
+            foreach (FGrassSection section in sections)
+            {
+                section.DispatchDraw(cmdBuffer, grass.meshes[0], grass.materials[0], passIndex);
             }
         }
 

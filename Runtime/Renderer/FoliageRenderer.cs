@@ -68,8 +68,8 @@ internal unsafe class FoliagePass : ScriptableRenderPass
             #endregion //InitViewCommand
 
             #region ExecuteViewCommand
-            boundComponent.treeComponent?.DispatchDraw(cmdBuffer);
-            boundComponent.grassComponent?.DispatchDraw(cmdBuffer);
+            boundComponent.treeComponent?.DispatchDraw(cmdBuffer, 1);
+            boundComponent.grassComponent?.DispatchDraw(cmdBuffer, 1);
             #endregion //ExecuteViewCommand
         }
         #endregion //InitViewContext

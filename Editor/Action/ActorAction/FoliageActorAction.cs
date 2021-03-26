@@ -8,7 +8,7 @@ using System.Runtime.InteropServices;
 
 namespace Landscape.Editor.FoliagePipeline
 {
-    public class FoliageActorAction
+    public unsafe class FoliageActorAction
     {
         #region Tree
         [MenuItem("GameObject/EntityAction/Landscape/BuildTerrainTree", false, 9)]
@@ -253,7 +253,7 @@ namespace Landscape.Editor.FoliagePipeline
                         FBoundSection boundSection = boundSector.sections[grassSection.boundIndex];
 
                         grassSection.densityMap = new int[boundComponent.SectionSize * boundComponent.SectionSize];
-                        int2 uv = (int2)boundSection.pivotPosition.zx - new int2((int)selectObject.transform.position.z, (int)selectObject.transform.position.x);
+                        int2 uv = (int2)boundSection.pivotPosition.xz - new int2((int)selectObject.transform.position.x, (int)selectObject.transform.position.z);
                         int[,] densityMap = terrainData.GetDetailLayer(uv.x, uv.y, boundComponent.SectionSize, boundComponent.SectionSize, grassIndex);
 
                         //Build Densitys
@@ -262,6 +262,7 @@ namespace Landscape.Editor.FoliagePipeline
                             updategrassTask.srcMap = densityMap;
                             updategrassTask.dscMap = grassSection.densityMap;
                             updategrassTask.length = boundComponent.SectionSize;
+                            updategrassTask.grassSection = grassSection;
                         }
                         var taskHandle = GCHandle.Alloc(updategrassTask);
                         tasksHandle.Add(taskHandle);

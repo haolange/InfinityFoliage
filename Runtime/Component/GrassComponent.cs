@@ -115,9 +115,12 @@ namespace Landscape.FoliagePipeline
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public override void DispatchDraw(CommandBuffer cmdBuffer)
+        public override void DispatchDraw(CommandBuffer cmdBuffer, in int passIndex)
         {
-            
+            foreach (FGrassSector grassSector in grassSectors)
+            {
+                grassSector.DispatchDraw(cmdBuffer, passIndex);
+            }
         }
         #endregion //Grass
     }

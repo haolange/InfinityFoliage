@@ -117,5 +117,5 @@ public abstract unsafe class FoliageComponent : MonoBehaviour
     public abstract void DispatchSetup(in NativeList<JobHandle> taskHandles);
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public abstract void DispatchDraw(CommandBuffer cmdBuffer);
+    public abstract void DispatchDraw(CommandBuffer cmdBuffer, in int passIndex);
 }

@@ -47,11 +47,12 @@ namespace Landscape.FoliagePipeline
         }
     }
 
-    public struct FUpdateGrassTask : ITask
+    public unsafe struct FUpdateGrassTask : ITask
     {
         public int length;
         public int[] dscMap;
         public int[,] srcMap;
+        public FGrassSection grassSection;
 
 
         public void Execute()
@@ -62,6 +63,7 @@ namespace Landscape.FoliagePipeline
                 {
                     int densityIndex = j * length + k;
                     dscMap[densityIndex] = srcMap[j, k];
+                    grassSection.totalDensity += srcMap[j, k];
                 }
             }
         }
@@ -129,7 +131,7 @@ namespace Landscape.FoliagePipeline
         public NativeArray<int> densityMap;
 
         [WriteOnly]
-        public NativeList<FGrassElement> grassElements;
+        public NativeList<FGrassBatch> grassbatchs;
 
 
         public void Execute()
@@ -137,8 +139,8 @@ namespace Landscape.FoliagePipeline
             int density = default;
             float3 position = default;
             float3 newPosition = default;
-            float4x4 modelMatrix = default;
-            FGrassElement grassElement = default;
+            float4x4 matrix_World = default;
+            FGrassBatch grassbatch = default;
 
             for (int i = 0; i < densityMap.Length; ++i)
             {
@@ -147,13 +149,13 @@ namespace Landscape.FoliagePipeline
 
                 for(int j = 0; j < density; ++j)
                 {
-                    float2 random = randomFloat2(new float2(position.z + 0.5f, (position.x + 0.5f) * (j + 1)));
-                    newPosition = position + new float3(random.y, position.y, random.x);
-                    modelMatrix = float4x4.TRS(newPosition, quaternion.identity, 1);
+                    float2 random = randomFloat2(new float2(position.x + 0.5f, (position.z + 0.5f) * (j + 1)));
+                    newPosition = position + new float3(random.x, position.y, random.y);
+                    matrix_World = float4x4.TRS(newPosition, quaternion.identity, 1);
 
-                    grassElement.position = newPosition;
-                    grassElement.worldMatrix = modelMatrix;
-                    grassElements.Add(grassElement);
+                    grassbatch.position = newPosition;
+                    grassbatch.matrix_World = matrix_World;
+                    grassbatchs.Add(grassbatch);
                 }
             }
         }
@@ -252,6 +254,7 @@ namespace Landscape.FoliagePipeline
         [NativeDisableUnsafePtrRestriction]
         public float* treeLODInfos;
 
+        [ReadOnly]
         [NativeDisableUnsafePtrRestriction]
         public FMeshBatch* treeBatchs;
 

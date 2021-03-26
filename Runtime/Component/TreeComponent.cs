@@ -128,11 +128,11 @@ namespace Landscape.FoliagePipeline
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public override void DispatchDraw(CommandBuffer cmdBuffer)
+        public override void DispatchDraw(CommandBuffer cmdBuffer, in int passIndex)
         {
             foreach (var treeSector in treeSectors)
             {
-                treeSector.DispatchDraw(cmdBuffer);
+                treeSector.DispatchDraw(cmdBuffer, passIndex);
             }
         }
         #endregion //Tree

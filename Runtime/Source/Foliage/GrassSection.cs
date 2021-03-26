@@ -3,87 +3,110 @@ using Unity.Jobs;
 using UnityEngine;
 using Unity.Collections;
 using Unity.Mathematics;
+using UnityEngine.Rendering;
 using System.Runtime.CompilerServices;
 
 namespace Landscape.FoliagePipeline
 {
-    public struct FGrassElement : IEquatable<FGrassElement>
+    public struct FGrassBatch : IEquatable<FGrassBatch>
     {
         public float3 position;
-        public float4x4 worldMatrix;
+        public float4x4 matrix_World;
 
 
-        public FGrassElement(in float3 position, in float4x4 worldMatrix)
+        public FGrassBatch(in float3 position, in float4x4 matrix_World)
         {
             this.position = position;
-            this.worldMatrix = worldMatrix;
+            this.matrix_World = matrix_World;
         }
 
-        public bool Equals(FGrassElement Target)
+        public bool Equals(FGrassBatch Target)
         {
-            return position.Equals(Target.position) && worldMatrix.Equals(Target.worldMatrix);
+            return position.Equals(Target.position) && matrix_World.Equals(Target.matrix_World);
         }
 
         public override bool Equals(object obj)
         {
-            return Equals((FGrassElement)obj);
+            return Equals((FGrassBatch)obj);
         }
 
         public override int GetHashCode()
         {
-            return (position.GetHashCode() << 16) + (worldMatrix.GetHashCode() << 16);
+            return (position.GetHashCode() << 16) + (matrix_World.GetHashCode() << 16);
         }
+    }
+
+    internal static class GrassShaderID
+    {
+        internal static int primitiveBuffer = Shader.PropertyToID("_GrassBatchBuffer");
     }
 
     [Serializable]
     public class FGrassSection
     {
         public int boundIndex;
+        public int totalDensity;
         public int[] densityMap;
-        internal NativeArray<int> nativeDensityMap;
-        internal NativeList<FGrassElement> nativegrassElements;
+        internal NativeArray<int> m_nativeDensityMap;
+        internal NativeList<FGrassBatch> m_nativeGrassbatchs;
+
+        private ComputeBuffer m_grassBatchBuffer;
+        private MaterialPropertyBlock m_propertyBlock;
 
 
-        public void BuildNativeCollection()
+        public void Init()
         {
-            nativeDensityMap = new NativeArray<int>(densityMap.Length, Allocator.Persistent);
-            nativegrassElements = new NativeList<FGrassElement>(densityMap.Length, Allocator.Persistent);
+            m_propertyBlock = new MaterialPropertyBlock();
+            m_nativeDensityMap = new NativeArray<int>(densityMap.Length, Allocator.Persistent);
+            m_nativeGrassbatchs = new NativeList<FGrassBatch>(densityMap.Length, Allocator.Persistent);
 
             for (int i = 0; i < densityMap.Length; i++)
             {
-                nativeDensityMap[i] = densityMap[i];
+                m_nativeDensityMap[i] = densityMap[i];
             }
         }
 
-        public void ReleaseNativeCollection()
+        public void Release()
         {
-            nativeDensityMap.Dispose();
-            nativegrassElements.Dispose();
+            m_nativeDensityMap.Dispose();
+            m_nativeGrassbatchs.Dispose();
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public JobHandle BuildInstance(in int split, in float densityScale, in float3 sectionPivot)
         {
-            nativegrassElements.Clear();
+            m_nativeGrassbatchs.Clear();
 
             var grassScatterJob = new FGrassScatterJob();
             {
                 grassScatterJob.split = split;
                 grassScatterJob.densityScale = densityScale;
                 grassScatterJob.sectionPivot = sectionPivot;
-                grassScatterJob.densityMap = nativeDensityMap;
-                grassScatterJob.grassElements = nativegrassElements;
+                grassScatterJob.densityMap = m_nativeDensityMap;
+                grassScatterJob.grassbatchs = m_nativeGrassbatchs;
             }
             return grassScatterJob.Schedule();
+        }
+
+        public void DispatchDraw(CommandBuffer cmdBuffer, Mesh mesh, Material material, in int passIndex)
+        {
+            /*cmdBuffer.SetComputeBufferData<FGrassBatch>(m_grassBatchBuffer, m_nativeGrassbatchs);
+
+            using (new ProfilingScope(cmdBuffer, ProfilingSampler.Get(EFoliageSamplerId.GrassBatch)))
+            {
+                m_propertyBlock.Clear();
+                m_propertyBlock.SetBuffer(GrassShaderID.primitiveBuffer, m_grassBatchBuffer);
+                cmdBuffer.DrawMeshInstancedProcedural(mesh, 0, material, passIndex, m_nativeGrassbatchs.Length, m_propertyBlock);
+            }*/
         }
 
 #if UNITY_EDITOR
         public void DrawBounds()
         {
-            foreach (FGrassElement grassElement in nativegrassElements)
+            foreach (FGrassBatch grassbatch in m_nativeGrassbatchs)
             {
                 Gizmos.color = Color.red;
-                Gizmos.DrawSphere(grassElement.position, 0.05f);
+                Gizmos.DrawSphere(grassbatch.position, 0.25f);
             }
         }
 #endif

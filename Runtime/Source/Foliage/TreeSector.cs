@@ -6,11 +6,19 @@ using Unity.Collections;
 using UnityEngine.Rendering;
 using InfinityTech.Core.Geometry;
 using System.Collections.Generic;
+using System.Runtime.InteropServices;
 using System.Runtime.CompilerServices;
 using Unity.Collections.LowLevel.Unsafe;
 
 namespace Landscape.FoliagePipeline
 {
+    internal static class TreeShaderID
+    {
+        internal static int offset = Shader.PropertyToID("_TreeIndexOffset");
+        internal static int indexBuffer = Shader.PropertyToID("_TreeIndexBuffer");
+        internal static int primitiveBuffer = Shader.PropertyToID("_TreeBatchBuffer");
+    }
+
     [Serializable]
     public unsafe class FTreeSector
     {
@@ -27,15 +35,23 @@ namespace Landscape.FoliagePipeline
         private NativeList<FMeshElement> m_passTreeElements;
         private NativeList<FMeshDrawCommand> m_treeDrawCommands;
 
+        private ComputeBuffer m_indexBuffer;
+        private ComputeBuffer m_primitiveBuffer;
+        private MaterialPropertyBlock m_propertyBlock;
+
 
         public void Initialize()
         {
+            m_propertyBlock = new MaterialPropertyBlock();
             m_treeBatchs = new NativeList<FMeshBatch>(2048, Allocator.Persistent);
             m_treeElements = new NativeList<FMeshElement>(4096, Allocator.Persistent);
         }
 
         public void Release()
         {
+            m_indexBuffer.Dispose();
+            m_primitiveBuffer.Dispose();
+
             m_treeBatchs.Dispose();
             m_treeElements.Dispose();
             m_treeLODInfos.Dispose();
@@ -98,6 +114,9 @@ namespace Landscape.FoliagePipeline
                 AddBatch(treeBatch);
             }
 
+            m_primitiveBuffer = new ComputeBuffer(m_treeBatchs.Length, Marshal.SizeOf(typeof(FMeshBatch)));
+            m_primitiveBuffer.SetData(m_treeBatchs.ToArray());
+
             m_treeLODInfos = new NativeArray<float>(tree.lODInfo.Length, Allocator.Persistent);
             for (var j = 0; j < tree.lODInfo.Length; ++j)
             {
@@ -133,6 +152,7 @@ namespace Landscape.FoliagePipeline
             m_treeElements.Sort();
 
             m_treeBatchIndexs = new NativeArray<int>(m_treeElements.Length, Allocator.Persistent);
+            m_indexBuffer = new ComputeBuffer(m_treeBatchIndexs.Length, Marshal.SizeOf(typeof(int)));
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -193,19 +213,30 @@ namespace Landscape.FoliagePipeline
         }*/
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public void DispatchDraw(CommandBuffer cmdBuffer)
+        public void DispatchDraw(CommandBuffer cmdBuffer, in int passIndex)
         {
-            foreach (var treeDrawCommand in m_treeDrawCommands)
+            cmdBuffer.SetComputeBufferData(m_indexBuffer, m_treeBatchIndexs);
+
+            using (new ProfilingScope(cmdBuffer, ProfilingSampler.Get(EFoliageSamplerId.TreeBatch)))
             {
-                var mesh = tree.meshes[treeDrawCommand.lODIndex];
-                var material = tree.materials[treeDrawCommand.matIndex];
-                
-                /*for (var instanceId = 0; instanceId < treeDrawCommand.countOffset.x; ++instanceId)
+                foreach (var treeCmd in m_treeDrawCommands)
                 {
-                    var index = m_treeBatchIndexs[treeDrawCommand.countOffset.y + instanceId];
-                    var treeBatch = m_treeBatchs[index];
-                    cmdBuffer.DrawMesh(mesh, treeBatch.matrix_World, material, treeDrawCommand.meshIndex, 0);
-                }*/
+                    Mesh mesh = tree.meshes[treeCmd.lODIndex];
+                    Material material = tree.materials[treeCmd.matIndex];
+
+                    m_propertyBlock.Clear();
+                    m_propertyBlock.SetInt(TreeShaderID.offset, treeCmd.countOffset.y);
+                    m_propertyBlock.SetBuffer(TreeShaderID.indexBuffer, m_indexBuffer);
+                    m_propertyBlock.SetBuffer(TreeShaderID.primitiveBuffer, m_primitiveBuffer);
+                    cmdBuffer.DrawMeshInstancedProcedural(mesh, treeCmd.meshIndex, material, passIndex, treeCmd.countOffset.x, m_propertyBlock);
+
+                    /*for (int instanceId = 0; instanceId < treeCmd.countOffset.x; ++instanceId)
+                    {
+                        int index = m_treeBatchIndexs[treeCmd.countOffset.y + instanceId];
+                        FMeshBatch treeBatch = m_treeBatchs[index];
+                        cmdBuffer.DrawMesh(mesh, treeBatch.matrix_World, material, treeCmd.meshIndex, 0);
+                    }*/
+                }
             }
 
             m_passTreeElements.Clear();
