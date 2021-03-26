@@ -41,7 +41,7 @@ namespace Landscape.FoliagePipeline
         {
             foreach (FGrassSection section in sections)
             {
-                if (boundSector.sectionsVisbible[section.boundIndex] == 0) { continue; }
+                //if (boundSector.sectionsVisbible[section.boundIndex] == 0) { continue; }
 
                 FBoundSection boundSection = boundSector.nativeSections[section.boundIndex];
                 taskHandles.Add(section.BuildInstance(split, densityScale, boundSection.pivotPosition));
@@ -56,13 +56,13 @@ namespace Landscape.FoliagePipeline
             }
         }
 
-        public void DispatchDraw(CommandBuffer cmdBuffer, in int passIndex)
+        public void DispatchDraw(CommandBuffer cmdBuffer, in int passIndex, in bool needUpdateGPU)
         {
             foreach (FGrassSection section in sections)
             {
                 if (boundSector.sectionsVisbible[section.boundIndex] == 0) { continue; }
 
-                section.DispatchDraw(cmdBuffer, grass.meshes[0], grass.materials[0], passIndex);
+                section.DispatchDraw(cmdBuffer, grass.meshes[0], grass.materials[0], passIndex, needUpdateGPU);
             }
         }
 

@@ -19,6 +19,15 @@ namespace Landscape.FoliagePipeline
         public bool showBounds = false;
 #endif
 
+        private float lastDensityScale = -1;
+        public bool needUpdateGPU
+        {
+            get
+            {
+                return lastDensityScale != terrain.detailObjectDensity;
+            }
+        }
+
         [HideInInspector]
         public Terrain terrain;
         [HideInInspector]
@@ -102,6 +111,8 @@ namespace Landscape.FoliagePipeline
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public override void InitViewFoliage(in float3 viewPos, in float4x4 matrixProj, FPlane* planes, in NativeList<JobHandle> taskHandles)
         {
+            if(!needUpdateGPU) { return; }
+
             foreach (FGrassSector grassSector in grassSectors)
             {
                 grassSector.BuildInstance(boundComponent.SectionSize, terrain.detailObjectDensity, taskHandles);
@@ -119,8 +130,10 @@ namespace Landscape.FoliagePipeline
         {
             foreach (FGrassSector grassSector in grassSectors)
             {
-                grassSector.DispatchDraw(cmdBuffer, passIndex);
+                grassSector.DispatchDraw(cmdBuffer, passIndex, needUpdateGPU);
             }
+
+            lastDensityScale = terrain.detailObjectDensity;
         }
         #endregion //Grass
     }
