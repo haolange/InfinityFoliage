@@ -111,12 +111,9 @@ namespace Landscape.FoliagePipeline
         {
             if (totalDensity == 0 || m_nativeGrassbatchs.Length == 0) { return; }
 
-            using (new ProfilingScope(cmdBuffer, ProfilingSampler.Get(EFoliageSamplerId.GrassBatch)))
-            {
-                m_propertyBlock.Clear();
-                m_propertyBlock.SetBuffer(GrassShaderID.primitiveBuffer, m_grassBatchBuffer);
-                cmdBuffer.DrawMeshInstancedProcedural(mesh, 0, material, passIndex, m_nativeGrassbatchs.Length, m_propertyBlock);
-            }
+            m_propertyBlock.Clear();
+            m_propertyBlock.SetBuffer(GrassShaderID.primitiveBuffer, m_grassBatchBuffer);
+            cmdBuffer.DrawMeshInstancedProcedural(mesh, 0, material, passIndex, m_nativeGrassbatchs.Length, m_propertyBlock);
         }
 
 #if UNITY_EDITOR
