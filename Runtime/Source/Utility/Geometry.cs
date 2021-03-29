@@ -1,8 +1,10 @@
 ﻿using System;
+using System.IO;
+#if UNITY_EDITOR
+using UnityEditor;
+#endif
 using UnityEngine;
 using Unity.Mathematics;
-using UnityEditor;
-using System.IO;
 
 namespace InfinityTech.Core.Geometry
 {

@@ -1,12 +1,12 @@
 using Unity.Jobs;
 using UnityEngine;
+using Unity.Mathematics;
 using Unity.Collections;
 using UnityEngine.Rendering;
+using Landscape.FoliagePipeline;
 using InfinityTech.Core.Geometry;
 using UnityEngine.Rendering.Universal;
 using Unity.Collections.LowLevel.Unsafe;
-using Landscape.FoliagePipeline;
-using Unity.Mathematics;
 
 internal unsafe class FoliagePass : ScriptableRenderPass
 {

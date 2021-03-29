@@ -1,13 +1,8 @@
 using System;
 using Unity.Jobs;
-using UnityEngine;
-using Unity.Mathematics;
 using Unity.Collections;
 using UnityEngine.Rendering;
-using InfinityTech.Core.Geometry;
-using System.Collections.Generic;
 using System.Runtime.CompilerServices;
-using Unity.Collections.LowLevel.Unsafe;
 
 namespace Landscape.FoliagePipeline
 {
