@@ -63,6 +63,7 @@ internal unsafe class FoliagePass : ScriptableRenderPass
 
             #region InitViewCommand
             boundComponent.treeComponent?.DispatchSetup(taskHandles);
+            boundComponent.grassComponent?.SetGPUData(cmdBuffer);
             JobHandle.CompleteAll(taskHandles);
             taskHandles.Clear();
             #endregion //InitViewCommand

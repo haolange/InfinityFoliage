@@ -97,14 +97,19 @@ namespace Landscape.FoliagePipeline
             return grassScatterJob.Schedule();
         }
 
-        public void DispatchDraw(CommandBuffer cmdBuffer, Mesh mesh, Material material, in int passIndex, in bool needUpdateGPU)
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public void SetGPUData(CommandBuffer cmdBuffer)
         {
             if (totalDensity == 0 || m_nativeGrassbatchs.Length == 0) { return; }
 
-            if (needUpdateGPU)
-            {
-                cmdBuffer.SetComputeBufferData<FGrassBatch>(m_grassBatchBuffer, m_nativeGrassbatchs, 0, 0, m_nativeGrassbatchs.Length);
-            }
+            m_grassBatchBuffer.SetData<FGrassBatch>(m_nativeGrassbatchs, 0, 0, m_nativeGrassbatchs.Length);
+            //cmdBuffer.SetComputeBufferData<FGrassBatch>(m_grassBatchBuffer, m_nativeGrassbatchs, 0, 0, m_nativeGrassbatchs.Length);
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public void DispatchDraw(CommandBuffer cmdBuffer, Mesh mesh, Material material, in int passIndex)
+        {
+            if (totalDensity == 0 || m_nativeGrassbatchs.Length == 0) { return; }
 
             using (new ProfilingScope(cmdBuffer, ProfilingSampler.Get(EFoliageSamplerId.GrassBatch)))
             {

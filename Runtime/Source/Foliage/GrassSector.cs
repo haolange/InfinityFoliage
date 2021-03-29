@@ -56,13 +56,23 @@ namespace Landscape.FoliagePipeline
             }
         }
 
-        public void DispatchDraw(CommandBuffer cmdBuffer, in int passIndex, in bool needUpdateGPU)
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public void SetGPUData(CommandBuffer cmdBuffer)
+        {
+            foreach (FGrassSection section in sections)
+            {
+                section.SetGPUData(cmdBuffer);
+            }
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public void DispatchDraw(CommandBuffer cmdBuffer, in int passIndex)
         {
             foreach (FGrassSection section in sections)
             {
                 if (boundSector.sectionsVisbible[section.boundIndex] == 0) { continue; }
 
-                section.DispatchDraw(cmdBuffer, grass.meshes[0], grass.materials[0], passIndex, needUpdateGPU);
+                section.DispatchDraw(cmdBuffer, grass.meshes[0], grass.materials[0], passIndex);
             }
         }
 

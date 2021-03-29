@@ -19,7 +19,7 @@ namespace Landscape.FoliagePipeline
         public bool showBounds = false;
 #endif
 
-        private float lastDensityScale = -1;
+        private float lastDensityScale;
         public bool needUpdateGPU
         {
             get
@@ -46,6 +46,7 @@ namespace Landscape.FoliagePipeline
             boundComponent.grassComponent = this;
 
             InitGrassSectors();
+            lastDensityScale = -1;
 
             if (terrain.drawTreesAndFoliage == true)
             {
@@ -126,14 +127,24 @@ namespace Landscape.FoliagePipeline
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public void SetGPUData(CommandBuffer cmdBuffer)
+        {
+            if (!needUpdateGPU) { return; }
+            lastDensityScale = terrain.detailObjectDensity;
+
+            foreach (FGrassSector grassSector in grassSectors)
+            {
+                grassSector.SetGPUData(cmdBuffer);
+            }
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public override void DispatchDraw(CommandBuffer cmdBuffer, in int passIndex)
         {
             foreach (FGrassSector grassSector in grassSectors)
             {
-                grassSector.DispatchDraw(cmdBuffer, passIndex, needUpdateGPU);
+                grassSector.DispatchDraw(cmdBuffer, passIndex);
             }
-
-            lastDensityScale = terrain.detailObjectDensity;
         }
         #endregion //Grass
     }

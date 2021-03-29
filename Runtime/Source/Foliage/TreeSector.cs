@@ -215,7 +215,8 @@ namespace Landscape.FoliagePipeline
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public void DispatchDraw(CommandBuffer cmdBuffer, in int passIndex)
         {
-            cmdBuffer.SetComputeBufferData(m_indexBuffer, m_treeBatchIndexs);
+            m_indexBuffer.SetData(m_treeBatchIndexs);
+            //cmdBuffer.SetComputeBufferData(m_indexBuffer, m_treeBatchIndexs);
 
             using (new ProfilingScope(cmdBuffer, ProfilingSampler.Get(EFoliageSamplerId.TreeBatch)))
             {
@@ -230,12 +231,12 @@ namespace Landscape.FoliagePipeline
                     m_propertyBlock.SetBuffer(TreeShaderID.primitiveBuffer, m_primitiveBuffer);
                     cmdBuffer.DrawMeshInstancedProcedural(mesh, treeCmd.meshIndex, material, passIndex, treeCmd.countOffset.x, m_propertyBlock);
 
-                    /*for (int instanceId = 0; instanceId < treeCmd.countOffset.x; ++instanceId)
-                    {
-                        int index = m_treeBatchIndexs[treeCmd.countOffset.y + instanceId];
-                        FMeshBatch treeBatch = m_treeBatchs[index];
-                        cmdBuffer.DrawMesh(mesh, treeBatch.matrix_World, material, treeCmd.meshIndex, 0);
-                    }*/
+                    //for (int instanceId = 0; instanceId < treeCmd.countOffset.x; ++instanceId)
+                    //{
+                        //int index = m_treeBatchIndexs[treeCmd.countOffset.y + instanceId];
+                        //FMeshBatch treeBatch = m_treeBatchs[index];
+                        //cmdBuffer.DrawMesh(mesh, treeBatch.matrix_World, material, treeCmd.meshIndex, 0);
+                    //}
                 }
             }
 
