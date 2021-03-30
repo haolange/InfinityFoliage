@@ -167,7 +167,7 @@ namespace Landscape.Editor.FoliagePipeline
 
                 for (int index = 0; index < UTerrainData.detailPrototypes.Length; ++index)
                 {
-                    grassComponent.grassSectors[index] = new FGrassSector(boundComponent.BoundSector.sections.Length);
+                    grassComponent.grassSectors[index] = new FGrassSector(boundComponent.boundSector.sections.Length);
                     grassComponent.grassSectors[index].grassIndex = index;
 
                     DetailPrototype detailPrototype = UTerrainData.detailPrototypes[index];
@@ -202,7 +202,7 @@ namespace Landscape.Editor.FoliagePipeline
                     grassComponent.grassSectors[index].grassIndex = index;
 
 
-                    for (int k = 0; k < boundComponent.BoundSector.sections.Length; ++k)
+                    for (int k = 0; k < boundComponent.boundSector.sections.Length; ++k)
                     {
                         FGrassSection grassSection = new FGrassSection();
                         grassSection.boundIndex = k;
@@ -230,7 +230,7 @@ namespace Landscape.Editor.FoliagePipeline
                 }
 
                 BoundComponent boundComponent = selectObject.GetComponent<BoundComponent>();
-                FBoundSector boundSector = boundComponent.BoundSector;
+                FBoundSector boundSector = boundComponent.boundSector;
                 if (boundComponent == null)
                 {
                     boundComponent = selectObject.AddComponent<BoundComponent>();

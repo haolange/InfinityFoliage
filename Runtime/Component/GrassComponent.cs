@@ -95,7 +95,7 @@ namespace Landscape.FoliagePipeline
         {
             foreach(FGrassSector grassSector in grassSectors)
             {
-                grassSector.Init(boundComponent.BoundSector);
+                grassSector.Init(boundComponent.boundSector);
             }
         }
         

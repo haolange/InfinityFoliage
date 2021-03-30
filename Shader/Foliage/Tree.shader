@@ -32,7 +32,7 @@ Shader "Landscape/Tree"
 			#pragma target 4.5
             #pragma vertex vert
             #pragma fragment frag
-			#pragma multi_compile_instancing
+			//#pragma multi_compile_instancing
 			#pragma enable_d3d11_debug_symbols
 
 			#include "Packages/com.unity.render-pipelines.core/ShaderLibrary/Common.hlsl"
@@ -44,7 +44,7 @@ Shader "Landscape/Tree"
 				float2 uv0 : TEXCOORD0;
 				float3 normal : NORMAL;
 				float4 vertex : POSITION;
-				UNITY_VERTEX_INPUT_INSTANCE_ID
+				//UNITY_VERTEX_INPUT_INSTANCE_ID
 			};
 
 			struct Varyings
@@ -53,7 +53,7 @@ Shader "Landscape/Tree"
 				float3 normal : TEXCOORD1;
 				float4 vertex : SV_POSITION;
 				float4 worldPos : TEXCOORD2;
-				UNITY_VERTEX_INPUT_INSTANCE_ID
+				//UNITY_VERTEX_INPUT_INSTANCE_ID
 			};
 
             Texture2D _AlbedoTexture; SamplerState sampler_AlbedoTexture;
@@ -62,8 +62,8 @@ Shader "Landscape/Tree"
 			Varyings vert(Attributes In)
 			{
 				Varyings Out = (Varyings)0;
-				UNITY_SETUP_INSTANCE_ID(In);
-				UNITY_TRANSFER_INSTANCE_ID(In, Out);
+				//UNITY_SETUP_INSTANCE_ID(In);
+				//UNITY_TRANSFER_INSTANCE_ID(In, Out);
 
 				Out.uv0 = In.uv0;
 				Out.normal = normalize(mul(In.normal, (float3x3)unity_WorldToObject));
@@ -74,10 +74,15 @@ Shader "Landscape/Tree"
 
 			float4 frag(Varyings In) : SV_Target
 			{
-				UNITY_SETUP_INSTANCE_ID(In);
+				//UNITY_SETUP_INSTANCE_ID(In);
 
 				float3 WS_PixelPos = In.worldPos.xyz;
-				return _AlbedoTexture.Sample(sampler_AlbedoTexture, In.uv0);
+				float4 color = _AlbedoTexture.Sample(sampler_AlbedoTexture, In.uv0);
+				if (color.a <= 0.3f)
+				{
+					discard;
+				}
+				return color;
 			}
             ENDHLSL
         }
@@ -137,8 +142,13 @@ Shader "Landscape/Tree"
 
 			float4 frag(Varyings In) : SV_Target
 			{
-				float3 WS_PixelPos = In.worldPos.xyz;//
-				return _AlbedoTexture.Sample(sampler_AlbedoTexture, In.uv0);
+				float3 WS_PixelPos = In.worldPos.xyz;
+				float4 color = _AlbedoTexture.Sample(sampler_AlbedoTexture, In.uv0);
+				if (color.a <= 0.3f)
+				{
+					discard;
+				}
+				return color;
 			}
             ENDHLSL
         }

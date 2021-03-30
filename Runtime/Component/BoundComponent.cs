@@ -49,7 +49,7 @@ namespace Landscape.FoliagePipeline
         [HideInInspector]
         public TerrainData terrainData;
         [HideInInspector]
-        public FBoundSector BoundSector;
+        public FBoundSector boundSector;
         [HideInInspector]
         public TreeComponent treeComponent;
         [HideInInspector]
@@ -67,19 +67,19 @@ namespace Landscape.FoliagePipeline
         {
             terrain = GetComponent<Terrain>();
             terrainData = terrain.terrainData;
-            BoundSector.BuildNativeCollection();
+            boundSector.BuildNativeCollection();
             s_boundComponents.Add(this);
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public void InitSectionView(in float3 viewOrigin, FPlane* planes, in NativeList<JobHandle> taskHandles)
         {
-            taskHandles.Add(BoundSector.InitView(drawDistance, viewOrigin, planes));
+            taskHandles.Add(boundSector.InitView(drawDistance, viewOrigin, planes));
         }
 
         void OnDisable()
         {
-            BoundSector.ReleaseNativeCollection();
+            boundSector.ReleaseNativeCollection();
             s_boundComponents.Remove(this);
         }
 
@@ -90,7 +90,7 @@ namespace Landscape.FoliagePipeline
 
             for (int i = 0; i < sectorsBound.Length; ++i)
             {
-                sectorsBound[i] = s_boundComponents[i].BoundSector.bound;
+                sectorsBound[i] = s_boundComponents[i].boundSector.bound;
             }
 
             var sectorCullingJob = new FBoundSectorCullingJob();
@@ -111,8 +111,8 @@ namespace Landscape.FoliagePipeline
             TerrainTexture HeightTexture = new TerrainTexture(SectorSize);
             HeightTexture.TerrainDataToHeightmap(terrainData);
 
-            BoundSector = new FBoundSector(SectorSize, NumSection, SectionSize, transform.position, terrainData.bounds);
-            BoundSector.BuildBounds(SectorSize, SectionSize, TerrainScaleY, transform.position, HeightTexture.HeightMap);
+            boundSector = new FBoundSector(SectorSize, NumSection, SectionSize, transform.position, terrainData.bounds);
+            boundSector.BuildBounds(SectorSize, SectionSize, TerrainScaleY, transform.position, HeightTexture.HeightMap);
 
             HeightTexture.Release();
         }
@@ -121,7 +121,7 @@ namespace Landscape.FoliagePipeline
         {
             if (showBounds && enabled && gameObject.activeSelf)
             {
-                BoundSector.DrawBound();
+                boundSector.DrawBound();
             }
         }
 #endif
