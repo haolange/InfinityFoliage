@@ -54,7 +54,6 @@ internal unsafe class FoliagePass : ScriptableRenderPass
         sectorCullingJob.Schedule(sectorsBound.Length, 8).Complete();
         #endregion //InitViewBoundSector
 
-        taskHandles.Clear();
         for (int i = 0; i < sectorsBound.Length; ++i)
         {
             if(boundsVisible[i] == 0) { continue; }
