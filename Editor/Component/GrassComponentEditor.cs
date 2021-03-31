@@ -39,12 +39,12 @@ namespace Landscape.Editor.FoliagePipeline
             UnityEditor.SceneManagement.EditorSceneManager.sceneSaving -= PreSave;
         }
 
-        void PreSave(UnityEngine.SceneManagement.Scene InScene, string InPath)
+        void PreSave(UnityEngine.SceneManagement.Scene scene, string path)
         {
             if (grassTarget.gameObject.activeSelf == false) { return; }
             if (grassTarget.enabled == false) { return; }
 
-            //Grass.Serialize();
+            grassTarget.OnSave();
         }
     }
 }

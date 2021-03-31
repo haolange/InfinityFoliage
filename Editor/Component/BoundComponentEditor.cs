@@ -12,7 +12,7 @@ namespace Landscape.Editor.FoliagePipeline
     [CustomEditor(typeof(BoundComponent))]
     public class BoundComponentEditor : UnityEditor.Editor
     {
-        BoundComponent boundTarget { get { return target as BoundComponent; } }
+        /*BoundComponent boundTarget { get { return target as BoundComponent; } }
 
 
         void OnEnable()
@@ -45,6 +45,6 @@ namespace Landscape.Editor.FoliagePipeline
             if (boundTarget.enabled == false) { return; }
 
             boundTarget.OnSave();
-        }
+        }*/
     }
 }

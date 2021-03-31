@@ -8,7 +8,6 @@ using System.Runtime.CompilerServices;
 
 namespace Landscape.FoliagePipeline
 {
-    [RequireComponent(typeof(BoundComponent))]
     [AddComponentMenu("HG/Foliage/Grass Component")]
     public unsafe class GrassComponent : FoliageComponent
     {
@@ -17,7 +16,6 @@ namespace Landscape.FoliagePipeline
         public bool showBounds = false;
 #endif
 
-        private float lastDensityScale;
         public bool needUpdateGPU
         {
             get
@@ -25,26 +23,50 @@ namespace Landscape.FoliagePipeline
                 return lastDensityScale != terrain.detailObjectDensity;
             }
         }
+        public int NumSection = 16;
+        public int SectorSize
+        {
+            get
+            {
+                return terrainData.heightmapResolution - 1;
+            }
+        }
+        public int SectionSize
+        {
+            get
+            {
+                return SectorSize / NumSection;
+            }
+        }
+        public float DrawDistance
+        {
+            get
+            {
+                return terrain.detailObjectDistance + (terrain.detailObjectDistance * 0.5f);
+            }
+        }
+        public float TerrainScaleY
+        {
+            get
+            {
+                return terrainData.size.y;
+            }
+        }
+        
+        private float lastDensityScale;
 
         [HideInInspector]
-        public Terrain terrain;
-        [HideInInspector]
-        public TerrainData terrainData;
-        [HideInInspector]
         public FGrassSector[] grassSectors;
-        [HideInInspector]
-        public BoundComponent boundComponent;
 
 
         protected override void OnRegister()
         {
             terrain = GetComponent<Terrain>();
             terrainData = terrain.terrainData;
-            boundComponent = GetComponent<BoundComponent>();
-            boundComponent.grassComponent = this;
 
             InitGrassSectors();
             lastDensityScale = -1;
+            boundSector.BuildNativeCollection();
 
             if (terrain.drawTreesAndFoliage == true)
             {
@@ -70,18 +92,34 @@ namespace Landscape.FoliagePipeline
         protected override void UnRegister()
         {
             ReleaseGrassSectors();
-            boundComponent.grassComponent = null;
+            boundSector.ReleaseNativeCollection();
         }
 
 #if UNITY_EDITOR
+        public void OnSave()
+        {
+            terrain = GetComponent<Terrain>();
+            terrainData = GetComponent<TerrainCollider>().terrainData;
+
+            TerrainTexture HeightTexture = new TerrainTexture(SectorSize);
+            HeightTexture.TerrainDataToHeightmap(terrainData);
+
+            boundSector = new FBoundSector(SectorSize, NumSection, SectionSize, transform.position, terrainData.bounds);
+            boundSector.BuildBounds(SectorSize, SectionSize, TerrainScaleY, transform.position, HeightTexture.HeightMap);
+
+            HeightTexture.Release();
+        }
+
         private void DrawBounds()
         {
             if (showBounds == false || Application.isPlaying == false || this.enabled == false || this.gameObject.activeSelf == false) return;
 
-            foreach (FGrassSector grassSector in grassSectors)
+            boundSector.DrawBound();
+
+            /*foreach (FGrassSector grassSector in grassSectors)
             {
                 grassSector.DrawBounds();
-            }
+            }*/
         }
 
         protected virtual void OnDrawGizmosSelected()
@@ -95,7 +133,7 @@ namespace Landscape.FoliagePipeline
         {
             foreach(FGrassSector grassSector in grassSectors)
             {
-                grassSector.Init(boundComponent.boundSector);
+                grassSector.Init(boundSector);
             }
         }
         
@@ -108,24 +146,24 @@ namespace Landscape.FoliagePipeline
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public override void InitViewSection(in float3 viewOrigin, FPlane* planes, in NativeList<JobHandle> taskHandles)
+        {
+            taskHandles.Add(boundSector.InitView(DrawDistance, viewOrigin, planes));
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public override void InitViewFoliage(in float3 viewPos, in float4x4 matrixProj, FPlane* planes, in NativeList<JobHandle> taskHandles)
         {
             if(!needUpdateGPU) { return; }
 
             foreach (FGrassSector grassSector in grassSectors)
             {
-                grassSector.BuildInstance(boundComponent.SectionSize, terrain.detailObjectDensity, taskHandles);
+                grassSector.BuildInstance(SectionSize, terrain.detailObjectDensity, taskHandles);
             }
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public override void DispatchSetup(in NativeList<JobHandle> taskHandles)
-        {
-
-        }
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public void SetGPUData(CommandBuffer cmdBuffer)
+        public override void DispatchSetup(CommandBuffer cmdBuffer, in NativeList<JobHandle> taskHandles)
         {
             if (!needUpdateGPU) { return; }
             lastDensityScale = terrain.detailObjectDensity;

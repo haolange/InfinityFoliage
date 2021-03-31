@@ -11,111 +11,122 @@ using System.Runtime.CompilerServices;
 #if UNITY_EDITOR
 using UnityEditor;
 #endif
-
-internal struct MTransfrom : IEquatable<MTransfrom>
+namespace Landscape.FoliagePipeline
 {
-    public Vector3 position;
-    public Quaternion rotation;
-    public Vector3 scale;
-
-    public bool Equals(MTransfrom target)
+    internal struct MTransfrom : IEquatable<MTransfrom>
     {
-        return position != target.position || rotation != target.rotation || scale != target.scale;
-    }
+        public Vector3 position;
+        public Quaternion rotation;
+        public Vector3 scale;
 
-    public override bool Equals(object target)
-    {
-        return Equals((MTransfrom)target);
-    }
-
-    public override int GetHashCode()
-    {
-        return position.GetHashCode() + rotation.GetHashCode() + scale.GetHashCode();
-    }
-};
-
-//[ExecuteInEditMode]
-#if UNITY_EDITOR
-[CanEditMultipleObjects]
-#endif
-public abstract unsafe class FoliageComponent : MonoBehaviour
-{
-    [HideInInspector]
-    internal MTransfrom currTransform;
-    [HideInInspector]
-    internal MTransfrom prevTransform;
-    
-    //public static List<FoliageComponent> s_foliageComponents = new List<FoliageComponent>(128);
-
-    
-    void OnEnable()
-    {
-        //s_foliageComponents.Add(this);
-        OnRegister();
-        EventPlay();
-    }
-
-    void EventUpdate()
-    {
-        if (TransfromStateDirty())
+        public bool Equals(MTransfrom target)
         {
-            OnTransformChange();
-        }
-        EventTick();
-    }
-
-    void OnDisable()
-    {
-        UnRegister();
-        //s_foliageComponents.Remove(this);
-    }
-
-    private bool TransfromStateDirty()
-    {
-        currTransform.position = transform.position;
-        currTransform.rotation = transform.rotation;
-        currTransform.scale = transform.localScale;
-
-        if (currTransform.Equals(prevTransform))
-        {
-            prevTransform = currTransform;
-            return true;
+            return position != target.position || rotation != target.rotation || scale != target.scale;
         }
 
-        return false;
-    }
+        public override bool Equals(object target)
+        {
+            return Equals((MTransfrom)target);
+        }
 
-    protected virtual void OnRegister()
+        public override int GetHashCode()
+        {
+            return position.GetHashCode() + rotation.GetHashCode() + scale.GetHashCode();
+        }
+    };
+
+    //[ExecuteInEditMode]
+    #if UNITY_EDITOR
+    [CanEditMultipleObjects]
+    #endif
+    public abstract unsafe class FoliageComponent : MonoBehaviour
     {
+        [HideInInspector]
+        internal MTransfrom currTransform;
+        [HideInInspector]
+        internal MTransfrom prevTransform;
+        [HideInInspector]
+        public Terrain terrain;
+        [HideInInspector]
+        public TerrainData terrainData;
+        [HideInInspector]
+        public FBoundSector boundSector;
 
-    }
+        public static List<FoliageComponent> s_foliageComponents = new List<FoliageComponent>(128);
 
-    protected virtual void EventPlay()
-    {
-
-    }
-
-    protected virtual void EventTick()
-    {
-
-    }
-
-    protected virtual void OnTransformChange()
-    {
-
-    }
-
-    protected virtual void UnRegister()
-    {
-
-    }
     
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public abstract void InitViewFoliage(in float3 viewPos, in float4x4 matrixProj, FPlane* planes, in NativeList<JobHandle> taskHandles);
+        void OnEnable()
+        {
+            s_foliageComponents.Add(this);
+            OnRegister();
+            EventPlay();
+        }
 
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public abstract void DispatchSetup(in NativeList<JobHandle> taskHandles);
+        void EventUpdate()
+        {
+            if (TransfromStateDirty())
+            {
+                OnTransformChange();
+            }
+            EventTick();
+        }
 
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public abstract void DispatchDraw(CommandBuffer cmdBuffer, in int passIndex);
+        void OnDisable()
+        {
+            UnRegister();
+            s_foliageComponents.Remove(this);
+        }
+
+        private bool TransfromStateDirty()
+        {
+            currTransform.position = transform.position;
+            currTransform.rotation = transform.rotation;
+            currTransform.scale = transform.localScale;
+
+            if (currTransform.Equals(prevTransform))
+            {
+                prevTransform = currTransform;
+                return true;
+            }
+
+            return false;
+        }
+
+        protected virtual void OnRegister()
+        {
+
+        }
+
+        protected virtual void EventPlay()
+        {
+
+        }
+
+        protected virtual void EventTick()
+        {
+
+        }
+
+        protected virtual void OnTransformChange()
+        {
+
+        }
+
+        protected virtual void UnRegister()
+        {
+
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public abstract void InitViewSection(in float3 viewOrigin, FPlane* planes, in NativeList<JobHandle> taskHandles);
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public abstract void InitViewFoliage(in float3 viewPos, in float4x4 matrixProj, FPlane* planes, in NativeList<JobHandle> taskHandles);
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public abstract void DispatchSetup(CommandBuffer cmdBuffer, in NativeList<JobHandle> taskHandles);
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public abstract void DispatchDraw(CommandBuffer cmdBuffer, in int passIndex);
+    }
 }

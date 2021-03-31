@@ -227,13 +227,13 @@ namespace Landscape.FoliagePipeline
                 m_propertyBlock.SetInt(TreeShaderID.offset, treeCmd.countOffset.y);
                 m_propertyBlock.SetBuffer(TreeShaderID.indexBuffer, m_indexBuffer);
                 m_propertyBlock.SetBuffer(TreeShaderID.primitiveBuffer, m_primitiveBuffer);
-                cmdBuffer.DrawMeshInstancedProcedural(mesh, treeCmd.meshIndex, material, passIndex, treeCmd.countOffset.x, m_propertyBlock);
+                //cmdBuffer.DrawMeshInstancedProcedural(mesh, treeCmd.meshIndex, material, passIndex, treeCmd.countOffset.x, m_propertyBlock);
 
                 //for (int instanceId = 0; instanceId < treeCmd.countOffset.x; ++instanceId)
                 //{
-                //int index = m_treeBatchIndexs[treeCmd.countOffset.y + instanceId];
-                //FMeshBatch treeBatch = m_treeBatchs[index];
-                //cmdBuffer.DrawMesh(mesh, treeBatch.matrix_World, material, treeCmd.meshIndex, 0);
+                    //int index = m_treeBatchIndexs[treeCmd.countOffset.y + instanceId];
+                    //FMeshBatch treeBatch = m_treeBatchs[index];
+                    //cmdBuffer.DrawMesh(mesh, treeBatch.matrix_World, material, treeCmd.meshIndex, 0);
                 //}
             }
 
@@ -250,6 +250,10 @@ namespace Landscape.FoliagePipeline
             {
                 var treeBatch = m_treeBatchs[i];
                 ref var color = ref Geometry.LODColors[treeBatch.lODIndex];
+                if(m_viewTreeBatchs[i] == 0)
+                {
+                    continue;
+                }
 
                 Geometry.DrawBound(treeBatch.boundBox, lodColorState ? color : Color.blue);
 

@@ -4,6 +4,7 @@ namespace Landscape.FoliagePipeline
     {
         TreeBatch,
         GrassBatch,
+        FoliageBatch,
         Max,
     }
 }

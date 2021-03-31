@@ -35,48 +35,53 @@ internal unsafe class FoliagePass : ScriptableRenderPass
         float3 viewOrigin = renderingData.cameraData.camera.transform.position;
         var matrixProj = Geometry.GetProjectionMatrix(renderingData.cameraData.camera.fieldOfView, renderingData.cameraData.camera.pixelWidth, renderingData.cameraData.camera.pixelHeight, renderingData.cameraData.camera.nearClipPlane, renderingData.cameraData.camera.farClipPlane);
 
-        #region InitViewSectorBound
-        NativeArray<int> boundsVisible = default;
-        NativeArray<FBound> sectorsBound = default;
-        var taskHandles = new NativeList<JobHandle>(256, Allocator.Temp);
-        BoundComponent.InitSectorView(viewOrigin, planesPtr, ref boundsVisible, ref sectorsBound);
-        #endregion //InitViewSectorBound
+        #region InitViewBoundSector
+        NativeList<JobHandle> taskHandles = new NativeList<JobHandle>(256, Allocator.Temp);
+        NativeArray<int> boundsVisible = new NativeArray<int>(FoliageComponent.s_foliageComponents.Count, Allocator.TempJob);
+        NativeArray<FBound> sectorsBound = new NativeArray<FBound>(FoliageComponent.s_foliageComponents.Count, Allocator.TempJob);
 
         for (int i = 0; i < sectorsBound.Length; ++i)
         {
+            sectorsBound[i] = FoliageComponent.s_foliageComponents[i].boundSector.bound;
+        }
+
+        var sectorCullingJob = new FBoundSectorCullingJob();
+        {
+            sectorCullingJob.planes = planesPtr;
+            sectorCullingJob.visibleMap = boundsVisible;
+            sectorCullingJob.sectorBounds = (FBound*)sectorsBound.GetUnsafePtr();
+        }
+        sectorCullingJob.Schedule(sectorsBound.Length, 8).Complete();
+        #endregion //InitViewBoundSector
+
+        taskHandles.Clear();
+        for (int i = 0; i < sectorsBound.Length; ++i)
+        {
             if(boundsVisible[i] == 0) { continue; }
+            FoliageComponent foliageComponent = FoliageComponent.s_foliageComponents[i];
 
-            BoundComponent boundComponent = BoundComponent.s_boundComponents[i];
-
-            #region InitViewSectionBound
-            boundComponent.InitSectionView(viewOrigin, planesPtr, taskHandles);
+            #region InitViewBoundSection
+            foliageComponent.InitViewSection(viewOrigin, planesPtr, taskHandles);
             JobHandle.CompleteAll(taskHandles);
             taskHandles.Clear();
-            #endregion //InitViewSectionBound
+            #endregion //InitViewBoundSection
 
             #region InitViewFoliage
-            boundComponent.treeComponent?.InitViewFoliage(viewOrigin, matrixProj, planesPtr, taskHandles);
-            boundComponent.grassComponent?.InitViewFoliage(viewOrigin, matrixProj, planesPtr, taskHandles);
+            foliageComponent.InitViewFoliage(viewOrigin, matrixProj, planesPtr, taskHandles);
             JobHandle.CompleteAll(taskHandles);
             taskHandles.Clear();
             #endregion //InitViewFoliage
 
             #region InitViewCommand
-            boundComponent.treeComponent?.DispatchSetup(taskHandles);
-            boundComponent.grassComponent?.SetGPUData(cmdBuffer);
+            foliageComponent.DispatchSetup(cmdBuffer, taskHandles);
             JobHandle.CompleteAll(taskHandles);
             taskHandles.Clear();
             #endregion //InitViewCommand
 
             #region ExecuteViewCommand
-            using (new ProfilingScope(cmdBuffer, ProfilingSampler.Get(EFoliageSamplerId.TreeBatch)))
+            using (new ProfilingScope(cmdBuffer, ProfilingSampler.Get(EFoliageSamplerId.FoliageBatch)))
             {
-                boundComponent.treeComponent?.DispatchDraw(cmdBuffer, 1);
-            }
-
-            using (new ProfilingScope(cmdBuffer, ProfilingSampler.Get(EFoliageSamplerId.GrassBatch)))
-            {
-                boundComponent.grassComponent?.DispatchDraw(cmdBuffer, 1);
+                foliageComponent.DispatchDraw(cmdBuffer, 1);
             }
             #endregion //ExecuteViewCommand
         }

@@ -8,7 +8,6 @@ using System.Runtime.CompilerServices;
 
 namespace Landscape.FoliagePipeline
 {
-    [RequireComponent(typeof(BoundComponent))]
     [AddComponentMenu("HG/Foliage/Tree Component")]
     public unsafe class TreeComponent : FoliageComponent
     {
@@ -25,21 +24,13 @@ namespace Landscape.FoliagePipeline
         }
 
         [HideInInspector]
-        public Terrain terrain;
-        [HideInInspector]
-        public TerrainData terrainData;
-        [HideInInspector]
         public FTreeSector[] treeSectors;
-        [HideInInspector]
-        public BoundComponent boundComponent;
 
 
         protected override void OnRegister()
         {
             terrain = GetComponent<Terrain>();
             terrainData = terrain.terrainData;
-            boundComponent = GetComponent<BoundComponent>();
-            boundComponent.treeComponent = this;
 
             InitTreeSectors();
 
@@ -68,10 +59,17 @@ namespace Landscape.FoliagePipeline
         protected override void UnRegister()
         {
             ReleaseTreeSectors();
-            boundComponent.treeComponent = null;
         }
 
 #if UNITY_EDITOR
+        public void OnSave()
+        {
+            terrain = GetComponent<Terrain>();
+            terrainData = GetComponent<TerrainCollider>().terrainData;
+            int sectorSize = terrainData.heightmapResolution - 1;
+            boundSector = new FBoundSector(sectorSize, 0, 0, transform.position, terrainData.bounds);
+        }
+
         private void DrawBounds(in bool color = false)
         {
             if (showBounds == false || Application.isPlaying == false || this.enabled == false || this.gameObject.activeSelf == false) return;
@@ -108,6 +106,12 @@ namespace Landscape.FoliagePipeline
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public override void InitViewSection(in float3 viewOrigin, FPlane* planes, in NativeList<JobHandle> taskHandles)
+        {
+            
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public override void InitViewFoliage(in float3 viewPos, in float4x4 matrixProj, FPlane* planes, in NativeList<JobHandle> taskHandles)
         {
             foreach (var treeSector in treeSectors)
@@ -118,7 +122,7 @@ namespace Landscape.FoliagePipeline
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public override void DispatchSetup(in NativeList<JobHandle> taskHandles)
+        public override void DispatchSetup(CommandBuffer cmdBuffer, in NativeList<JobHandle> taskHandles)
         {
             foreach (var treeSector in treeSectors)
             {

@@ -1,10 +1,5 @@
-using Unity.Jobs;
 using UnityEditor;
-using UnityEngine;
-using Unity.Mathematics;
 using Landscape.FoliagePipeline;
-using System.Collections.Generic;
-using System.Runtime.InteropServices;
 
 namespace Landscape.Editor.FoliagePipeline
 {
@@ -44,7 +39,7 @@ namespace Landscape.Editor.FoliagePipeline
             if (treeTarget.gameObject.activeSelf == false) { return; }
             if (treeTarget.enabled == false) { return; }
 
-            //Foliage.Serialize();
+            treeTarget.OnSave();
         }
     }
 }

@@ -13,7 +13,7 @@ namespace Landscape.FoliagePipeline
     [AddComponentMenu("HG/Foliage/Bound Component")]
     public unsafe class BoundComponent : MonoBehaviour
     {
-        [Header("Setting")]
+        /*[Header("Setting")]
         public int NumSection = 16;
         public int SectorSize
         {
@@ -42,9 +42,9 @@ namespace Landscape.FoliagePipeline
             {
                 return terrain.detailObjectDistance + (terrain.detailObjectDistance * 0.5f);
             }
-        }
+        }*/
 
-        [HideInInspector]
+        /*[HideInInspector]
         public Terrain terrain;
         [HideInInspector]
         public TerrainData terrainData;
@@ -53,17 +53,17 @@ namespace Landscape.FoliagePipeline
         [HideInInspector]
         public TreeComponent treeComponent;
         [HideInInspector]
-        public GrassComponent grassComponent;
+        public GrassComponent grassComponent;*/
 
 #if UNITY_EDITOR
         [Header("Debug")]
         public bool showBounds = false;
 #endif
 
-        public static List<BoundComponent> s_boundComponents = new List<BoundComponent>(128);
+        //public static List<BoundComponent> s_boundComponents = new List<BoundComponent>(128);
 
 
-        void OnEnable()
+        /*void OnEnable()
         {
             terrain = GetComponent<Terrain>();
             terrainData = terrain.terrainData;
@@ -124,7 +124,7 @@ namespace Landscape.FoliagePipeline
                 boundSector.DrawBound();
             }
         }
-#endif
+#endif*/
     }
 }
 
