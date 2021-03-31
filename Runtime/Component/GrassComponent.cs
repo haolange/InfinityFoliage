@@ -16,6 +16,8 @@ namespace Landscape.FoliagePipeline
         public bool showBounds = false;
 #endif
 
+        [Header("Setting")]
+        public int numSection = 16;
         public bool needUpdateGPU
         {
             get
@@ -23,7 +25,6 @@ namespace Landscape.FoliagePipeline
                 return lastDensityScale != terrain.detailObjectDensity;
             }
         }
-        public int NumSection = 16;
         public int SectorSize
         {
             get
@@ -35,7 +36,7 @@ namespace Landscape.FoliagePipeline
         {
             get
             {
-                return SectorSize / NumSection;
+                return SectorSize / numSection;
             }
         }
         public float DrawDistance
@@ -52,9 +53,10 @@ namespace Landscape.FoliagePipeline
                 return terrainData.size.y;
             }
         }
-        
-        private float lastDensityScale;
-
+        [HideInInspector]
+        public float lastNumSection;
+        [HideInInspector]
+        public float lastDensityScale;
         [HideInInspector]
         public FGrassSector[] grassSectors;
 
@@ -98,13 +100,16 @@ namespace Landscape.FoliagePipeline
 #if UNITY_EDITOR
         public void OnSave()
         {
+            if(lastNumSection == numSection) { return; }
+            lastNumSection = numSection;
+
             terrain = GetComponent<Terrain>();
             terrainData = GetComponent<TerrainCollider>().terrainData;
 
             TerrainTexture HeightTexture = new TerrainTexture(SectorSize);
             HeightTexture.TerrainDataToHeightmap(terrainData);
 
-            boundSector = new FBoundSector(SectorSize, NumSection, SectionSize, transform.position, terrainData.bounds);
+            boundSector = new FBoundSector(SectorSize, numSection, SectionSize, transform.position, terrainData.bounds);
             boundSector.BuildBounds(SectorSize, SectionSize, TerrainScaleY, transform.position, HeightTexture.HeightMap);
 
             HeightTexture.Release();
