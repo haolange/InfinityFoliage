@@ -23,7 +23,6 @@ internal unsafe class FoliagePass : ScriptableRenderPass
         cmdBuffer.Clear();
         renderContext.ExecuteCommandBuffer(cmdBuffer);
 
-        #region InitViewContext
         var planes = new NativeArray<FPlane>(6, Allocator.TempJob);
         renderingData.cameraData.camera.TryGetCullingParameters(false, out var cullingParams);
         for (var i = 0; i < 6; ++i)
@@ -51,47 +50,60 @@ internal unsafe class FoliagePass : ScriptableRenderPass
             sectorCullingJob.visibleMap = boundsVisible;
             sectorCullingJob.sectorBounds = (FBound*)sectorsBound.GetUnsafePtr();
         }
-        sectorCullingJob.Schedule(sectorsBound.Length, 8).Complete();
+        taskHandles.Add(sectorCullingJob.Schedule(sectorsBound.Length, 8));
+        JobHandle.CompleteAll(taskHandles);
+        taskHandles.Clear();
         #endregion //InitViewBoundSector
 
+        #region InitViewBoundSection
         for (int i = 0; i < sectorsBound.Length; ++i)
         {
-            if(boundsVisible[i] == 0) { continue; }
+            if (boundsVisible[i] == 0) { continue; }
             FoliageComponent foliageComponent = FoliageComponent.s_foliageComponents[i];
-
-            #region InitViewBoundSection
             foliageComponent.InitViewSection(viewOrigin, planesPtr, taskHandles);
-            JobHandle.CompleteAll(taskHandles);
-            taskHandles.Clear();
-            #endregion //InitViewBoundSection
+        }
+        JobHandle.CompleteAll(taskHandles);
+        taskHandles.Clear();
+        #endregion //InitViewBoundSection
 
-            #region InitViewFoliage
+        #region InitViewFoliage
+        for (int i = 0; i < sectorsBound.Length; ++i)
+        {
+            if (boundsVisible[i] == 0) { continue; }
+            FoliageComponent foliageComponent = FoliageComponent.s_foliageComponents[i];
             foliageComponent.InitViewFoliage(viewOrigin, matrixProj, planesPtr, taskHandles);
-            JobHandle.CompleteAll(taskHandles);
-            taskHandles.Clear();
-            #endregion //InitViewFoliage
+        }
+        JobHandle.CompleteAll(taskHandles);
+        taskHandles.Clear();
+        #endregion //InitViewFoliage
 
-            #region InitViewCommand
+        #region InitViewCommand
+        for (int i = 0; i < sectorsBound.Length; ++i)
+        {
+            if (boundsVisible[i] == 0) { continue; }
+            FoliageComponent foliageComponent = FoliageComponent.s_foliageComponents[i];
             foliageComponent.DispatchSetup(cmdBuffer, taskHandles);
-            JobHandle.CompleteAll(taskHandles);
-            taskHandles.Clear();
-            #endregion //InitViewCommand
+        }
+        JobHandle.CompleteAll(taskHandles);
+        taskHandles.Clear();
+        #endregion //InitViewCommand
 
-            #region ExecuteViewCommand
-            using (new ProfilingScope(cmdBuffer, ProfilingSampler.Get(EFoliageSamplerId.FoliageBatch)))
+        #region InitViewCommand
+        using (new ProfilingScope(cmdBuffer, ProfilingSampler.Get(EFoliageSamplerId.FoliageBatch)))
+        {
+            for (int i = 0; i < sectorsBound.Length; ++i)
             {
+                if (boundsVisible[i] == 0) { continue; }
+                FoliageComponent foliageComponent = FoliageComponent.s_foliageComponents[i];
                 foliageComponent.DispatchDraw(cmdBuffer, 1);
             }
-            #endregion //ExecuteViewCommand
         }
-        #endregion //InitViewContext
+        #endregion //InitViewCommand
 
-        #region ReleaseViewContext
         planes.Dispose();
         taskHandles.Dispose();
         sectorsBound.Dispose();
         boundsVisible.Dispose();
-        #endregion //ReleaseViewContext
 
         renderContext.ExecuteCommandBuffer(cmdBuffer);
         cmdBuffer.Clear();

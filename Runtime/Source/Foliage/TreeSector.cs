@@ -227,7 +227,7 @@ namespace Landscape.FoliagePipeline
                 m_propertyBlock.SetInt(TreeShaderID.offset, treeCmd.countOffset.y);
                 m_propertyBlock.SetBuffer(TreeShaderID.indexBuffer, m_indexBuffer);
                 m_propertyBlock.SetBuffer(TreeShaderID.primitiveBuffer, m_primitiveBuffer);
-                //cmdBuffer.DrawMeshInstancedProcedural(mesh, treeCmd.meshIndex, material, passIndex, treeCmd.countOffset.x, m_propertyBlock);
+                cmdBuffer.DrawMeshInstancedProcedural(mesh, treeCmd.meshIndex, material, passIndex, treeCmd.countOffset.x, m_propertyBlock);
 
                 //for (int instanceId = 0; instanceId < treeCmd.countOffset.x; ++instanceId)
                 //{

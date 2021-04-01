@@ -113,7 +113,7 @@ namespace Landscape.FoliagePipeline
 
             m_propertyBlock.Clear();
             m_propertyBlock.SetBuffer(GrassShaderID.primitiveBuffer, m_grassBatchBuffer);
-            //cmdBuffer.DrawMeshInstancedProcedural(mesh, 0, material, passIndex, m_nativeGrassbatchs.Length, m_propertyBlock);
+            cmdBuffer.DrawMeshInstancedProcedural(mesh, 0, material, passIndex, m_nativeGrassbatchs.Length, m_propertyBlock);
         }
 
 #if UNITY_EDITOR
