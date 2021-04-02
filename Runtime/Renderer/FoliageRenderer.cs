@@ -45,14 +45,10 @@ internal unsafe class FoliagePass : ScriptableRenderPass
         }
 
         var sectorCullingJob = new FBoundSectorCullingJob();
-        {
-            sectorCullingJob.planes = planesPtr;
-            sectorCullingJob.visibleMap = boundsVisible;
-            sectorCullingJob.sectorBounds = (FBound*)sectorsBound.GetUnsafePtr();
-        }
-        taskHandles.Add(sectorCullingJob.Schedule(sectorsBound.Length, 8));
-        JobHandle.CompleteAll(taskHandles);
-        taskHandles.Clear();
+        sectorCullingJob.planes = planesPtr;
+        sectorCullingJob.visibleMap = boundsVisible;
+        sectorCullingJob.sectorBounds = (FBound*)sectorsBound.GetUnsafePtr();
+        sectorCullingJob.Schedule(sectorsBound.Length, 8).Complete();
         #endregion //InitViewBoundSector
 
         #region InitViewBoundSection
