@@ -95,6 +95,11 @@ namespace Landscape.FoliagePipeline
         {
             ReleaseGrassSectors();
             boundSector.ReleaseNativeCollection();
+
+            if (terrain.drawTreesAndFoliage == false)
+            {
+                terrain.drawTreesAndFoliage = true;
+            }
         }
 
 #if UNITY_EDITOR

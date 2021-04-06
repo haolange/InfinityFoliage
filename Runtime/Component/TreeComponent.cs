@@ -38,7 +38,6 @@ namespace Landscape.FoliagePipeline
             {
                 terrain.drawTreesAndFoliage = false;
             }
-
         }
 
         protected override void OnTransformChange()
@@ -59,6 +58,11 @@ namespace Landscape.FoliagePipeline
         protected override void UnRegister()
         {
             ReleaseTreeSectors();
+
+            if (terrain.drawTreesAndFoliage == false)
+            {
+                terrain.drawTreesAndFoliage = true;
+            }
         }
 
 #if UNITY_EDITOR
