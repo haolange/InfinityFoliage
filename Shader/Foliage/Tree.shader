@@ -144,7 +144,7 @@ Shader "Landscape/Tree"
 			{
 				float3 WS_PixelPos = In.worldPos.xyz;
 				float4 color = _AlbedoTexture.Sample(sampler_AlbedoTexture, In.uv0);
-				if (color.a <= 0.3f)
+				if (color.a <= 0.5f)
 				{
 					discard;
 				}
