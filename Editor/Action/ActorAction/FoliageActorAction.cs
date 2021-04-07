@@ -241,16 +241,23 @@ namespace Landscape.Editor.FoliagePipeline
                         FBoundSection boundSection = boundSector.sections[grassSection.boundIndex];
 
                         grassSection.densityMap = new int[grassComponent.SectionSize * grassComponent.SectionSize];
-                        int2 uv = (int2)boundSection.pivotPosition.xz - new int2((int)selectObject.transform.position.x, (int)selectObject.transform.position.z);
-                        int[,] densityMap = terrainData.GetDetailLayer(uv.x, uv.y, grassComponent.SectionSize, grassComponent.SectionSize, grassIndex);
+                        grassSection.normalHeight = new float4[grassComponent.SectionSize * grassComponent.SectionSize];
 
-                        //Build Densitys
+                        int2 sampleUV = (int2)boundSection.pivotPosition.xz - new int2((int)selectObject.transform.position.x, (int)selectObject.transform.position.z);
+                        int[,] densityMap = terrainData.GetDetailLayer(sampleUV.x, sampleUV.y, grassComponent.SectionSize, grassComponent.SectionSize, grassIndex);
+                        float[,] heightMap = terrainData.GetHeights(sampleUV.x, sampleUV.y, grassComponent.SectionSize, grassComponent.SectionSize);
+
+                        //Build Density and Height and Normal
                         var updategrassTask = new FUpdateGrassTask();
                         {
-                            updategrassTask.srcMap = densityMap;
-                            updategrassTask.dscMap = grassSection.densityMap;
                             updategrassTask.length = grassComponent.SectionSize;
+                            updategrassTask.sampleSize = grassComponent.SectorSize;
+                            updategrassTask.sampleUV = (float2)sampleUV / grassComponent.SectorSize;
+                            updategrassTask.srcDensity = densityMap;
+                            updategrassTask.terrainData = terrainData;
                             updategrassTask.grassSection = grassSection;
+                            updategrassTask.dscDensity = grassSection.densityMap;
+                            updategrassTask.dscNormalHeight = grassSection.normalHeight;
                         }
                         var taskHandle = GCHandle.Alloc(updategrassTask);
                         tasksHandle.Add(taskHandle);
@@ -259,12 +266,13 @@ namespace Landscape.Editor.FoliagePipeline
                         {
                             updateGrassJob.taskHandle = taskHandle;
                         }
+                        //updateGrassJob.Execute();
                         jobsHandle.Add(updateGrassJob.Schedule());
                     }
                 }
             }
 
-            for (var j = 0; j < jobsHandle.Count; ++j)
+            for (var j = 0; j < tasksHandle.Count; ++j)
             {
                 jobsHandle[j].Complete();
                 tasksHandle[j].Free();
