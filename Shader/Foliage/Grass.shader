@@ -8,15 +8,25 @@ Shader "Landscape/Grass"
         [Header(Normal)]
         [NoScaleOffset]_NomralTexture ("NomralTexture", 2D) = "bump" {}
 
-		[Header(State)]
+		//[Header(State)]
 		//_ZTest("ZTest", Int) = 4
 		//_ZWrite("ZWrite", Int) = 1
-		_Cull("Cull", Int) = 0
+		//_Cull("Cull", Int) = 0
 	}
+
+	HLSLINCLUDE
+		#include "Include/Foliage.hlsl"
+		#include "Include/ShaderVariable.hlsl"
+		#include "Packages/com.unity.render-pipelines.core/ShaderLibrary/Common.hlsl"
+		#include "Packages/com.unity.render-pipelines.core/ShaderLibrary/UnityInstancing.hlsl"
+
+		Texture2D _AlbedoTexture, _NomralTexture;
+    	SamplerState sampler_AlbedoTexture, sampler_NomralTexture;
+	ENDHLSL
 
     SubShader
     {
-        Tags{"RenderPipeline" = "UniversalPipeline" "IgnoreProjector" = "True" "RenderType" = "Opaque"}
+        Tags{"Queue" = "AlphaTest" "RenderPipeline" = "UniversalPipeline" "IgnoreProjector" = "True" "RenderType" = "Opaque"}
 		AlphaToMask On
 
         Pass
@@ -25,60 +35,54 @@ Shader "Landscape/Grass"
 			Tags { "LightMode" = "UniversalForward" }
 			ZTest LEqual 
 			ZWrite On 
-			Cull [_Cull]
-			AlphaTest Greater 0
+			Cull Off
 
             HLSLPROGRAM
 			#pragma target 4.5
             #pragma vertex vert
             #pragma fragment frag
-			//#pragma multi_compile_instancing
+			#pragma multi_compile_instancing
 			#pragma enable_d3d11_debug_symbols
-
-			#include "Packages/com.unity.render-pipelines.core/ShaderLibrary/Common.hlsl"
-			#include "Packages/com.unity.render-pipelines.core/ShaderLibrary/UnityInstancing.hlsl"
-			#include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/UnityInput.hlsl"
 
 			struct Attributes
 			{
 				float2 uv0 : TEXCOORD0;
 				float3 normal : NORMAL;
-				float4 vertex : POSITION;
-				//UNITY_VERTEX_INPUT_INSTANCE_ID
+				float4 vertexOS : POSITION;
+				UNITY_VERTEX_INPUT_INSTANCE_ID
 			};
 
 			struct Varyings
 			{
 				float2 uv0 : TEXCOORD0;
 				float3 normal : TEXCOORD1;
-				float4 vertex : SV_POSITION;
-				float4 worldPos : TEXCOORD2;
-				//UNITY_VERTEX_INPUT_INSTANCE_ID
+				float4 vertexCS : SV_POSITION;
+				float4 vertexWS : TEXCOORD2;
+				UNITY_VERTEX_INPUT_INSTANCE_ID
 			};
 
-            Texture2D _AlbedoTexture; SamplerState sampler_AlbedoTexture;
-            Texture2D _NomralTexture; SamplerState sampler_NomralTexture;
-
-			Varyings vert(Attributes In)
+			Varyings vert(Attributes input)
 			{
-				Varyings Out = (Varyings)0;
-				//UNITY_SETUP_INSTANCE_ID(In);
-				//UNITY_TRANSFER_INSTANCE_ID(In, Out);
+				Varyings output = (Varyings)0;
+				UNITY_SETUP_INSTANCE_ID(input);
+				UNITY_TRANSFER_INSTANCE_ID(input, output);
 
-				Out.uv0 = In.uv0;
-				Out.normal = normalize(mul(In.normal, (float3x3)unity_WorldToObject));
-				Out.worldPos = mul(unity_ObjectToWorld, In.vertex);
-				Out.vertex = mul(unity_MatrixVP, Out.worldPos);
-				return Out;
+				output.uv0 = input.uv0;
+				output.normal = normalize(mul(input.normal, (float3x3)UNITY_MATRIX_M));
+				output.vertexWS = mul(UNITY_MATRIX_M, input.vertexOS);
+				output.vertexCS = mul(UNITY_MATRIX_VP, output.vertexWS);
+				return output;
 			}
 
-			float4 frag(Varyings In) : SV_Target
+			float4 frag(Varyings input) : SV_Target
 			{
-				//UNITY_SETUP_INSTANCE_ID(In);
+				UNITY_SETUP_INSTANCE_ID(input);
 
-				float3 WS_PixelPos = In.worldPos.xyz;
-				float4 color = _AlbedoTexture.Sample(sampler_AlbedoTexture, In.uv0);
-				if (color.a <= 0.3f)
+				float3 worldPos = input.vertexWS.xyz;
+				float4 color = _AlbedoTexture.Sample(sampler_AlbedoTexture, input.uv0);
+
+				float crossFade = LODCrossDither(input.vertexCS.xy, unity_LODFade.x);
+				if (crossFade >= 0.5f)
 				{
 					discard;
 				}
@@ -90,11 +94,10 @@ Shader "Landscape/Grass"
 		Pass
         {
             Name "ForwardLit-Instance"
-			Tags { "LightMode" = "UniversalForward" }
+			Tags { "LightMode" = "UniversalForward-Instance" }
 			ZTest LEqual 
 			ZWrite On 
-			Cull [_Cull]
-			AlphaTest Greater 0
+			Cull Off
 
             HLSLPROGRAM
 			#pragma target 4.5
@@ -102,17 +105,12 @@ Shader "Landscape/Grass"
             #pragma fragment frag
 			#pragma enable_d3d11_debug_symbols
 
-			#include "Foliage.hlsl"
-			#include "Packages/com.unity.render-pipelines.core/ShaderLibrary/Common.hlsl"
-			#include "Packages/com.unity.render-pipelines.core/ShaderLibrary/UnityInstancing.hlsl"
-			#include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/UnityInput.hlsl"
-
 			struct Attributes
 			{
 				uint InstanceId : SV_InstanceID;
 				float2 uv0 : TEXCOORD0;
 				//float3 normal : NORMAL;
-				float4 vertex : POSITION;
+				float4 vertexOS : POSITION;
 			};
 
 			struct Varyings
@@ -120,12 +118,9 @@ Shader "Landscape/Grass"
 				uint PrimitiveId  : SV_InstanceID;
 				float2 uv0 : TEXCOORD0;
 				//float3 normal : TEXCOORD1;
-				float4 vertex : SV_POSITION;
-				float4 worldPos : TEXCOORD2;
+				float4 vertexCS : SV_POSITION;
+				float4 vertexWS : TEXCOORD2;
 			};
-
-            Texture2D _AlbedoTexture; SamplerState sampler_AlbedoTexture;
-            Texture2D _NomralTexture; SamplerState sampler_NomralTexture;
 
 			Varyings vert(Attributes In)
 			{
@@ -135,16 +130,16 @@ Shader "Landscape/Grass"
 
 				Out.uv0 = In.uv0;
 				//Out.normal = normalize(mul(In.normal, (float3x3)unity_WorldToObject));
-				Out.worldPos = mul(grassBatch.matrix_World, In.vertex);
-				Out.vertex = mul(unity_MatrixVP, Out.worldPos);
+				Out.vertexWS = mul(grassBatch.matrix_World, In.vertexOS);
+				Out.vertexCS = mul(unity_MatrixVP, Out.vertexWS);
 				return Out;
 			}
 
 			float4 frag(Varyings In) : SV_Target
 			{
-				float3 WS_PixelPos = In.worldPos.xyz;
+				float3 WS_PixelPos = In.vertexWS.xyz;
 				float4 color = _AlbedoTexture.Sample(sampler_AlbedoTexture, In.uv0);
-				if (color.a <= 0.3f)
+				if (color.a <= 0.5f)
 				{
 					discard;
 				}

@@ -47,11 +47,15 @@ namespace Landscape.FoliagePipeline
         }
     }
 
-    public unsafe struct FUpdateGrassTask : ITask
+    public struct FUpdateGrassTask : ITask
     {
         public int length;
-        public int[] dscMap;
-        public int[,] srcMap;
+        public int sampleSize;
+        public float2 sampleUV;
+        public int[] dscDensity;
+        public int[,] srcDensity;
+        public float4[] dscNormalHeight;
+        public TerrainData terrainData;
         public FGrassSection grassSection;
 
 
@@ -62,8 +66,12 @@ namespace Landscape.FoliagePipeline
                 for (int k = 0; k < length; ++k)
                 {
                     int densityIndex = j * length + k;
-                    dscMap[densityIndex] = srcMap[j, k];
-                    grassSection.totalDensity += srcMap[j, k];
+                    dscDensity[densityIndex] = srcDensity[j, k];
+
+                    float2 offsetUV = new float2(k, j) / sampleSize;
+                    //dscNormalHeight[densityIndex] = new float4(0, 0, 1, terrainData.GetInterpolatedHeight(sampleUV.x + offsetUV.x, sampleUV.y + offsetUV.y));
+
+                    grassSection.totalDensity += srcDensity[j, k];
                 }
             }
         }
@@ -125,37 +133,46 @@ namespace Landscape.FoliagePipeline
         public float densityScale;
 
         [ReadOnly]
+        public float terrainHeight;
+
+        [ReadOnly]
         public float3 sectionPivot;
 
         [ReadOnly]
         public NativeArray<int> densityMap;
 
+        [ReadOnly]
+        public NativeArray<float4> normalHeightMap;
+
         [WriteOnly]
-        public NativeList<FGrassBatch> grassbatchs;
+        public NativeList<FGrassBatch> grassBatchs;
 
 
         public void Execute()
         {
-            int density = default;
-            float3 position = default;
-            float3 newPosition = default;
-            float4x4 matrix_World = default;
-            FGrassBatch grassbatch = default;
+            int density;
+            float3 position;
+            float3 newPosition;
+            float4 normalHeight;
+            float4x4 matrix_World;
+            FGrassBatch grassBatch = default;
 
             for (int i = 0; i < densityMap.Length; ++i)
             {
                 density = (int)((float)densityMap[i] * densityScale);
-                position = sectionPivot + new float3(i % split, 0, i / split);
+                normalHeight = normalHeightMap[i];
 
-                for(int j = 0; j < density; ++j)
+                position = sectionPivot + new float3(i % split, normalHeight.w * 1, i / split);
+
+                for (int j = 0; j < density; ++j)
                 {
                     float2 random = randomFloat2(new float2(position.x + 0.5f, (position.z + 0.5f) * (j + 1)));
-                    newPosition = position + new float3(random.x, position.y, random.y);
+                    newPosition = position + new float3(random.x, 0, random.y);
                     matrix_World = float4x4.TRS(newPosition, quaternion.identity, 1);
 
-                    grassbatch.position = newPosition;
-                    grassbatch.matrix_World = matrix_World;
-                    grassbatchs.Add(grassbatch);
+                    grassBatch.position = newPosition;
+                    grassBatch.matrix_World = matrix_World;
+                    grassBatchs.Add(grassBatch);
                 }
             }
         }

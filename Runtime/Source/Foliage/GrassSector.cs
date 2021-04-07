@@ -32,14 +32,14 @@ namespace Landscape.FoliagePipeline
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public void BuildInstance(in int split, in float densityScale, in NativeList<JobHandle> taskHandles)
+        public void BuildInstance(in int split, in float terrainHeight, in float densityScale, in NativeList<JobHandle> taskHandles)
         {
             foreach (FGrassSection section in sections)
             {
                 //if (boundSector.sectionsVisbible[section.boundIndex] == 0) { continue; }
 
                 FBoundSection boundSection = boundSector.nativeSections[section.boundIndex];
-                taskHandles.Add(section.BuildInstance(split, densityScale, boundSection.pivotPosition));
+                taskHandles.Add(section.BuildInstance(split, terrainHeight, densityScale, boundSection.pivotPosition));
             }
         }
 

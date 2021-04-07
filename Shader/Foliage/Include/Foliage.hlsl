@@ -2,6 +2,7 @@
 #define _Foliage_
 
 #include "Geometry.hlsl"
+#include "Packages/com.unity.render-pipelines.core/ShaderLibrary/Common.hlsl"
 
 struct FTreeBatch
 {
@@ -22,5 +23,13 @@ struct FGrassBatch
      float4x4 matrix_World;
 };
 StructuredBuffer<FGrassBatch> _GrassBatchBuffer;
+
+
+float LODCrossDither(uint2 fadeMaskSeed, float ditherFactor)
+{
+    float p = GenerateHashedRandomFloat(fadeMaskSeed);
+    return (ditherFactor - CopySign(p, ditherFactor));
+    //clip(f);
+}
 
 #endif
