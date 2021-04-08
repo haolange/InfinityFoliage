@@ -8,6 +8,7 @@ using System.Collections.Generic;
 using System.Runtime.InteropServices;
 using Unity.Collections.LowLevel.Unsafe;
 using static Unity.Mathematics.mathExtent;
+using Random = Unity.Mathematics.Random;
 
 namespace Landscape.FoliagePipeline
 {
@@ -50,12 +51,10 @@ namespace Landscape.FoliagePipeline
     public struct FUpdateGrassTask : ITask
     {
         public int length;
-        public int sampleSize;
-        public float2 sampleUV;
         public int[] dscDensity;
         public int[,] srcDensity;
+        public float[,] srcHeight;
         public float4[] dscNormalHeight;
-        public TerrainData terrainData;
         public FGrassSection grassSection;
 
 
@@ -67,10 +66,7 @@ namespace Landscape.FoliagePipeline
                 {
                     int densityIndex = j * length + k;
                     dscDensity[densityIndex] = srcDensity[j, k];
-
-                    float2 offsetUV = new float2(k, j) / sampleSize;
-                    //dscNormalHeight[densityIndex] = new float4(0, 0, 1, terrainData.GetInterpolatedHeight(sampleUV.x + offsetUV.x, sampleUV.y + offsetUV.y));
-
+                    dscNormalHeight[densityIndex].w = srcHeight[j, k];
                     grassSection.totalDensity += srcDensity[j, k];
                 }
             }
@@ -162,13 +158,15 @@ namespace Landscape.FoliagePipeline
                 density = (int)((float)densityMap[i] * densityScale);
                 normalHeight = normalHeightMap[i];
 
-                position = sectionPivot + new float3(i % split, normalHeight.w * 1, i / split);
+                position = sectionPivot + new float3(i % split, normalHeight.w * terrainHeight, i / split);
 
                 for (int j = 0; j < density; ++j)
                 {
-                    float2 random = randomFloat2(new float2(position.x + 0.5f, (position.z + 0.5f) * (j + 1)));
-                    newPosition = position + new float3(random.x, 0, random.y);
-                    matrix_World = float4x4.TRS(newPosition, quaternion.identity, 1);
+                    float randomRotate = randomFloat(((position.x + 0.5f) * (j + 1)) + position.z);
+                    float2 randomPoint = randomFloat2(new float2(position.x + 0.5f, (position.z + 0.5f) * (j + 1)));
+
+                    newPosition = position + new float3(randomPoint.x, 0, randomPoint.y);
+                    matrix_World = float4x4.TRS(newPosition, quaternion.AxisAngle(new float3(0, 1, 0), math.radians(randomRotate * 360)), 1);
 
                     grassBatch.position = newPosition;
                     grassBatch.matrix_World = matrix_World;

@@ -37,9 +37,19 @@ namespace Landscape.FoliagePipeline
         }
     }
 
+    public struct FGrassShaderProperty 
+    {
+        public int sectorSize;
+        public float sectorScaleY;
+        public RenderTexture heightmapTexture;
+    }
+
     internal static class GrassShaderID
     {
+        internal static int terrainSize = Shader.PropertyToID("_TerrainSize");
+        internal static int terrainScaleY = Shader.PropertyToID("_TerrainScaleY");
         internal static int primitiveBuffer = Shader.PropertyToID("_GrassBatchBuffer");
+        internal static int terrainHeightmap = Shader.PropertyToID("_TerrainHeightmap");
     }
 
     [Serializable]
@@ -115,12 +125,15 @@ namespace Landscape.FoliagePipeline
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public void DispatchDraw(CommandBuffer cmdBuffer, Mesh mesh, Material material, in int passIndex)
+        public void DispatchDraw(CommandBuffer cmdBuffer, Mesh mesh, Material material, in int passIndex, in FGrassShaderProperty shaderProperty)
         {
             if (totalDensity == 0 || m_grassBatchs.Length == 0) { return; }
 
             m_propertyBlock.Clear();
             m_propertyBlock.SetBuffer(GrassShaderID.primitiveBuffer, m_grassBuffer);
+            m_propertyBlock.SetInt(GrassShaderID.terrainSize, shaderProperty.sectorSize);
+            m_propertyBlock.SetFloat(GrassShaderID.terrainScaleY, shaderProperty.sectorScaleY);
+            m_propertyBlock.SetTexture(GrassShaderID.terrainHeightmap, shaderProperty.heightmapTexture);
             cmdBuffer.DrawMeshInstancedProcedural(mesh, 0, material, passIndex, m_grassBatchs.Length, m_propertyBlock);
         }
 

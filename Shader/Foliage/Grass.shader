@@ -20,8 +20,10 @@ Shader "Landscape/Grass"
 		#include "Packages/com.unity.render-pipelines.core/ShaderLibrary/Common.hlsl"
 		#include "Packages/com.unity.render-pipelines.core/ShaderLibrary/UnityInstancing.hlsl"
 
-		Texture2D _AlbedoTexture, _NomralTexture;
-    	SamplerState sampler_AlbedoTexture, sampler_NomralTexture;
+		int _TerrainSize;
+		float _TerrainScaleY;
+		Texture2D _AlbedoTexture, _NomralTexture, _TerrainHeightmap;
+		SamplerState sampler_AlbedoTexture, sampler_NomralTexture, sampler_TerrainHeightmap;
 	ENDHLSL
 
     SubShader
@@ -117,9 +119,9 @@ Shader "Landscape/Grass"
 			{
 				uint PrimitiveId  : SV_InstanceID;
 				float2 uv0 : TEXCOORD0;
-				//float3 normal : TEXCOORD1;
+				//float3 normal : NORMAL;
 				float4 vertexCS : SV_POSITION;
-				float4 vertexWS : TEXCOORD2;
+				float4 vertexWS : TEXCOORD1;
 			};
 
 			Varyings vert(Attributes In)
@@ -131,6 +133,9 @@ Shader "Landscape/Grass"
 				Out.uv0 = In.uv0;
 				//Out.normal = normalize(mul(In.normal, (float3x3)unity_WorldToObject));
 				Out.vertexWS = mul(grassBatch.matrix_World, In.vertexOS);
+				//float Height = _TerrainHeightmap.SampleLevel(Global_point_clamp_sampler, grassBatch.position.xz * rcp(_TerrainSize), 0, 0);
+    			//Out.vertexWS.y += UnpackHeightmap(Height) * (_TerrainScaleY * 2);
+
 				Out.vertexCS = mul(unity_MatrixVP, Out.vertexWS);
 				return Out;
 			}

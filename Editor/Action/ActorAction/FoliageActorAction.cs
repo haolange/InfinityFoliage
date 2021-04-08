@@ -251,10 +251,8 @@ namespace Landscape.Editor.FoliagePipeline
                         var updategrassTask = new FUpdateGrassTask();
                         {
                             updategrassTask.length = grassComponent.SectionSize;
-                            updategrassTask.sampleSize = grassComponent.SectorSize;
-                            updategrassTask.sampleUV = (float2)sampleUV / grassComponent.SectorSize;
+                            updategrassTask.srcHeight = heightMap;
                             updategrassTask.srcDensity = densityMap;
-                            updategrassTask.terrainData = terrainData;
                             updategrassTask.grassSection = grassSection;
                             updategrassTask.dscDensity = grassSection.densityMap;
                             updategrassTask.dscNormalHeight = grassSection.normalHeight;
