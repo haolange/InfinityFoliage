@@ -119,7 +119,7 @@ namespace Landscape.FoliagePipeline
         }
     }
 
-    //[BurstCompile]
+    [BurstCompile]
     public unsafe struct FGrassScatterJob : IJob
     {
         [ReadOnly]
