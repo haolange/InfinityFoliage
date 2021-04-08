@@ -156,6 +156,8 @@ namespace Landscape.Editor.FoliagePipeline
                     grassComponent = selectObject.AddComponent<GrassComponent>();
                 }
 
+                grassComponent.OnSave();
+
                 TerrainData UTerrainData = terrain.terrainData;
                 grassComponent.grassSectors = new FGrassSector[UTerrainData.detailPrototypes.Length];
 
