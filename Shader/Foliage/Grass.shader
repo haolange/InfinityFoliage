@@ -111,7 +111,7 @@ Shader "Landscape/Grass"
 			{
 				uint InstanceId : SV_InstanceID;
 				float2 uv0 : TEXCOORD0;
-				//float3 normal : NORMAL;
+				float3 normal : NORMAL;
 				float4 vertexOS : POSITION;
 			};
 
@@ -119,7 +119,7 @@ Shader "Landscape/Grass"
 			{
 				uint PrimitiveId  : SV_InstanceID;
 				float2 uv0 : TEXCOORD0;
-				//float3 normal : NORMAL;
+				float3 normal : NORMAL;
 				float4 vertexCS : SV_POSITION;
 				float4 vertexWS : TEXCOORD1;
 			};
@@ -140,16 +140,18 @@ Shader "Landscape/Grass"
 				output.PrimitiveId = input.InstanceId;
 				FGrassBatch grassBatch = _GrassBatchBuffer[input.InstanceId];
 
-				output.uv0 = input.uv0;
-				//output.normal = normalize(mul(input.normal, (float3x3)unity_WorldToObject));
-				output.vertexWS = mul(grassBatch.matrix_World, input.vertexOS);
+				float invSize = rcp(_TerrainSize);
+				float4 leftTopH = _TerrainHeightmap.SampleLevel(Global_bilinear_clamp_sampler, (float2(1, 0) + grassBatch.position.xz) * invSize, 0, 0);
+				float4 leftBottomH = _TerrainHeightmap.SampleLevel(Global_bilinear_clamp_sampler, grassBatch.position.xz * invSize, 0, 0);
+				float4 rightTopH = _TerrainHeightmap.SampleLevel(Global_bilinear_clamp_sampler, (float2(1, 1) + grassBatch.position.xz) * invSize, 0, 0);
+				float4 rightBottomH = _TerrainHeightmap.SampleLevel(Global_bilinear_clamp_sampler, (float2(0, 1) + grassBatch.position.xz) * invSize, 0, 0);
+				float4 sampledHeight = SampleHeight(floor(grassBatch.position.xz * invSize) + 0.5, leftBottomH, leftTopH, rightBottomH, rightTopH);
+				float4 worldPos = mul(grassBatch.matrix_World, input.vertexOS);
+				worldPos.y += UnpackHeightmap(sampledHeight) * (_TerrainScaleY * 2);
 
-				float4 leftTopH = _TerrainHeightmap.SampleLevel(Global_bilinear_clamp_sampler, (float2(1, 0) + grassBatch.position.xz) * rcp(_TerrainSize), 0, 0);
-				float4 leftBottomH = _TerrainHeightmap.SampleLevel(Global_bilinear_clamp_sampler, grassBatch.position.xz * rcp(_TerrainSize), 0, 0);
-				float4 rightTopH = _TerrainHeightmap.SampleLevel(Global_bilinear_clamp_sampler, (float2(1, 1) + grassBatch.position.xz) * rcp(_TerrainSize), 0, 0);
-				float4 rightBottomH = _TerrainHeightmap.SampleLevel(Global_bilinear_clamp_sampler, (float2(0, 1) + grassBatch.position.xz) * rcp(_TerrainSize), 0, 0);
-				float4 sampledHeight = SampleHeight(frac(rcp(_TerrainSize) * grassBatch.position.xz) + 0.5, leftBottomH, leftTopH, rightBottomH, rightTopH);
-    			output.vertexWS.y += UnpackHeightmap(sampledHeight) * (_TerrainScaleY * 2);
+				output.uv0 = input.uv0;
+				output.normal = normalize(mul(input.normal, (float3x3)unity_WorldToObject));
+				output.vertexWS = worldPos;
 				output.vertexCS = mul(unity_MatrixVP, output.vertexWS);
 				return output;
 			}
