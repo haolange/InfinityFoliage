@@ -185,6 +185,10 @@ Shader "Landscape/TreeLeave"
 				//Surface
 				float4 outColor = _AlbedoTexture.Sample(sampler_AlbedoTexture, input.uv0);
 				//outColor.rgb *= directDiffuse.rgb;
+				if (outColor.a <= 0.3f)
+				{
+					discard;
+				}
 
 				return outColor;
 				//return float4(input.normal, 1);

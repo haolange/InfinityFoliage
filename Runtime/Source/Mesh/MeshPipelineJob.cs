@@ -21,7 +21,7 @@ namespace Landscape.FoliagePipeline
     public struct FUpdateTreeTask : ITask
     {
         public int length;
-        public float2 scale;
+        public float2 size;
         public float3 terrainPosition;
         public TreePrototype treePrototype;
         public TreeInstance[] treeInstances;
@@ -40,7 +40,7 @@ namespace Landscape.FoliagePipeline
                 if (serchTreePrototype.Equals(treePrototype))
                 {
                     transform.rotation = new float3(0, treeInstance.rotation, 0);
-                    transform.position = (treeInstance.position * new float3(scale.x, scale.y, scale.x)) + terrainPosition;
+                    transform.position = (treeInstance.position * new float3(size.x, size.y, size.x)) + terrainPosition;
                     transform.scale = new float3(treeInstance.widthScale, treeInstance.heightScale, treeInstance.widthScale);
                     treeTransfroms.Add(transform);
                 }
@@ -119,7 +119,7 @@ namespace Landscape.FoliagePipeline
         }
     }
 
-    [BurstCompile]
+    //[BurstCompile]
     public unsafe struct FGrassScatterJob : IJob
     {
         [ReadOnly]
@@ -147,6 +147,7 @@ namespace Landscape.FoliagePipeline
         public void Execute()
         {
             int density;
+            float3 scale;
             float3 position;
             float3 newPosition;
             float4 normalHeight;
@@ -155,18 +156,22 @@ namespace Landscape.FoliagePipeline
 
             for (int i = 0; i < densityMap.Length; ++i)
             {
-                density = (int)((float)densityMap[i] * densityScale);
                 normalHeight = normalHeightMap[i];
-
-                position = sectionPivot + new float3(i % split, normalHeight.w * terrainHeight, i / split);
+                density = (int)((float)densityMap[i] * densityScale);
+                position = sectionPivot + new float3(i % split, 0 /*normalHeight.w * terrainHeight*/, i / split);
 
                 for (int j = 0; j < density; ++j)
                 {
-                    float randomRotate = randomFloat(((position.x + 0.5f) * (j + 1)) + position.z);
+                    float randomRotate = randomFloat(((position.x + 0.5f) * (j + 1)) + (position.z + 0.5f));
                     float2 randomPoint = randomFloat2(new float2(position.x + 0.5f, (position.z + 0.5f) * (j + 1)));
-
                     newPosition = position + new float3(randomPoint.x, 0, randomPoint.y);
-                    matrix_World = float4x4.TRS(newPosition, quaternion.AxisAngle(new float3(0, 1, 0), math.radians(randomRotate * 360)), 1);
+
+                    float randomScale = randomFloat(newPosition.x + newPosition.z);
+                    float xzScale = 0.75f + ((1 - 0.75f) * randomScale);
+                    float yScale = 0.8f + ((1.25f - 0.8f) * randomScale);
+                    scale = new float3(xzScale, yScale, xzScale);
+
+                    matrix_World = float4x4.TRS(newPosition, quaternion.AxisAngle(new float3(0, 1, 0), math.radians(randomRotate * 360)), scale);
 
                     grassBatch.position = newPosition;
                     grassBatch.matrix_World = matrix_World;

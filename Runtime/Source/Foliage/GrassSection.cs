@@ -131,7 +131,7 @@ namespace Landscape.FoliagePipeline
 
             m_propertyBlock.Clear();
             m_propertyBlock.SetBuffer(GrassShaderID.primitiveBuffer, m_grassBuffer);
-            m_propertyBlock.SetInt(GrassShaderID.terrainSize, shaderProperty.sectorSize);
+            m_propertyBlock.SetInt(GrassShaderID.terrainSize, shaderProperty.sectorSize + 1);
             m_propertyBlock.SetFloat(GrassShaderID.terrainScaleY, shaderProperty.sectorScaleY);
             m_propertyBlock.SetTexture(GrassShaderID.terrainHeightmap, shaderProperty.heightmapTexture);
             cmdBuffer.DrawMeshInstancedProcedural(mesh, 0, material, passIndex, m_grassBatchs.Length, m_propertyBlock);

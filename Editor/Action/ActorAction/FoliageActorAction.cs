@@ -108,7 +108,7 @@ namespace Landscape.Editor.FoliagePipeline
                         var updateTreeTask = new FUpdateTreeTask();
                         {
                             updateTreeTask.length = terrainData.treeInstanceCount;
-                            updateTreeTask.scale = new float2(terrainData.heightmapResolution - 1, terrainData.heightmapScale.y);
+                            updateTreeTask.size = new float2(terrainData.heightmapScale.x, terrainData.heightmapScale.y);
                             updateTreeTask.treePrototype = treePrototype;
                             updateTreeTask.treeInstances = terrainData.treeInstances;
                             updateTreeTask.treePrototypes = terrainData.treePrototypes;

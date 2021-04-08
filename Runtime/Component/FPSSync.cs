@@ -3,6 +3,7 @@ using System.Diagnostics;
 
 public class FPSSync : MonoBehaviour
 {
+    public bool showFPS;
     public int maxFPS = 60;
 
     [Range(0, 2)]
@@ -22,15 +23,18 @@ public class FPSSync : MonoBehaviour
 
     void OnGUI()
     {
-        ++m_PrintState;
-        if(m_PrintState % 5 == 0)
+        if (showFPS)
         {
-            m_Millisecond = stopwatch.ElapsedMilliseconds;
-        }
+            ++m_PrintState;
+            if (m_PrintState % 5 == 0)
+            {
+                m_Millisecond = stopwatch.ElapsedMilliseconds;
+            }
 
-        GUIStyle FPSGUI = new GUIStyle();
-        FPSGUI.fontSize = 32;
-        FPSGUI.normal.textColor = new Color(1, 0, 0);
-        GUI.Label(new Rect(32, 32, 512, 512), "ms:" + m_Millisecond, FPSGUI);
+            GUIStyle FPSGUI = new GUIStyle();
+            FPSGUI.fontSize = 32;
+            FPSGUI.normal.textColor = new Color(1, 0, 0);
+            GUI.Label(new Rect(32, 32, 512, 512), "ms:" + m_Millisecond, FPSGUI);
+        }
     }
 }

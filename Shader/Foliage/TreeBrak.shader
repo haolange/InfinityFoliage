@@ -113,7 +113,7 @@ Shader "Landscape/TreeBrak"
 
 				//CrossFade
 				float crossFade = LODCrossDither(input.vertexCS.xy, unity_LODFade.x);
-				if (crossFade >= 0.5f)
+				if (crossFade >= 0.3f)
 				{
 					discard;
 				}

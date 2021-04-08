@@ -84,7 +84,7 @@ Shader "Landscape/Grass"
 				float4 color = _AlbedoTexture.Sample(sampler_AlbedoTexture, input.uv0);
 
 				float crossFade = LODCrossDither(input.vertexCS.xy, unity_LODFade.x);
-				if (crossFade >= 0.5f)
+				if (crossFade >= 0.3f)
 				{
 					discard;
 				}
@@ -124,27 +124,43 @@ Shader "Landscape/Grass"
 				float4 vertexWS : TEXCOORD1;
 			};
 
-			Varyings vert(Attributes In)
+			float4 Blerp(float4 c00, float4 c10, float4 c01, float4 c11, float tx, float ty)
 			{
-				Varyings Out = (Varyings)0;
-				Out.PrimitiveId = In.InstanceId;
-				FGrassBatch grassBatch = _GrassBatchBuffer[In.InstanceId];
-
-				Out.uv0 = In.uv0;
-				//Out.normal = normalize(mul(In.normal, (float3x3)unity_WorldToObject));
-				Out.vertexWS = mul(grassBatch.matrix_World, In.vertexOS);
-				//float Height = _TerrainHeightmap.SampleLevel(Global_point_clamp_sampler, grassBatch.position.xz * rcp(_TerrainSize), 0, 0);
-    			//Out.vertexWS.y += UnpackHeightmap(Height) * (_TerrainScaleY * 2);
-
-				Out.vertexCS = mul(unity_MatrixVP, Out.vertexWS);
-				return Out;
+				return lerp(lerp(c00, c10, tx), lerp(c01, c11, tx), ty);
 			}
 
-			float4 frag(Varyings In) : SV_Target
+			float4 SampleHeight(float2 p, float4 leftBottomH, float4 leftTopH, float4 rightBottomH, float4 rightTopH)
 			{
-				float3 WS_PixelPos = In.vertexWS.xyz;
-				float4 color = _AlbedoTexture.Sample(sampler_AlbedoTexture, In.uv0);
-				if (color.a <= 0.5f)
+				return Blerp(leftBottomH, rightBottomH, leftTopH, rightTopH, p.x, p.y);
+			}
+
+			Varyings vert(Attributes input)
+			{
+				Varyings output = (Varyings)0;
+				output.PrimitiveId = input.InstanceId;
+				FGrassBatch grassBatch = _GrassBatchBuffer[input.InstanceId];
+
+				output.uv0 = input.uv0;
+				//output.normal = normalize(mul(input.normal, (float3x3)unity_WorldToObject));
+				output.vertexWS = mul(grassBatch.matrix_World, input.vertexOS);
+
+				float4 leftTopH = _TerrainHeightmap.SampleLevel(Global_bilinear_clamp_sampler, (float2(1, 0) + grassBatch.position.xz) * rcp(_TerrainSize), 0, 0);
+				float4 leftBottomH = _TerrainHeightmap.SampleLevel(Global_bilinear_clamp_sampler, grassBatch.position.xz * rcp(_TerrainSize), 0, 0);
+				float4 rightTopH = _TerrainHeightmap.SampleLevel(Global_bilinear_clamp_sampler, (float2(1, 1) + grassBatch.position.xz) * rcp(_TerrainSize), 0, 0);
+				float4 rightBottomH = _TerrainHeightmap.SampleLevel(Global_bilinear_clamp_sampler, (float2(0, 1) + grassBatch.position.xz) * rcp(_TerrainSize), 0, 0);
+				float4 sampledHeight = SampleHeight(frac(rcp(_TerrainSize) * grassBatch.position.xz) + 0.5, leftBottomH, leftTopH, rightBottomH, rightTopH);
+    			output.vertexWS.y += UnpackHeightmap(sampledHeight) * (_TerrainScaleY * 2);
+				output.vertexCS = mul(unity_MatrixVP, output.vertexWS);
+				return output;
+			}
+
+			float4 frag(Varyings input) : SV_Target
+			{
+				float3 worldPos = input.vertexWS.xyz;
+				//FGrassBatch grassBatch = _GrassBatchBuffer[input.PrimitiveId];
+
+				float4 color = _AlbedoTexture.Sample(sampler_AlbedoTexture, input.uv0);
+				if (color.a <= 0.3f)
 				{
 					discard;
 				}
