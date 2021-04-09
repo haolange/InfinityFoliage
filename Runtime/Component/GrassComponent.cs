@@ -187,14 +187,14 @@ namespace Landscape.FoliagePipeline
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public override void DispatchDraw(CommandBuffer cmdBuffer, in int passIndex)
         {
-            FGrassShaderProperty shaderProperty;
-            shaderProperty.sectorSize = SectorSize;
-            shaderProperty.sectorScaleY = TerrainScaleY;
-            shaderProperty.heightmapTexture = terrainData.heightmapTexture;
+            FGrassShaderProperty grassShaderProperty;
+            grassShaderProperty.sectorSize = SectorSize;
+            grassShaderProperty.sectorScaleY = TerrainScaleY;
+            grassShaderProperty.heightmapTexture = terrainData.heightmapTexture;
 
             foreach (FGrassSector grassSector in grassSectors)
             {
-                grassSector.DispatchDraw(cmdBuffer, passIndex, shaderProperty);
+                grassSector.DispatchDraw(cmdBuffer, passIndex, grassShaderProperty);
             }
         }
         #endregion //Grass

@@ -125,15 +125,15 @@ namespace Landscape.FoliagePipeline
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public void DispatchDraw(CommandBuffer cmdBuffer, Mesh mesh, Material material, in int passIndex, in FGrassShaderProperty shaderProperty)
+        public void DispatchDraw(CommandBuffer cmdBuffer, Mesh mesh, Material material, in int passIndex, in FGrassShaderProperty grassShaderProperty)
         {
             if (totalDensity == 0 || m_grassBatchs.Length == 0) { return; }
 
             m_propertyBlock.Clear();
             m_propertyBlock.SetBuffer(GrassShaderID.primitiveBuffer, m_grassBuffer);
-            m_propertyBlock.SetInt(GrassShaderID.terrainSize, shaderProperty.sectorSize + 1);
-            m_propertyBlock.SetFloat(GrassShaderID.terrainScaleY, shaderProperty.sectorScaleY);
-            m_propertyBlock.SetTexture(GrassShaderID.terrainHeightmap, shaderProperty.heightmapTexture);
+            m_propertyBlock.SetInt(GrassShaderID.terrainSize, grassShaderProperty.sectorSize + 1);
+            m_propertyBlock.SetFloat(GrassShaderID.terrainScaleY, grassShaderProperty.sectorScaleY);
+            m_propertyBlock.SetTexture(GrassShaderID.terrainHeightmap, grassShaderProperty.heightmapTexture);
             cmdBuffer.DrawMeshInstancedProcedural(mesh, 0, material, passIndex, m_grassBatchs.Length, m_propertyBlock);
         }
 
