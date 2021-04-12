@@ -128,8 +128,8 @@ namespace Landscape.FoliagePipeline
         [ReadOnly]
         public float densityScale;
 
-        [ReadOnly]
-        public float terrainHeight;
+        //[ReadOnly]
+        //public float terrainHeight;
 
         [ReadOnly]
         public float3 sectionPivot;
@@ -137,8 +137,8 @@ namespace Landscape.FoliagePipeline
         [ReadOnly]
         public NativeArray<int> densityMap;
 
-        [ReadOnly]
-        public NativeArray<float4> normalHeightMap;
+        //[ReadOnly]
+        //public NativeArray<float4> normalHeightMap;
 
         [WriteOnly]
         public NativeList<FGrassBatch> grassBatchs;
@@ -150,13 +150,13 @@ namespace Landscape.FoliagePipeline
             float3 scale;
             float3 position;
             float3 newPosition;
-            float4 normalHeight;
+            //float4 normalHeight;
             float4x4 matrix_World;
             FGrassBatch grassBatch = default;
 
             for (int i = 0; i < densityMap.Length; ++i)
             {
-                normalHeight = normalHeightMap[i];
+                //normalHeight = normalHeightMap[i];
                 density = (int)((float)densityMap[i] * densityScale);
                 position = sectionPivot + new float3(i % split, 0 /*normalHeight.w * terrainHeight*/, i / split);
 

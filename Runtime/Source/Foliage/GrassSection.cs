@@ -109,8 +109,8 @@ namespace Landscape.FoliagePipeline
                 grassScatterJob.grassBatchs = m_grassBatchs;
                 grassScatterJob.densityScale = densityScale;
                 grassScatterJob.sectionPivot = sectionPivot;
-                grassScatterJob.terrainHeight = terrainHeight;
-                grassScatterJob.normalHeightMap = m_normalHeight;
+                //grassScatterJob.terrainHeight = terrainHeight;
+                //grassScatterJob.normalHeightMap = m_normalHeight;
             }
             return grassScatterJob.Schedule();
         }

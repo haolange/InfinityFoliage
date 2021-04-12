@@ -144,6 +144,7 @@ Shader "Landscape/Grass"
 
 				float invSize = rcp(_TerrainSize);
 				float3 position = grassBatch.position - _TerrainPivotScaleY.xyz;
+
 				float4 leftTopH = _TerrainHeightmap.SampleLevel(Global_bilinear_clamp_sampler, (float2(1, 0) + position.xz) * invSize, 0, 0);
 				float4 leftBottomH = _TerrainHeightmap.SampleLevel(Global_bilinear_clamp_sampler, position.xz * invSize, 0, 0);
 				float4 rightTopH = _TerrainHeightmap.SampleLevel(Global_bilinear_clamp_sampler, (float2(1, 1) + position.xz) * invSize, 0, 0);
