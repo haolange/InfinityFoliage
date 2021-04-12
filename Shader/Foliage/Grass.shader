@@ -169,7 +169,7 @@ Shader "Landscape/Grass"
 				{
 					discard;
 				}
-				return color;
+				return float4(color.rgb, 1);
 			}
             ENDHLSL
         }

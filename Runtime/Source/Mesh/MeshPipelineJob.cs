@@ -167,8 +167,8 @@ namespace Landscape.FoliagePipeline
                     newPosition = position + new float3(randomPoint.x, 0, randomPoint.y);
 
                     float randomScale = randomFloat(newPosition.x + newPosition.z);
-                    float xzScale = 0.75f + ((1 - 0.75f) * randomScale);
-                    float yScale = 0.8f + ((1.25f - 0.8f) * randomScale);
+                    float xzScale = 1.5f + ((2.5f - 1.5f) * randomScale);
+                    float yScale = 1.5f + ((2.8f - 1.5f) * randomScale);
                     scale = new float3(xzScale, yScale, xzScale);
 
                     matrix_World = float4x4.TRS(newPosition, quaternion.AxisAngle(new float3(0, 1, 0), math.radians(randomRotate * 360)), scale);
