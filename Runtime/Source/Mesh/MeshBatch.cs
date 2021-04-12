@@ -24,12 +24,7 @@ namespace Landscape.FoliagePipeline
 
         public override int GetHashCode()
         {
-            int hashCode = lODIndex.GetHashCode();
-            hashCode += boundBox.GetHashCode();
-            hashCode += boundSphere.GetHashCode();
-            hashCode += matrix_World.GetHashCode();
-
-            return hashCode;
+            return new int4(lODIndex, boundBox.GetHashCode(), boundSphere.GetHashCode(), matrix_World.GetHashCode()).GetHashCode();
         }
     }
 }

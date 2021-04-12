@@ -25,22 +25,26 @@ namespace Landscape.FoliagePipeline
         public int matIndex;
         public int meshIndex;
         public int batchIndex;
-        //public int InstanceGroupID;
+        int m_InstanceId
+        {
+            get
+            {
+                return new int3(lODIndex, matIndex, meshIndex).GetHashCode();
+            }
+        }
 
 
-        public FMeshElement(in int lODIndex, in int matIndex, in int meshIndex, in int batchIndex, in int instanceGroupID)
+        public FMeshElement(in int lODIndex, in int matIndex, in int meshIndex, in int batchIndex)
         {
             this.lODIndex = lODIndex;
             this.matIndex = matIndex;
             this.meshIndex = meshIndex;
             this.batchIndex = batchIndex;
-            //this.InstanceGroupID = InstanceGroupID;
         }
 
-        public bool Equals(FMeshElement Target)
+        public bool Equals(FMeshElement target)
         {
-            //return InstanceGroupID.Equals(Target.InstanceGroupID);
-            return lODIndex.Equals(Target.lODIndex) && matIndex.Equals(Target.matIndex) && meshIndex.Equals(Target.meshIndex);
+            return lODIndex.Equals(target.lODIndex) && matIndex.Equals(target.matIndex) && meshIndex.Equals(target.meshIndex);
         }
 
         public override bool Equals(object obj)
@@ -48,22 +52,14 @@ namespace Landscape.FoliagePipeline
             return Equals((FMeshElement)obj);
         }
 
-        public int CompareTo(FMeshElement Target)
+        public int CompareTo(FMeshElement target)
         {
-            //return InstanceGroupID;
-            //return (MeshIndex + LODIndex + MatIndex).CompareTo(Target.MeshIndex + Target.LODIndex + Target.MatIndex);
-            return ((meshIndex >> 16) + (lODIndex << 16 | matIndex)).CompareTo((Target.meshIndex >> 16) + (Target.lODIndex << 16 | Target.matIndex));
+            return m_InstanceId.CompareTo(target.m_InstanceId);
         }
 
         public override int GetHashCode()
         {
-            /*int hashCode = LODIndex;
-            hashCode += MatIndex;
-            hashCode += MeshIndex;
-
-            return hashCode;*/
-            //return InstanceGroupID;
-            return (meshIndex >> 16) + (lODIndex << 16 | matIndex);
+            return new int4(lODIndex, matIndex, meshIndex, batchIndex).GetHashCode();
         }
     }
 }

@@ -359,7 +359,7 @@ namespace Landscape.FoliagePipeline
 
             //Build TreeDrawCommand
             FMeshElement passTreeElement;
-            FMeshElement cachePassTreeElement = new FMeshElement(-1, -1, -1, -1, -1);
+            FMeshElement cachePassTreeElement = new FMeshElement(-1, -1, -1, -1);
 
             FMeshDrawCommand treeDrawCommand;
             FMeshDrawCommand cacheTreeDrawCommand;
