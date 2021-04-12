@@ -21,7 +21,7 @@ Shader "Landscape/Grass"
 		#include "Packages/com.unity.render-pipelines.core/ShaderLibrary/UnityInstancing.hlsl"
 
 		int _TerrainSize;
-		float _TerrainScaleY;
+		float4 _TerrainPivotScaleY;
 		Texture2D _AlbedoTexture, _NomralTexture, _TerrainHeightmap;
 		SamplerState sampler_AlbedoTexture, sampler_NomralTexture, sampler_TerrainHeightmap;
 	ENDHLSL
@@ -140,14 +140,16 @@ Shader "Landscape/Grass"
 				output.PrimitiveId = input.InstanceId;
 				FGrassBatch grassBatch = _GrassBatchBuffer[input.InstanceId];
 
-				float invSize = rcp(_TerrainSize);
-				float4 leftTopH = _TerrainHeightmap.SampleLevel(Global_bilinear_clamp_sampler, (float2(1, 0) + grassBatch.position.xz) * invSize, 0, 0);
-				float4 leftBottomH = _TerrainHeightmap.SampleLevel(Global_bilinear_clamp_sampler, grassBatch.position.xz * invSize, 0, 0);
-				float4 rightTopH = _TerrainHeightmap.SampleLevel(Global_bilinear_clamp_sampler, (float2(1, 1) + grassBatch.position.xz) * invSize, 0, 0);
-				float4 rightBottomH = _TerrainHeightmap.SampleLevel(Global_bilinear_clamp_sampler, (float2(0, 1) + grassBatch.position.xz) * invSize, 0, 0);
-				float4 sampledHeight = SampleHeight(floor(grassBatch.position.xz * invSize) + 0.5, leftBottomH, leftTopH, rightBottomH, rightTopH);
 				float4 worldPos = mul(grassBatch.matrix_World, input.vertexOS);
-				worldPos.y += UnpackHeightmap(sampledHeight) * (_TerrainScaleY * 2);
+
+				float invSize = rcp(_TerrainSize);
+				float3 position = grassBatch.position - _TerrainPivotScaleY.xyz;
+				float4 leftTopH = _TerrainHeightmap.SampleLevel(Global_bilinear_clamp_sampler, (float2(1, 0) + position.xz) * invSize, 0, 0);
+				float4 leftBottomH = _TerrainHeightmap.SampleLevel(Global_bilinear_clamp_sampler, position.xz * invSize, 0, 0);
+				float4 rightTopH = _TerrainHeightmap.SampleLevel(Global_bilinear_clamp_sampler, (float2(1, 1) + position.xz) * invSize, 0, 0);
+				float4 rightBottomH = _TerrainHeightmap.SampleLevel(Global_bilinear_clamp_sampler, (float2(0, 1) + position.xz) * invSize, 0, 0);
+				float4 sampledHeight = SampleHeight(floor(grassBatch.position.xz * invSize) + 0.5, leftBottomH, leftTopH, rightBottomH, rightTopH);
+				worldPos.y += UnpackHeightmap(sampledHeight) * (_TerrainPivotScaleY.w * 2);
 
 				output.uv0 = input.uv0;
 				output.normal = normalize(mul(input.normal, (float3x3)unity_WorldToObject));

@@ -39,15 +39,15 @@ namespace Landscape.FoliagePipeline
 
     public struct FGrassShaderProperty 
     {
-        public int sectorSize;
-        public float sectorScaleY;
+        public int terrainSize;
+        public float4 terrainPivotScaleY;
         public RenderTexture heightmapTexture;
     }
 
     internal static class GrassShaderID
     {
         internal static int terrainSize = Shader.PropertyToID("_TerrainSize");
-        internal static int terrainScaleY = Shader.PropertyToID("_TerrainScaleY");
+        internal static int terrainPivotScaleY = Shader.PropertyToID("_TerrainPivotScaleY");
         internal static int primitiveBuffer = Shader.PropertyToID("_GrassBatchBuffer");
         internal static int terrainHeightmap = Shader.PropertyToID("_TerrainHeightmap");
     }
@@ -131,8 +131,8 @@ namespace Landscape.FoliagePipeline
 
             m_propertyBlock.Clear();
             m_propertyBlock.SetBuffer(GrassShaderID.primitiveBuffer, m_grassBuffer);
-            m_propertyBlock.SetInt(GrassShaderID.terrainSize, grassShaderProperty.sectorSize + 1);
-            m_propertyBlock.SetFloat(GrassShaderID.terrainScaleY, grassShaderProperty.sectorScaleY);
+            m_propertyBlock.SetInt(GrassShaderID.terrainSize, grassShaderProperty.terrainSize + 1);
+            m_propertyBlock.SetVector(GrassShaderID.terrainPivotScaleY, grassShaderProperty.terrainPivotScaleY);
             m_propertyBlock.SetTexture(GrassShaderID.terrainHeightmap, grassShaderProperty.heightmapTexture);
             cmdBuffer.DrawMeshInstancedProcedural(mesh, 0, material, passIndex, m_grassBatchs.Length, m_propertyBlock);
         }

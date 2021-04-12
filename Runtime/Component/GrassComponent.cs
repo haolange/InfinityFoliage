@@ -188,8 +188,8 @@ namespace Landscape.FoliagePipeline
         public override void DispatchDraw(CommandBuffer cmdBuffer, in int passIndex)
         {
             FGrassShaderProperty grassShaderProperty;
-            grassShaderProperty.sectorSize = SectorSize;
-            grassShaderProperty.sectorScaleY = TerrainScaleY;
+            grassShaderProperty.terrainSize = SectorSize;
+            grassShaderProperty.terrainPivotScaleY = new float4(transform.position, TerrainScaleY);
             grassShaderProperty.heightmapTexture = terrainData.heightmapTexture;
 
             foreach (FGrassSector grassSector in grassSectors)
