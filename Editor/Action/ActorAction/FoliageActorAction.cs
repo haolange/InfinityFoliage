@@ -68,7 +68,7 @@ namespace Landscape.Editor.FoliagePipeline
                         ref FMeshLODInfo LODInfo = ref LODInfos[l];
                         Renderer renderer = lod.renderers[0];
 
-                        LODInfo.screenSize = 1 - (l * 0.0625f);
+                        LODInfo.screenSize = 1 - (l * 0.03125f);
                         LODInfo.materialSlot = new int[renderer.sharedMaterials.Length];
 
                         for (int m = 0; m < renderer.sharedMaterials.Length; ++m)
