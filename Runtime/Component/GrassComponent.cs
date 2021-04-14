@@ -96,10 +96,10 @@ namespace Landscape.FoliagePipeline
             ReleaseGrassSectors();
             boundSector.ReleaseNativeCollection();
 
-            if (terrain.drawTreesAndFoliage == false)
+            /*if (terrain.drawTreesAndFoliage == false)
             {
                 terrain.drawTreesAndFoliage = true;
-            }
+            }*/
         }
 
 #if UNITY_EDITOR
@@ -143,7 +143,7 @@ namespace Landscape.FoliagePipeline
         {
             foreach(FGrassSector grassSector in grassSectors)
             {
-                grassSector.Init(boundSector);
+                grassSector.Init(boundSector, terrainData);
             }
         }
         

@@ -1,6 +1,7 @@
 using System;
 using Unity.Jobs;
 using UnityEngine;
+using Unity.Mathematics;
 using Unity.Collections;
 using UnityEngine.Rendering;
 using System.Runtime.CompilerServices;
@@ -12,7 +13,7 @@ namespace Landscape.FoliagePipeline
     {
         public FMesh grass;
         public int grassIndex;
-        public int cullDistance = 128;
+        public float4 widthScale;
         public FBoundSector boundSector;
         public FGrassSection[] sections;
 
@@ -22,9 +23,11 @@ namespace Landscape.FoliagePipeline
             this.sections = new FGrassSection[length];
         }
 
-        public void Init(FBoundSector boundSector)
+        public void Init(FBoundSector boundSector, TerrainData terrainData)
         {
             this.boundSector = boundSector;
+            DetailPrototype detailPrototype = terrainData.detailPrototypes[grassIndex];
+            this.widthScale = new float4(detailPrototype.minWidth, detailPrototype.maxWidth, detailPrototype.minHeight, detailPrototype.maxHeight);
 
             foreach (FGrassSection section in sections)
             {
@@ -40,7 +43,7 @@ namespace Landscape.FoliagePipeline
                 //if (boundSector.sectionsVisbible[section.boundIndex] == 0) { continue; }
 
                 FBoundSection boundSection = boundSector.nativeSections[section.boundIndex];
-                taskHandles.Add(section.BuildInstance(split, terrainHeight, densityScale, boundSection.pivotPosition));
+                taskHandles.Add(section.BuildInstance(split, terrainHeight, densityScale, boundSection.pivotPosition, widthScale));
             }
         }
 

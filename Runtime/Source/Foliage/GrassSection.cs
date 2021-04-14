@@ -96,7 +96,7 @@ namespace Landscape.FoliagePipeline
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public JobHandle BuildInstance(in int split, in float terrainHeight, in float densityScale, in float3 sectionPivot)
+        public JobHandle BuildInstance(in int split, in float terrainHeight, in float densityScale, in float3 sectionPivot, in float4 widthScale)
         {
             if (totalDensity == 0 || densityScale == 0) { return default; }
 
@@ -106,6 +106,7 @@ namespace Landscape.FoliagePipeline
             {
                 grassScatterJob.split = split;
                 grassScatterJob.densityMap = m_densityMap;
+                grassScatterJob.widthScale = widthScale;
                 grassScatterJob.grassBatchs = m_grassBatchs;
                 grassScatterJob.densityScale = densityScale;
                 grassScatterJob.sectionPivot = sectionPivot;
