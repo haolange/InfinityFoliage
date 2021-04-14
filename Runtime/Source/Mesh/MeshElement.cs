@@ -25,7 +25,7 @@ namespace Landscape.FoliagePipeline
         public int matIndex;
         public int meshIndex;
         public int batchIndex;
-        int m_InstanceId
+        public int instanceId
         {
             get
             {
@@ -54,12 +54,14 @@ namespace Landscape.FoliagePipeline
 
         public int CompareTo(FMeshElement target)
         {
-            return m_InstanceId.CompareTo(target.m_InstanceId);
+            return instanceId.CompareTo(target.instanceId);
+            //return ((meshIndex >> 16) + (lODIndex << 16 | matIndex)).CompareTo((target.meshIndex >> 16) + (target.lODIndex << 16 | target.matIndex));
         }
 
         public override int GetHashCode()
         {
-            return new int4(lODIndex, matIndex, meshIndex, batchIndex).GetHashCode();
+            return instanceId;
+            //return (meshIndex >> 16) + (lODIndex << 16 | matIndex);
         }
     }
 }

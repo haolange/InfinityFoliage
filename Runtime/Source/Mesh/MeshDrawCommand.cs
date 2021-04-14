@@ -31,6 +31,7 @@ namespace Landscape.FoliagePipeline
 
         public override int GetHashCode()
         {
+            //return (meshIndex >> 16) + (lODIndex << 16 | matIndex);
             return new int4(lODIndex, matIndex, meshIndex, countOffset.GetHashCode()).GetHashCode();
         }
     }
