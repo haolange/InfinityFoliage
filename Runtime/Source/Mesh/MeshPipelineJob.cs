@@ -169,11 +169,10 @@ namespace Landscape.FoliagePipeline
                     float2 randomPoint = randomFloat2(new float2(position.x + 0.5f, (position.z + 0.5f) * (j + 1)));
                     newPosition = position + new float3(randomPoint.x, 0, randomPoint.y);
 
-                    float randomScale = randomFloat(newPosition.x + newPosition.z);
+                    float randomScale = randomFloat(newPosition.x + newPosition.z) * 0.75f;
                     float yScale = widthScale.z + ((widthScale.w - widthScale.z) * randomScale);
                     float xzScale = widthScale.x + ((widthScale.y - widthScale.x) * randomScale);
                     scale = new float3(xzScale, yScale, xzScale);
-
                     matrix_World = float4x4.TRS(newPosition, quaternion.AxisAngle(new float3(0, 1, 0), math.radians(randomRotate * 360)), scale);
 
                     grassBatch.position = newPosition;

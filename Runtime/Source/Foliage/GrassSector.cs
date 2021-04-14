@@ -65,13 +65,13 @@ namespace Landscape.FoliagePipeline
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public void DispatchDraw(CommandBuffer cmdBuffer, in int passIndex, in FGrassShaderProperty grassShaderProperty)
+        public void DispatchDraw(CommandBuffer cmdBuffer, in int passIndex, in FGrassShaderProperty shaderProperty)
         {
             foreach (FGrassSection section in sections)
             {
                 if (boundSector.sectionsVisbible[section.boundIndex] == 0) { continue; }
 
-                section.DispatchDraw(cmdBuffer, grass.meshes[0], grass.materials[0], passIndex, grassShaderProperty);
+                section.DispatchDraw(cmdBuffer, grass.meshes[0], grass.materials[0], passIndex, shaderProperty);
             }
         }
 

@@ -52,12 +52,12 @@ namespace Landscape.FoliagePipeline
         [HideInInspector]
         public FBoundSector boundSector;
 
-        public static List<FoliageComponent> s_foliageComponents = new List<FoliageComponent>(128);
+        public static List<FoliageComponent> FoliageComponents = new List<FoliageComponent>(128);
 
     
         void OnEnable()
         {
-            s_foliageComponents.Add(this);
+            FoliageComponents.Add(this);
             OnRegister();
             EventPlay();
         }
@@ -74,7 +74,7 @@ namespace Landscape.FoliagePipeline
         void OnDisable()
         {
             UnRegister();
-            s_foliageComponents.Remove(this);
+            FoliageComponents.Remove(this);
         }
 
         private bool TransfromStateDirty()

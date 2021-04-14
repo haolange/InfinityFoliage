@@ -36,12 +36,12 @@ internal unsafe class FoliagePass : ScriptableRenderPass
 
         #region InitViewBoundSector
         NativeList<JobHandle> taskHandles = new NativeList<JobHandle>(256, Allocator.Temp);
-        NativeArray<int> boundsVisible = new NativeArray<int>(FoliageComponent.s_foliageComponents.Count, Allocator.TempJob);
-        NativeArray<FBound> sectorsBound = new NativeArray<FBound>(FoliageComponent.s_foliageComponents.Count, Allocator.TempJob);
+        NativeArray<int> boundsVisible = new NativeArray<int>(FoliageComponent.FoliageComponents.Count, Allocator.TempJob);
+        NativeArray<FBound> sectorsBound = new NativeArray<FBound>(FoliageComponent.FoliageComponents.Count, Allocator.TempJob);
 
         for (int i = 0; i < sectorsBound.Length; ++i)
         {
-            sectorsBound[i] = FoliageComponent.s_foliageComponents[i].boundSector.bound;
+            sectorsBound[i] = FoliageComponent.FoliageComponents[i].boundSector.bound;
         }
 
         var sectorCullingJob = new FBoundSectorCullingJob();
@@ -55,7 +55,7 @@ internal unsafe class FoliagePass : ScriptableRenderPass
         for (int i = 0; i < sectorsBound.Length; ++i)
         {
             if (boundsVisible[i] == 0) { continue; }
-            FoliageComponent foliageComponent = FoliageComponent.s_foliageComponents[i];
+            FoliageComponent foliageComponent = FoliageComponent.FoliageComponents[i];
             foliageComponent.InitViewSection(viewOrigin, planesPtr, taskHandles);
         }
         JobHandle.CompleteAll(taskHandles);
@@ -66,7 +66,7 @@ internal unsafe class FoliagePass : ScriptableRenderPass
         for (int i = 0; i < sectorsBound.Length; ++i)
         {
             if (boundsVisible[i] == 0) { continue; }
-            FoliageComponent foliageComponent = FoliageComponent.s_foliageComponents[i];
+            FoliageComponent foliageComponent = FoliageComponent.FoliageComponents[i];
             foliageComponent.InitViewFoliage(viewOrigin, matrixProj, planesPtr, taskHandles);
         }
         JobHandle.CompleteAll(taskHandles);
@@ -77,7 +77,7 @@ internal unsafe class FoliagePass : ScriptableRenderPass
         for (int i = 0; i < sectorsBound.Length; ++i)
         {
             if (boundsVisible[i] == 0) { continue; }
-            FoliageComponent foliageComponent = FoliageComponent.s_foliageComponents[i];
+            FoliageComponent foliageComponent = FoliageComponent.FoliageComponents[i];
             foliageComponent.DispatchSetup(cmdBuffer, taskHandles);
         }
         JobHandle.CompleteAll(taskHandles);
@@ -90,7 +90,7 @@ internal unsafe class FoliagePass : ScriptableRenderPass
             for (int i = 0; i < sectorsBound.Length; ++i)
             {
                 if (boundsVisible[i] == 0) { continue; }
-                FoliageComponent foliageComponent = FoliageComponent.s_foliageComponents[i];
+                FoliageComponent foliageComponent = FoliageComponent.FoliageComponents[i];
                 foliageComponent.DispatchDraw(cmdBuffer, 1);
             }
         }
