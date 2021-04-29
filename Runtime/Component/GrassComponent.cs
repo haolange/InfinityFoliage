@@ -141,9 +141,14 @@ namespace Landscape.FoliagePipeline
         #region Grass
         private void InitGrassSectors()
         {
+            FGrassShaderProperty shaderProperty;
+            shaderProperty.terrainSize = SectorSize;
+            shaderProperty.terrainPivotScaleY = new float4(transform.position, TerrainScaleY);
+            shaderProperty.heightmapTexture = terrainData.heightmapTexture;
+            
             foreach(FGrassSector grassSector in grassSectors)
             {
-                grassSector.Init(boundSector, terrainData);
+                grassSector.Init(boundSector, terrainData, shaderProperty);
             }
         }
         
@@ -187,16 +192,6 @@ namespace Landscape.FoliagePipeline
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public override void DispatchDraw(CommandBuffer cmdBuffer, in int passIndex)
         {
-            FGrassShaderProperty shaderProperty;
-            shaderProperty.terrainSize = SectorSize;
-            shaderProperty.terrainPivotScaleY = new float4(transform.position, TerrainScaleY);
-            shaderProperty.heightmapTexture = terrainData.heightmapTexture;
-
-            /*foreach (FGrassSector grassSector in grassSectors)
-            {
-                grassSector.DispatchDraw(cmdBuffer, passIndex, shaderProperty);
-            }*/
-
             for(int i = 0; i < boundSector.nativeSections.Length; ++i)
             {
                 if (boundSector.sectionsVisbible[i] == 0) { continue; }
@@ -204,9 +199,7 @@ namespace Landscape.FoliagePipeline
                 for(int j = 0; j < grassSectors.Length; ++j)
                 {
                     FGrassSector grassSector = grassSectors[j];
-                    Mesh meshe = grassSector.grass.meshes[0];
-                    Material material = grassSector.grass.materials[0];
-                    grassSector.sections[i].DispatchDraw(cmdBuffer, meshe, material, passIndex, shaderProperty);
+                    grassSector.sections[i].DispatchDraw(cmdBuffer, passIndex);
                 }
             }
         }

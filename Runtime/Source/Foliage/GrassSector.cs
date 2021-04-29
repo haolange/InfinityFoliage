@@ -23,7 +23,7 @@ namespace Landscape.FoliagePipeline
             this.sections = new FGrassSection[length];
         }
 
-        public void Init(FBoundSector boundSector, TerrainData terrainData)
+        public void Init(FBoundSector boundSector, TerrainData terrainData, in FGrassShaderProperty shaderProperty)
         {
             this.boundSector = boundSector;
             DetailPrototype detailPrototype = terrainData.detailPrototypes[grassIndex];
@@ -31,7 +31,7 @@ namespace Landscape.FoliagePipeline
 
             foreach (FGrassSection section in sections)
             {
-                section.Init();
+                section.Init(grass.meshes[0], grass.materials[0], shaderProperty);
             }
         }
 
@@ -65,13 +65,13 @@ namespace Landscape.FoliagePipeline
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public void DispatchDraw(CommandBuffer cmdBuffer, in int passIndex, in FGrassShaderProperty shaderProperty)
+        public void DispatchDraw(CommandBuffer cmdBuffer, in int passIndex)
         {
             foreach (FGrassSection section in sections)
             {
                 if (boundSector.sectionsVisbible[section.boundIndex] == 0) { continue; }
 
-                section.DispatchDraw(cmdBuffer, grass.meshes[0], grass.materials[0], passIndex, shaderProperty);
+                section.DispatchDraw(cmdBuffer, passIndex);
             }
         }
 

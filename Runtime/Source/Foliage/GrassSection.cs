@@ -62,25 +62,34 @@ namespace Landscape.FoliagePipeline
         private NativeArray<int> m_DensityMap;
         private NativeArray<float4> m_NormalHeight;
         private NativeList<FGrassBatch> m_GrassBatchs;
+
+        private Mesh m_mesh;
+        private Material m_material;
         private ComputeBuffer m_GrassBuffer;
-        private MaterialPropertyBlock m_PropertyBlock;
 
 
-        public void Init()
+        public void Init(Mesh mesh, Material material, in FGrassShaderProperty shaderProperty)
         {
             if(totalDensity == 0) { return; }
 
-            m_PropertyBlock = new MaterialPropertyBlock();
+            m_mesh = mesh;
+            m_material = new Material(material);
+            m_GrassBuffer = new ComputeBuffer(totalDensity, Marshal.SizeOf(typeof(FGrassBatch)));
+
             m_DensityMap = new NativeArray<int>(densityMap.Length, Allocator.Persistent);
             m_NormalHeight = new NativeArray<float4>(normalHeight.Length, Allocator.Persistent);
             m_GrassBatchs = new NativeList<FGrassBatch>(densityMap.Length, Allocator.Persistent);
-            m_GrassBuffer = new ComputeBuffer(totalDensity, Marshal.SizeOf(typeof(FGrassBatch)));
 
             for (int i = 0; i < densityMap.Length; i++)
             {
                 m_DensityMap[i] = densityMap[i];
                 m_NormalHeight[i] = normalHeight[i];
             }
+
+            m_material.SetBuffer(GrassShaderID.primitiveBuffer, m_GrassBuffer);
+            m_material.SetInt(GrassShaderID.terrainSize, shaderProperty.terrainSize + 1);
+            m_material.SetVector(GrassShaderID.terrainPivotScaleY, shaderProperty.terrainPivotScaleY);
+            m_material.SetTexture(GrassShaderID.terrainHeightmap, shaderProperty.heightmapTexture);
         }
 
         public void Release()
@@ -91,6 +100,7 @@ namespace Landscape.FoliagePipeline
             m_GrassBatchs.Dispose();
             m_GrassBuffer.Dispose();
             m_NormalHeight.Dispose();
+            UnityEngine.Object.DestroyImmediate(m_material);
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -124,16 +134,10 @@ namespace Landscape.FoliagePipeline
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public void DispatchDraw(CommandBuffer cmdBuffer, Mesh mesh, Material material, in int passIndex, in FGrassShaderProperty shaderProperty)
+        public void DispatchDraw(CommandBuffer cmdBuffer,in int passIndex)
         {
             if (totalDensity == 0 || m_GrassBatchs.Length == 0) { return; }
-
-            m_PropertyBlock.Clear();
-            m_PropertyBlock.SetBuffer(GrassShaderID.primitiveBuffer, m_GrassBuffer);
-            m_PropertyBlock.SetInt(GrassShaderID.terrainSize, shaderProperty.terrainSize + 1);
-            m_PropertyBlock.SetVector(GrassShaderID.terrainPivotScaleY, shaderProperty.terrainPivotScaleY);
-            m_PropertyBlock.SetTexture(GrassShaderID.terrainHeightmap, shaderProperty.heightmapTexture);
-            cmdBuffer.DrawMeshInstancedProcedural(mesh, 0, material, passIndex, m_GrassBatchs.Length, m_PropertyBlock);
+            cmdBuffer.DrawMeshInstancedProcedural(m_mesh, 0, m_material, passIndex, m_GrassBatchs.Length);
         }
 
 #if UNITY_EDITOR
