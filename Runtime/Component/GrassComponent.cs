@@ -192,9 +192,22 @@ namespace Landscape.FoliagePipeline
             shaderProperty.terrainPivotScaleY = new float4(transform.position, TerrainScaleY);
             shaderProperty.heightmapTexture = terrainData.heightmapTexture;
 
-            foreach (FGrassSector grassSector in grassSectors)
+            /*foreach (FGrassSector grassSector in grassSectors)
             {
                 grassSector.DispatchDraw(cmdBuffer, passIndex, shaderProperty);
+            }*/
+
+            for(int i = 0; i < boundSector.nativeSections.Length; ++i)
+            {
+                if (boundSector.sectionsVisbible[i] == 0) { continue; }
+
+                for(int j = 0; j < grassSectors.Length; ++j)
+                {
+                    FGrassSector grassSector = grassSectors[j];
+                    Mesh meshe = grassSector.grass.meshes[0];
+                    Material material = grassSector.grass.materials[0];
+                    grassSector.sections[i].DispatchDraw(cmdBuffer, meshe, material, passIndex, shaderProperty);
+                }
             }
         }
         #endregion //Grass
