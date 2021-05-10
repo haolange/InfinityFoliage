@@ -59,7 +59,6 @@ internal unsafe class FoliagePass : ScriptableRenderPass
             sectorCullingJob.sectorBounds = (FBound*)sectorsBound.GetUnsafePtr();
             sectorCullingJob.Schedule(sectorsBound.Length, 8).Complete();
         }
-        
         #endregion //InitViewBound
 
         #region InitViewFoliage
