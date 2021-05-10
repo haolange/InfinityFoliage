@@ -62,7 +62,7 @@ namespace Landscape.FoliagePipeline
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public JobHandle InitView(in float cullDistance, in float3 viewOrigin, FPlane* planes)
         {
-            var sectionCullingJob = new FBoundSectionCullingJob();
+            var sectionCullingJob = new FGrassSectionCullingJob();
             {
                 sectionCullingJob.planes = planes;
                 sectionCullingJob.viewOrigin = viewOrigin;

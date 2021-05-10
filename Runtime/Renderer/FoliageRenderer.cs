@@ -34,7 +34,7 @@ internal unsafe class FoliagePass : ScriptableRenderPass
         float3 viewOrigin = renderingData.cameraData.camera.transform.position;
         var matrixProj = Geometry.GetProjectionMatrix(renderingData.cameraData.camera.fieldOfView, renderingData.cameraData.camera.pixelWidth, renderingData.cameraData.camera.pixelHeight, renderingData.cameraData.camera.nearClipPlane, renderingData.cameraData.camera.farClipPlane);
 
-        #region InitViewBoundSector
+        #region InitViewBound
         NativeList<JobHandle> taskHandles = new NativeList<JobHandle>(256, Allocator.Temp);
         NativeArray<int> boundsVisible = new NativeArray<int>(FoliageComponent.FoliageComponents.Count, Allocator.TempJob);
         NativeArray<FBound> sectorsBound = new NativeArray<FBound>(FoliageComponent.FoliageComponents.Count, Allocator.TempJob);
@@ -44,29 +44,30 @@ internal unsafe class FoliagePass : ScriptableRenderPass
             sectorsBound[i] = FoliageComponent.FoliageComponents[i].boundSector.bound;
         }
 
-        var sectorCullingJob = new FBoundSectorCullingJob();
-        sectorCullingJob.planes = planesPtr;
-        sectorCullingJob.visibleMap = boundsVisible;
-        sectorCullingJob.sectorBounds = (FBound*)sectorsBound.GetUnsafePtr();
-        sectorCullingJob.Schedule(sectorsBound.Length, 8).Complete();
-        #endregion //InitViewBoundSector
-
-        #region InitViewBoundSection
-        for (int i = 0; i < sectorsBound.Length; ++i)
+        if(sectorsBound.Length < 8)
         {
-            if (boundsVisible[i] == 0) { continue; }
-            FoliageComponent foliageComponent = FoliageComponent.FoliageComponents[i];
-            foliageComponent.InitViewSection(viewOrigin, planesPtr, taskHandles);
+            FBoundCullingJob sectorCullingJob;
+            sectorCullingJob.planes = planesPtr;
+            sectorCullingJob.length = sectorsBound.Length;
+            sectorCullingJob.visibleMap = boundsVisible;
+            sectorCullingJob.sectorBounds = (FBound*)sectorsBound.GetUnsafePtr();
+            sectorCullingJob.Run();
+        } else {
+            FBoundCullingParallelJob sectorCullingJob;
+            sectorCullingJob.planes = planesPtr;
+            sectorCullingJob.visibleMap = boundsVisible;
+            sectorCullingJob.sectorBounds = (FBound*)sectorsBound.GetUnsafePtr();
+            sectorCullingJob.Schedule(sectorsBound.Length, 8).Complete();
         }
-        JobHandle.CompleteAll(taskHandles);
-        taskHandles.Clear();
-        #endregion //InitViewBoundSection
+        
+        #endregion //InitViewBound
 
         #region InitViewFoliage
         for (int i = 0; i < sectorsBound.Length; ++i)
         {
             if (boundsVisible[i] == 0) { continue; }
             FoliageComponent foliageComponent = FoliageComponent.FoliageComponents[i];
+            foliageComponent.InitViewSection(viewOrigin, planesPtr, taskHandles);
             foliageComponent.InitViewFoliage(viewOrigin, matrixProj, planesPtr, taskHandles);
         }
         JobHandle.CompleteAll(taskHandles);

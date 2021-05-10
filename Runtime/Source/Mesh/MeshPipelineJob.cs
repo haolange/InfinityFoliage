@@ -182,9 +182,46 @@ namespace Landscape.FoliagePipeline
             }
         }
     }
-    
+
     [BurstCompile]
-    public unsafe struct FBoundSectorCullingJob : IJobParallelFor
+    public unsafe struct FBoundCullingJob : IJob
+    {
+        public int length;
+
+        [ReadOnly]
+        [NativeDisableUnsafePtrRestriction]
+        public FPlane* planes;
+
+        [NativeDisableUnsafePtrRestriction]
+        public FBound* sectorBounds;
+
+        [WriteOnly]
+        public NativeArray<int> visibleMap;
+
+
+        public void Execute()
+        {
+            for (int index = 0; index < length; ++index)
+            {
+                int visible = 1;
+                float2 distRadius = new float2(0, 0);
+                ref FBound sectorBound = ref sectorBounds[index];
+
+                for (int PlaneIndex = 0; PlaneIndex < 6; ++PlaneIndex)
+                {
+                    ref FPlane plane = ref planes[PlaneIndex];
+                    distRadius.x = math.dot(plane.normalDist.xyz, sectorBound.center) + plane.normalDist.w;
+                    distRadius.y = math.dot(math.abs(plane.normalDist.xyz), sectorBound.extents);
+
+                    visible = math.select(visible, 0, distRadius.x + distRadius.y < 0);
+                }
+                visibleMap[index] = visible;
+            }
+        }
+    }
+
+    [BurstCompile]
+    public unsafe struct FBoundCullingParallelJob : IJobParallelFor
     {
         [ReadOnly]
         [NativeDisableUnsafePtrRestriction]
@@ -216,7 +253,7 @@ namespace Landscape.FoliagePipeline
     }
 
     [BurstCompile]
-    public unsafe struct FBoundSectionCullingJob : IJobParallelFor
+    public unsafe struct FGrassSectionCullingJob : IJobParallelFor
     {
         [ReadOnly]
         public float maxDistance;
