@@ -218,22 +218,22 @@ namespace Landscape.FoliagePipeline
             m_IndexBuffer.SetData(m_TreeBatchIndexs);
             //cmdBuffer.SetComputeBufferData(m_IndexBuffer, m_TreeBatchIndexs);
 
-            foreach (var treeCmd in m_TreeDrawCommands)
+            foreach (var treeDrawCmd in m_TreeDrawCommands)
             {
-                Mesh mesh = tree.meshes[treeCmd.lODIndex];
-                Material material = tree.materials[treeCmd.matIndex];
+                Mesh mesh = tree.meshes[treeDrawCmd.lODIndex];
+                Material material = tree.materials[treeDrawCmd.matIndex];
 
                 m_PropertyBlock.Clear();
-                m_PropertyBlock.SetInt(TreeShaderID.offset, treeCmd.countOffset.y);
+                m_PropertyBlock.SetInt(TreeShaderID.offset, treeDrawCmd.countOffset.y);
                 m_PropertyBlock.SetBuffer(TreeShaderID.indexBuffer, m_IndexBuffer);
                 m_PropertyBlock.SetBuffer(TreeShaderID.primitiveBuffer, m_TreeBuffer);
-                cmdBuffer.DrawMeshInstancedProcedural(mesh, treeCmd.meshIndex, material, passIndex, treeCmd.countOffset.x, m_PropertyBlock);
+                cmdBuffer.DrawMeshInstancedProcedural(mesh, treeDrawCmd.meshIndex, material, passIndex, treeDrawCmd.countOffset.x, m_PropertyBlock);
 
-                /*for (int instanceId = 0; instanceId < treeCmd.countOffset.x; ++instanceId)
+                /*for (int instanceId = 0; instanceId < treeDrawCmd.countOffset.x; ++instanceId)
                 {
-                    int index = m_TreeBatchIndexs[treeCmd.countOffset.y + instanceId];
+                    int index = m_TreeBatchIndexs[treeDrawCmd.countOffset.y + instanceId];
                     FMeshBatch treeBatch = m_TreeBatchs[index];
-                    cmdBuffer.DrawMesh(mesh, treeBatch.matrix_World, material, treeCmd.meshIndex, 0);
+                    cmdBuffer.DrawMesh(mesh, treeBatch.matrix_World, material, treeDrawCmd.meshIndex, 0);
                 }*/
             }
 
