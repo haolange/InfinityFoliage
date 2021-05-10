@@ -11,13 +11,14 @@ namespace Landscape.FoliagePipeline
     [AddComponentMenu("HG/Foliage/Grass Component")]
     public unsafe class GrassComponent : FoliageComponent
     {
+        [Header("Setting")]
+        public int numSection = 16;
+
 #if UNITY_EDITOR
         [Header("Debug")]
         public bool showBounds = false;
 #endif
 
-        [Header("Setting")]
-        public int numSection = 16;
         public bool needUpdateGPU
         {
             get
