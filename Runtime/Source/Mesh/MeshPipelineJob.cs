@@ -54,7 +54,7 @@ namespace Landscape.FoliagePipeline
         public int[] dscDensity;
         public int[,] srcDensity;
         public float[,] srcHeight;
-        public float4[] dscNormalHeight;
+        public float[] dscHeight;
         public FGrassSection grassSection;
 
 
@@ -65,8 +65,8 @@ namespace Landscape.FoliagePipeline
                 for (int k = 0; k < length; ++k)
                 {
                     int densityIndex = j * length + k;
+                    dscHeight[densityIndex] = srcHeight[j, k];
                     dscDensity[densityIndex] = srcDensity[j, k];
-                    dscNormalHeight[densityIndex].w = srcHeight[j, k];
                     grassSection.totalDensity += srcDensity[j, k];
                 }
             }

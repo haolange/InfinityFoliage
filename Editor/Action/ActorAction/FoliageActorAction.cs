@@ -243,7 +243,7 @@ namespace Landscape.Editor.FoliagePipeline
                         FBoundSection boundSection = boundSector.sections[grassSection.boundIndex];
 
                         grassSection.densityMap = new int[grassComponent.SectionSize * grassComponent.SectionSize];
-                        grassSection.normalHeight = new float4[grassComponent.SectionSize * grassComponent.SectionSize];
+                        grassSection.heightmap = new float[grassComponent.SectionSize * grassComponent.SectionSize];
 
                         int2 sampleUV = (int2)boundSection.pivotPosition.xz - new int2((int)selectObject.transform.position.x, (int)selectObject.transform.position.z);
                         int[,] densityMap = terrainData.GetDetailLayer(sampleUV.x, sampleUV.y, grassComponent.SectionSize, grassComponent.SectionSize, grassIndex);
@@ -257,7 +257,7 @@ namespace Landscape.Editor.FoliagePipeline
                             updategrassTask.srcDensity = densityMap;
                             updategrassTask.grassSection = grassSection;
                             updategrassTask.dscDensity = grassSection.densityMap;
-                            updategrassTask.dscNormalHeight = grassSection.normalHeight;
+                            updategrassTask.dscHeight = grassSection.heightmap;
                         }
                         var taskHandle = GCHandle.Alloc(updategrassTask);
                         tasksHandle.Add(taskHandle);

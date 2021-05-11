@@ -80,10 +80,7 @@ namespace Landscape.FoliagePipeline
 
             for (int i = 0; i < nativeSections.Length; i++)
             {
-                if(sectionsVisbible[i] == 1)
-                {
-                    Geometry.DrawBound(nativeSections[i].boundBox, Color.green);
-                }
+                Geometry.DrawBound(nativeSections[i].boundBox, sectionsVisbible[i] == 1 ? Color.green : Color.red);
             }
         }
 

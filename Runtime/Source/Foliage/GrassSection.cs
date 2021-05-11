@@ -58,9 +58,9 @@ namespace Landscape.FoliagePipeline
         public int boundIndex;
         public int totalDensity;
         public int[] densityMap;
-        public float4[] normalHeight;
+        public float[] heightmap;
         private NativeArray<int> m_DensityMap;
-        private NativeArray<float4> m_NormalHeight;
+        private NativeArray<float> m_heightmap;
         private NativeList<FGrassBatch> m_GrassBatchs;
 
         private Mesh m_mesh;
@@ -77,13 +77,13 @@ namespace Landscape.FoliagePipeline
             m_GrassBuffer = new ComputeBuffer(totalDensity, Marshal.SizeOf(typeof(FGrassBatch)));
 
             m_DensityMap = new NativeArray<int>(densityMap.Length, Allocator.Persistent);
-            m_NormalHeight = new NativeArray<float4>(normalHeight.Length, Allocator.Persistent);
+            m_heightmap = new NativeArray<float>(heightmap.Length, Allocator.Persistent);
             m_GrassBatchs = new NativeList<FGrassBatch>(densityMap.Length, Allocator.Persistent);
 
             for (int i = 0; i < densityMap.Length; i++)
             {
                 m_DensityMap[i] = densityMap[i];
-                m_NormalHeight[i] = normalHeight[i];
+                m_heightmap[i] = heightmap[i];
             }
 
             m_material.SetBuffer(GrassShaderID.primitiveBuffer, m_GrassBuffer);
@@ -99,7 +99,7 @@ namespace Landscape.FoliagePipeline
             m_DensityMap.Dispose();
             m_GrassBatchs.Dispose();
             m_GrassBuffer.Dispose();
-            m_NormalHeight.Dispose();
+            m_heightmap.Dispose();
             UnityEngine.Object.DestroyImmediate(m_material);
         }
 
