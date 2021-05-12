@@ -8,6 +8,7 @@ Shader "Landscape/Grass"
         [Header(Normal)]
         [NoScaleOffset]_NomralTexture ("NomralTexture", 2D) = "bump" {}
 
+		//_Alpha("Alpha", Range(0, 1)) = 1
 		//[Header(State)]
 		//_ZTest("ZTest", Int) = 4
 		//_ZWrite("ZWrite", Int) = 1
@@ -21,6 +22,7 @@ Shader "Landscape/Grass"
 		#include "Packages/com.unity.render-pipelines.core/ShaderLibrary/UnityInstancing.hlsl"
 
 		int _TerrainSize;
+		//float _Alpha;
 		float4 _TerrainPivotScaleY;
 		Texture2D _AlbedoTexture, _NomralTexture, _TerrainHeightmap;
 		SamplerState sampler_AlbedoTexture, sampler_NomralTexture, sampler_TerrainHeightmap;
@@ -29,7 +31,7 @@ Shader "Landscape/Grass"
     SubShader
     {
         Tags{"Queue" = "AlphaTest" "RenderPipeline" = "UniversalPipeline" "IgnoreProjector" = "True" "RenderType" = "Opaque"}
-		AlphaToMask On
+		//AlphaToMask On
 
         Pass
         {
@@ -44,7 +46,7 @@ Shader "Landscape/Grass"
             #pragma vertex vert
             #pragma fragment frag
 			#pragma multi_compile_instancing
-			#pragma enable_d3d11_debug_symbols
+			//#pragma enable_d3d11_debug_symbols
 
 			struct Attributes
 			{
@@ -84,7 +86,7 @@ Shader "Landscape/Grass"
 				float4 color = _AlbedoTexture.Sample(sampler_AlbedoTexture, input.uv0);
 
 				float crossFade = LODCrossDither(input.vertexCS.xy, unity_LODFade.x);
-				if (crossFade >= 0.3f)
+				if (crossFade >= 0.5f)
 				{
 					discard;
 				}
@@ -105,7 +107,7 @@ Shader "Landscape/Grass"
 			#pragma target 4.5
             #pragma vertex vert
             #pragma fragment frag
-			#pragma enable_d3d11_debug_symbols
+			//#pragma enable_d3d11_debug_symbols
 
 			struct Attributes
 			{
@@ -160,11 +162,11 @@ Shader "Landscape/Grass"
 
 			float4 frag(Varyings input) : SV_Target
 			{
-				float3 worldPos = input.vertexWS.xyz;
+				//float3 worldPos = input.vertexWS.xyz;
 				//FGrassBatch grassBatch = _GrassBatchBuffer[input.PrimitiveId];
 
 				float4 color = _AlbedoTexture.Sample(sampler_AlbedoTexture, input.uv0);
-				if (color.a <= 0.3f)
+				if (color.a <= 0.5f)
 				{
 					discard;
 				}

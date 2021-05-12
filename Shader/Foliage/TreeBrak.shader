@@ -31,7 +31,7 @@ Shader "Landscape/TreeBrak"
     SubShader
     {
         Tags{"Queue" = "Geometry" "RenderPipeline" = "UniversalPipeline" "IgnoreProjector" = "True" "RenderType" = "Opaque"}
-		AlphaToMask On
+		//AlphaToMask On
 
         Pass
         {
@@ -46,7 +46,7 @@ Shader "Landscape/TreeBrak"
             #pragma vertex vert
             #pragma fragment frag
 			#pragma multi_compile_instancing
-			#pragma enable_d3d11_debug_symbols
+			//#pragma enable_d3d11_debug_symbols
 
 			/*#pragma multi_compile _ _SHADOWS_SOFT
 			#pragma multi_compile _ _MAIN_LIGHT_SHADOWS
@@ -113,7 +113,7 @@ Shader "Landscape/TreeBrak"
 
 				//CrossFade
 				float crossFade = LODCrossDither(input.vertexCS.xy, unity_LODFade.x);
-				if (crossFade >= 0.3f)
+				if (crossFade >= 0.5f)
 				{
 					discard;
 				}
@@ -136,7 +136,7 @@ Shader "Landscape/TreeBrak"
 			#pragma target 4.5
             #pragma vertex vert
             #pragma fragment frag
-			#pragma enable_d3d11_debug_symbols
+			//#pragma enable_d3d11_debug_symbols
 
 			/*#pragma multi_compile _ _SHADOWS_SOFT
 			#pragma multi_compile _ _MAIN_LIGHT_SHADOWS

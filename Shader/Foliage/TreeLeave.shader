@@ -30,7 +30,7 @@ Shader "Landscape/TreeLeave"
     SubShader
     {
         Tags{"Queue" = "AlphaTest" "RenderPipeline" = "UniversalPipeline" "IgnoreProjector" = "True" "RenderType" = "Opaque"}
-		AlphaToMask On
+		//AlphaToMask On
 
         Pass
         {
@@ -45,7 +45,7 @@ Shader "Landscape/TreeLeave"
             #pragma vertex vert
             #pragma fragment frag
 			#pragma multi_compile_instancing
-			#pragma enable_d3d11_debug_symbols
+			//#pragma enable_d3d11_debug_symbols
 
 			/*#pragma multi_compile _ _SHADOWS_SOFT
 			#pragma multi_compile _ _MAIN_LIGHT_SHADOWS
@@ -106,7 +106,7 @@ Shader "Landscape/TreeLeave"
 
 				//CrossFade
 				float crossFade = LODCrossDither(input.vertexCS.xy, unity_LODFade.x);
-				if (crossFade >= 0.5f)
+				if (crossFade >= 0.5f || outColor.a <= 0.5f)
 				{
 					discard;
 				}
@@ -129,7 +129,7 @@ Shader "Landscape/TreeLeave"
 			#pragma target 4.5
             #pragma vertex vert
             #pragma fragment frag
-			#pragma enable_d3d11_debug_symbols
+			//#pragma enable_d3d11_debug_symbols
 
 			/*#pragma multi_compile _ _SHADOWS_SOFT
 			#pragma multi_compile _ _MAIN_LIGHT_SHADOWS
@@ -185,7 +185,7 @@ Shader "Landscape/TreeLeave"
 				//Surface
 				float4 outColor = _AlbedoTexture.Sample(sampler_AlbedoTexture, input.uv0);
 				//outColor.rgb *= directDiffuse.rgb;
-				if (outColor.a <= 0.3f)
+				if (outColor.a <= 0.5f)
 				{
 					discard;
 				}
