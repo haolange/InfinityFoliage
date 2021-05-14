@@ -315,9 +315,9 @@ namespace InfinityTech.Core.Geometry
 #endif
             float[,] heights = new float[TextureSize, TextureSize];
 
-            for (int x = 0; x <= TextureSize - 1; x++)
+            for (int x = 0; x <= TextureSize - 1; ++x)
             {
-                for (int y = 0; y <= TextureSize - 1; y++)
+                for (int y = 0; y <= TextureSize - 1; ++y)
                 {
                     heights[(TextureSize - 1) - x, y] = 0;
                 }
@@ -336,9 +336,9 @@ namespace InfinityTech.Core.Geometry
             int TextureSize = SourceHeightMap.width;
             float[,] heights = new float[TextureSize, TextureSize];
 
-            for (int x = 0; x <= TextureSize - 1; x++)
+            for (int x = 0; x <= TextureSize - 1; ++x)
             {
-                for (int y = 0; y <= TextureSize - 1; y++)
+                for (int y = 0; y <= TextureSize - 1; ++y)
                 {
                     heights[(TextureSize - 1) - x, y] = HeightData[x * TextureSize + y].r;
                 }
@@ -355,9 +355,9 @@ namespace InfinityTech.Core.Geometry
 
             int TextureSize = SourceHeightMap.width;
             Color[] HeightData = new Color[TextureSize * TextureSize];
-            for (int x = 0; x <= TextureSize - 1; x++)
+            for (int x = 0; x <= TextureSize - 1; ++x)
             {
-                for (int y = 0; y <= TextureSize - 1; y++)
+                for (int y = 0; y <= TextureSize - 1; ++y)
                 {
                     HeightData[x * TextureSize + y].r = DescTerrainData.GetHeight(y, (TextureSize - 1) - x) / DescTerrainData.heightmapScale.y;
                     HeightData[x * TextureSize + y].g = DescTerrainData.GetHeight(y, (TextureSize - 1) - x) / DescTerrainData.heightmapScale.y;

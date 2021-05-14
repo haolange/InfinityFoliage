@@ -80,7 +80,7 @@ namespace Landscape.FoliagePipeline
             m_heightmap = new NativeArray<float>(heightmap.Length, Allocator.Persistent);
             m_GrassBatchs = new NativeList<FGrassBatch>(densityMap.Length, Allocator.Persistent);
 
-            for (int i = 0; i < densityMap.Length; i++)
+            for (int i = 0; i < densityMap.Length; ++i)
             {
                 m_DensityMap[i] = densityMap[i];
                 m_heightmap[i] = heightmap[i];

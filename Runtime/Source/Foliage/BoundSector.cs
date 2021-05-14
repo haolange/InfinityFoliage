@@ -26,9 +26,9 @@ namespace Landscape.FoliagePipeline
             bound = new FBound(new float3(sectorPivotPosition.x + sectorSize_Half, sectorPivotPosition.y + (sectorBound.size.y / 2), sectorPivotPosition.z + sectorSize_Half), sectorBound.size * 0.5f);
             sections = new FBoundSection[numSection * numSection];
 
-            for (int x = 0; x <= numSection - 1; x++)
+            for (int x = 0; x <= numSection - 1; ++x)
             {
-                for (int y = 0; y <= numSection - 1; y++)
+                for (int y = 0; y <= numSection - 1; ++y)
                 {
                     int SectionIndex = (x * numSection) + y;
                     float3 SectionPivotPosition = sectorPivotPosition + new float3(sectionSize * x, 0, sectionSize * y);
@@ -47,7 +47,7 @@ namespace Landscape.FoliagePipeline
             nativeSections = new NativeArray<FBoundSection>(sections.Length, Allocator.Persistent);
             sectionsVisbible = new NativeArray<int>(sections.Length, Allocator.Persistent);
 
-            for (int i = 0; i < sections.Length; i++)
+            for (int i = 0; i < sections.Length; ++i)
             {
                 nativeSections[i] = sections[i];
             }
@@ -78,7 +78,7 @@ namespace Landscape.FoliagePipeline
         {
             Geometry.DrawBound(bound, Color.white);
 
-            for (int i = 0; i < nativeSections.Length; i++)
+            for (int i = 0; i < nativeSections.Length; ++i)
             {
                 Geometry.DrawBound(nativeSections[i].boundBox, sectionsVisbible[i] == 1 ? Color.green : Color.red);
             }
@@ -88,7 +88,7 @@ namespace Landscape.FoliagePipeline
         {
             int SectorSize_Half = sectorSize / 2;
 
-            for (int i = 0; i < sections.Length; i++)
+            for (int i = 0; i < sections.Length; ++i)
             {
                 ref FBoundSection Section = ref sections[i];
 
@@ -100,7 +100,7 @@ namespace Landscape.FoliagePipeline
 
                 float MinHeight = HeightValues[0].r;
                 float MaxHeight = HeightValues[0].r;
-                for (int j = 0; j < HeightValues.Length; j++)
+                for (int j = 0; j < HeightValues.Length; ++j)
                 {
                     if (MinHeight < HeightValues[j].r)
                     {
