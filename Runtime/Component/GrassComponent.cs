@@ -66,6 +66,7 @@ namespace Landscape.FoliagePipeline
         {
             terrain = GetComponent<Terrain>();
             terrainData = terrain.terrainData;
+            foliageType = EFoliageType.Grass;
 
             InitGrassSectors();
             lastDensityScale = -1;
@@ -157,13 +158,13 @@ namespace Landscape.FoliagePipeline
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public override void InitViewSection(in float3 viewOrigin, FPlane* planes, in NativeList<JobHandle> taskHandles)
+        public override void InitViewFoliage(in float3 viewOrigin, in float4x4 matrixProj, FPlane* planes, in NativeList<JobHandle> taskHandles)
         {
             taskHandles.Add(boundSector.InitView(DrawDistance, viewOrigin, planes));
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public override void InitViewFoliage(in float3 viewPos, in float4x4 matrixProj, FPlane* planes, in NativeList<JobHandle> taskHandles)
+        public override void BuildInstance(in NativeList<JobHandle> taskHandles)
         {
             if(!needUpdateGPU) { return; }
 

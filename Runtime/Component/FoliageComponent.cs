@@ -13,6 +13,12 @@ using UnityEditor;
 #endif
 namespace Landscape.FoliagePipeline
 {
+    internal enum EFoliageType
+    {
+        Tree = 0,
+        Grass = 1
+    }
+
     internal struct MTransfrom : IEquatable<MTransfrom>
     {
         public Vector3 position;
@@ -41,10 +47,10 @@ namespace Landscape.FoliagePipeline
     #endif
     public abstract unsafe class FoliageComponent : MonoBehaviour
     {
-        [HideInInspector]
+        internal EFoliageType foliageType;
         internal MTransfrom currTransform;
-        [HideInInspector]
         internal MTransfrom prevTransform;
+
         [HideInInspector]
         public Terrain terrain;
         [HideInInspector]
@@ -118,7 +124,7 @@ namespace Landscape.FoliagePipeline
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public abstract void InitViewSection(in float3 viewOrigin, FPlane* planes, in NativeList<JobHandle> taskHandles);
+        public virtual void BuildInstance(in NativeList<JobHandle> taskHandles) { }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public abstract void InitViewFoliage(in float3 viewPos, in float4x4 matrixProj, FPlane* planes, in NativeList<JobHandle> taskHandles);

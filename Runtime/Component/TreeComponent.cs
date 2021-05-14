@@ -31,6 +31,7 @@ namespace Landscape.FoliagePipeline
         {
             terrain = GetComponent<Terrain>();
             terrainData = terrain.terrainData;
+            foliageType = EFoliageType.Tree;
 
             InitTreeSectors();
 
@@ -107,12 +108,6 @@ namespace Landscape.FoliagePipeline
             {
                 treeSector.Release();
             }
-        }
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public override void InitViewSection(in float3 viewOrigin, FPlane* planes, in NativeList<JobHandle> taskHandles)
-        {
-            
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
