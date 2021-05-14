@@ -98,7 +98,7 @@ namespace Landscape.FoliagePipeline
             ReleaseGrassSectors();
             boundSector.ReleaseNativeCollection();
 
-            if (terrain.drawTreesAndFoliage == false)
+            if (terrain.drawTreesAndFoliage == false && FoliageComponents.Count < 2)
             {
                 terrain.drawTreesAndFoliage = true;
             }

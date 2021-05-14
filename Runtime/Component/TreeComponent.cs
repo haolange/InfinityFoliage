@@ -60,10 +60,10 @@ namespace Landscape.FoliagePipeline
         {
             ReleaseTreeSectors();
 
-            /*if (terrain.drawTreesAndFoliage == false)
+            if (terrain.drawTreesAndFoliage == false && FoliageComponents.Count < 2)
             {
                 terrain.drawTreesAndFoliage = true;
-            }*/
+            }
         }
 
 #if UNITY_EDITOR
