@@ -126,11 +126,6 @@ namespace Landscape.FoliagePipeline
             if (showBounds == false || Application.isPlaying == false || this.enabled == false || this.gameObject.activeSelf == false) return;
 
             boundSector.DrawBound();
-
-            /*foreach (FGrassSector grassSector in grassSectors)
-            {
-                grassSector.DrawBounds();
-            }*/
         }
 
         protected virtual void OnDrawGizmosSelected()

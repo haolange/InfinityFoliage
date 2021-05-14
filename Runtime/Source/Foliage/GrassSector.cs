@@ -74,17 +74,5 @@ namespace Landscape.FoliagePipeline
                 section.DispatchDraw(cmdBuffer, passIndex);
             }
         }
-
-#if UNITY_EDITOR
-        public void DrawBounds()
-        {
-            foreach (FGrassSection section in sections)
-            {
-                if (boundSector.sectionsVisbible[section.boundIndex] == 0) { continue; }
-
-                section.DrawBounds();
-            }
-        }
-#endif
     }
 }

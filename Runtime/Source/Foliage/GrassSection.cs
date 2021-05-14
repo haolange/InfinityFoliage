@@ -136,21 +136,8 @@ namespace Landscape.FoliagePipeline
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public void DispatchDraw(CommandBuffer cmdBuffer,in int passIndex)
         {
-            if (totalDensity == 0 || m_GrassBatchs.Length == 0) { return; }
-            cmdBuffer.DrawMeshInstancedProcedural(m_Mesh, 0, m_Material, passIndex, m_GrassBatchs.Length);
+            if (totalDensity == 0 || m_GrassBuffer.count == 0) { return; }
+            cmdBuffer.DrawMeshInstancedProcedural(m_Mesh, 0, m_Material, passIndex, m_GrassBuffer.count);
         }
-
-#if UNITY_EDITOR
-        public void DrawBounds()
-        {
-            if (totalDensity == 0) { return; }
-
-            foreach (FGrassBatch grassBatch in m_GrassBatchs)
-            {
-                Gizmos.color = Color.red;
-                Gizmos.DrawSphere(grassBatch.position, 0.25f);
-            }
-        }
-#endif
     }
 }
