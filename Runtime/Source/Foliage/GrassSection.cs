@@ -57,6 +57,7 @@ namespace Landscape.FoliagePipeline
     {
         public int boundIndex;
         public int totalDensity;
+        public int instanceCount;
         public int[] densityMap;
         public float[] heightmap;
         private NativeArray<int> m_DensityMap;
@@ -76,9 +77,9 @@ namespace Landscape.FoliagePipeline
             m_Material = new Material(material);
             m_GrassBuffer = new ComputeBuffer(totalDensity, Marshal.SizeOf(typeof(FGrassBatch)));
 
+            instanceCount = 0;
             m_DensityMap = new NativeArray<int>(densityMap.Length, Allocator.Persistent);
             m_heightmap = new NativeArray<float>(heightmap.Length, Allocator.Persistent);
-            m_GrassBatchs = new NativeList<FGrassBatch>(densityMap.Length, Allocator.Persistent);
 
             for (int i = 0; i < densityMap.Length; ++i)
             {
@@ -97,7 +98,6 @@ namespace Landscape.FoliagePipeline
             if (totalDensity == 0) { return; }
 
             m_DensityMap.Dispose();
-            m_GrassBatchs.Dispose();
             m_GrassBuffer.Dispose();
             m_heightmap.Dispose();
             UnityEngine.Object.DestroyImmediate(m_Material);
@@ -108,8 +108,7 @@ namespace Landscape.FoliagePipeline
         {
             if (totalDensity == 0 || densityScale == 0) { return default; }
 
-            m_GrassBatchs.Clear();
-
+            m_GrassBatchs = new NativeList<FGrassBatch>(densityMap.Length, Allocator.TempJob);
             var grassScatterJob = new FGrassScatterJob();
             {
                 grassScatterJob.split = split;
@@ -127,17 +126,23 @@ namespace Landscape.FoliagePipeline
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public void SetGPUData(CommandBuffer cmdBuffer)
         {
-            if (totalDensity == 0 || m_GrassBatchs.Length == 0) { return; }
+            if (m_GrassBatchs.IsCreated == false) { return; }
 
-            m_GrassBuffer.SetData<FGrassBatch>(m_GrassBatchs, 0, 0, m_GrassBatchs.Length);
-            //cmdBuffer.SetComputeBufferData<FGrassBatch>(m_GrassBuffer, m_GrassBatchs, 0, 0, m_GrassBatchs.Length);
+            if (totalDensity != 0 || m_GrassBatchs.Length != 0) 
+            {
+                m_GrassBuffer.SetData<FGrassBatch>(m_GrassBatchs, 0, 0, m_GrassBatchs.Length);
+                //cmdBuffer.SetComputeBufferData<FGrassBatch>(m_GrassBuffer, m_GrassBatchs, 0, 0, m_GrassBatchs.Length);
+            }
+
+            instanceCount = m_GrassBatchs.Length;
+            m_GrassBatchs.Dispose();
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public void DispatchDraw(CommandBuffer cmdBuffer,in int passIndex)
         {
-            if (totalDensity == 0 || m_GrassBuffer.count == 0) { return; }
-            cmdBuffer.DrawMeshInstancedProcedural(m_Mesh, 0, m_Material, passIndex, m_GrassBuffer.count);
+            if (instanceCount == 0) { return; }
+            cmdBuffer.DrawMeshInstancedProcedural(m_Mesh, 0, m_Material, passIndex, instanceCount);
         }
     }
 }

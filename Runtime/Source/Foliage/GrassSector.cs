@@ -40,8 +40,6 @@ namespace Landscape.FoliagePipeline
         {
             foreach (FGrassSection section in sections)
             {
-                //if (boundSector.sectionsVisbible[section.boundIndex] == 0) { continue; }
-
                 FBoundSection boundSection = boundSector.nativeSections[section.boundIndex];
                 taskHandles.Add(section.BuildInstance(split, heightScale, densityScale, boundSection.pivotPosition, widthScale));
             }
