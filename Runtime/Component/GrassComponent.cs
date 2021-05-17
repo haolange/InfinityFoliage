@@ -19,13 +19,6 @@ namespace Landscape.FoliagePipeline
         public bool showBounds = false;
 #endif
 
-        public bool needUpdateGPU
-        {
-            get
-            {
-                return lastDensityScale != terrain.detailObjectDensity;
-            }
-        }
         public int SectorSize
         {
             get
@@ -57,8 +50,6 @@ namespace Landscape.FoliagePipeline
         [HideInInspector]
         public float lastNumSection;
         [HideInInspector]
-        public float lastDensityScale;
-        [HideInInspector]
         public FGrassSector[] grassSectors;
 
 
@@ -68,9 +59,8 @@ namespace Landscape.FoliagePipeline
             terrainData = terrain.terrainData;
             foliageType = EFoliageType.Grass;
 
-            InitGrassSectors();
-            lastDensityScale = -1;
             boundSector.BuildNativeCollection();
+            InitGrassSectors();
 
             if (terrain.drawTreesAndFoliage == true)
             {
@@ -146,6 +136,7 @@ namespace Landscape.FoliagePipeline
             foreach(FGrassSector grassSector in grassSectors)
             {
                 grassSector.Init(boundSector, terrainData, shaderProperty);
+                grassSector.BuildInstance(SectionSize, TerrainScaleY, terrain.detailObjectDensity);
             }
         }
         
@@ -164,26 +155,9 @@ namespace Landscape.FoliagePipeline
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public override void BuildInstance(in NativeList<JobHandle> taskHandles)
-        {
-            if(!needUpdateGPU) { return; }
-
-            foreach (FGrassSector grassSector in grassSectors)
-            {
-                grassSector.BuildInstance(SectionSize, TerrainScaleY, terrain.detailObjectDensity, taskHandles);
-            }
-        }
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public override void DispatchSetup(CommandBuffer cmdBuffer, in NativeList<JobHandle> taskHandles)
         {
-            if (!needUpdateGPU) { return; }
-            lastDensityScale = terrain.detailObjectDensity;
 
-            foreach (FGrassSector grassSector in grassSectors)
-            {
-                grassSector.SetGPUData(cmdBuffer);
-            }
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -191,12 +165,15 @@ namespace Landscape.FoliagePipeline
         {
             for(int i = 0; i < boundSector.nativeSections.Length; ++i)
             {
-                if (boundSector.sectionsVisbible[i] == 0) { continue; }
-
-                for(int j = 0; j < grassSectors.Length; ++j)
+                for (int j = 0; j < grassSectors.Length; ++j)
                 {
                     FGrassSector grassSector = grassSectors[j];
-                    grassSector.sections[i].DispatchDraw(cmdBuffer, passIndex);
+                    grassSector.sections[i].SetupGPUData();
+
+                    if (boundSector.sectionsVisbible[i] == 1) 
+                    {
+                        grassSector.sections[i].DispatchDraw(cmdBuffer, passIndex);
+                    }
                 }
             }
         }

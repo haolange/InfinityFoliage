@@ -124,9 +124,6 @@ namespace Landscape.FoliagePipeline
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public virtual void BuildInstance(in NativeList<JobHandle> taskHandles) { }
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public abstract void InitViewFoliage(in float3 viewOrigin, in float4x4 matrixProj, FPlane* planes, in NativeList<JobHandle> taskHandles);
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]

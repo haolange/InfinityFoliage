@@ -64,27 +64,12 @@ namespace Landscape.FoliagePipeline
             #endregion //InitViewBound
 
             #region InitViewFoliage
-            //Culling
             for (int i = 0; i < sectorsBound.Length; ++i)
             {
                 if (boundsVisible[i] == 0) { continue; }
 
                 FoliageComponent foliageComponent = FoliageComponent.FoliageComponents[i];
                 foliageComponent.InitViewFoliage(viewOrigin, matrixProj, planesPtr, taskHandles);
-            }
-            JobHandle.CompleteAll(taskHandles);
-            taskHandles.Clear();
-
-            //Build GrassInstance
-            for (int i = 0; i < sectorsBound.Length; ++i)
-            {
-                if (boundsVisible[i] == 0) { continue; }
-
-                FoliageComponent foliageComponent = FoliageComponent.FoliageComponents[i];
-                if(foliageComponent.foliageType == EFoliageType.Grass)
-                {
-                    foliageComponent.BuildInstance(taskHandles);
-                }
             }
             JobHandle.CompleteAll(taskHandles);
             taskHandles.Clear();
