@@ -50,53 +50,14 @@ namespace Landscape.FoliagePipeline
         public void Release()
         {
             m_TreeBuffer.Dispose();
-            m_IndexBuffer.Dispose();
-
             m_TreeBatchs.Dispose();
-            m_TreeElements.Dispose();
+            m_IndexBuffer.Dispose();
             m_TreeLODInfos.Dispose();
+            m_TreeElements.Dispose();
             m_ViewTreeBatchs.Dispose();
             m_TreeBatchIndexs.Dispose();
             m_PassTreeElements.Dispose();
             m_TreeDrawCommands.Dispose();
-        }
-
-        public void AddBatch(in FMeshBatch treeBatch)
-        {
-            m_TreeBatchs.Add(treeBatch);
-        }
-
-        public void RemoveBatch(in FMeshBatch treeBatch)
-        {
-            var index = m_TreeBatchs.IndexOf(treeBatch);
-            if (index >= 0)
-            {
-                m_TreeBatchs.RemoveAt(index);
-            }
-        }
-
-        public void ClearBatch()
-        {
-            m_TreeBatchs.Clear();
-        }
-
-        public void AddElement(in FMeshElement treeElement)
-        {
-            m_TreeElements.Add(treeElement);
-        }
-
-        public void RemoveElement(in FMeshElement treeElement)
-        {
-            var index = m_TreeElements.IndexOf(treeElement);
-            if (index >= 0)
-            {
-                m_TreeElements.RemoveAt(index);
-            }
-        }
-
-        public void ClearElement()
-        {
-            m_TreeElements.Clear();
         }
 
         public void BuildMeshBatch()
@@ -111,7 +72,7 @@ namespace Landscape.FoliagePipeline
                 treeBatch.matrix_World = matrixWorld;
                 treeBatch.boundBox = Geometry.CaculateWorldBound(mesh.bounds, matrixWorld);
                 treeBatch.boundSphere = new FSphere(Geometry.CaculateBoundRadius(treeBatch.boundBox), treeBatch.boundBox.center);
-                AddBatch(treeBatch);
+                m_TreeBatchs.Add(treeBatch);
             }
 
             m_TreeBuffer = new ComputeBuffer(m_TreeBatchs.Length, Marshal.SizeOf(typeof(FMeshBatch)));
@@ -143,12 +104,11 @@ namespace Landscape.FoliagePipeline
                     {
                         treeElement.meshIndex = k;
                         treeElement.matIndex = tree.lODInfo[j].materialSlot[k];
-                        //TreeElement.InstanceGroupID = (TreeElement.MeshIndex >> 16) + (TreeElement.LODIndex << 16 | TreeElement.MatIndex);
-                        AddElement(treeElement);
+                        m_TreeElements.Add(treeElement);
                     }
                 }
             }
-            
+
             m_TreeElements.Sort();
 
             m_TreeBatchIndexs = new NativeArray<int>(m_TreeElements.Length, Allocator.Persistent);
@@ -188,30 +148,6 @@ namespace Landscape.FoliagePipeline
             return treeDrawCommandBuildJob.Schedule();
         }
 
-        /*[MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public void DispatchDraw(CommandBuffer cmdBuffer)
-        {
-            foreach (var treeElement in m_treeElements)
-            {
-                var viewTreeBatch = m_viewTreeBatchs[treeElement.BatchIndex];
-
-                if(viewTreeBatch == 1)
-                {
-                    var treeBatch = m_treeBatchs[treeElement.BatchIndex];
-
-                    if (treeElement.LODIndex == treeBatch.LODIndex)
-                    {
-                        var mesh = tree.Meshes[treeElement.LODIndex];
-                        var material = tree.Materials[treeElement.MatIndex];
-                        cmdBuffer.DrawMesh(mesh, treeBatch.Matrix_World, material, treeElement.MeshIndex, 0);
-                    }
-                }
-            }
-
-            m_passTreeElements.Clear();
-            m_treeDrawCommands.Clear();
-        }*/
-
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public void DispatchDraw(CommandBuffer cmdBuffer, in int passIndex)
         {
@@ -228,13 +164,6 @@ namespace Landscape.FoliagePipeline
                 m_PropertyBlock.SetBuffer(TreeShaderID.indexBuffer, m_IndexBuffer);
                 m_PropertyBlock.SetBuffer(TreeShaderID.primitiveBuffer, m_TreeBuffer);
                 cmdBuffer.DrawMeshInstancedProcedural(mesh, treeDrawCmd.meshIndex, material, passIndex, treeDrawCmd.countOffset.x, m_PropertyBlock);
-
-                /*for (int instanceId = 0; instanceId < treeDrawCmd.countOffset.x; ++instanceId)
-                {
-                    int index = m_TreeBatchIndexs[treeDrawCmd.countOffset.y + instanceId];
-                    FMeshBatch treeBatch = m_TreeBatchs[index];
-                    cmdBuffer.DrawMesh(mesh, treeBatch.matrix_World, material, treeDrawCmd.meshIndex, 0);
-                }*/
             }
 
             m_PassTreeElements.Clear();
@@ -250,7 +179,7 @@ namespace Landscape.FoliagePipeline
             {
                 var treeBatch = m_TreeBatchs[i];
                 ref var color = ref Geometry.LODColors[treeBatch.lODIndex];
-                if(m_ViewTreeBatchs[i] == 0)
+                if (m_ViewTreeBatchs[i] == 0)
                 {
                     continue;
                 }
