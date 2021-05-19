@@ -111,11 +111,11 @@ namespace Landscape.FoliagePipeline
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public override void InitViewFoliage(in float3 viewOrigin, in float4x4 matrixProj, FPlane* planes, in NativeList<JobHandle> taskHandles)
+        public override void InitViewFoliage(in float3 viewPos, in float4x4 matrixProj, FPlane* planes, in NativeList<JobHandle> taskHandles)
         {
             foreach (var treeSector in treeSectors)
             {
-                var taskHandle = treeSector.InitView(drawDistance, viewOrigin, matrixProj, planes);
+                var taskHandle = treeSector.InitView(drawDistance, viewPos, matrixProj, planes);
                 taskHandles.Add(taskHandle); 
             }
         }
