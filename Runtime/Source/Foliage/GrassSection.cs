@@ -60,9 +60,6 @@ namespace Landscape.FoliagePipeline
         public int instanceCount;
         public int[] densityMap;
         public float[] heightmap;
-        public JobHandle m_Handle;
-        private bool m_IsUpdateGPU;
-        private bool m_ScatterFinish;
         private NativeArray<int> m_DensityMap;
         private NativeArray<float> m_heightmap;
         private NativeList<FGrassBatch> m_GrassBatchs;
@@ -81,8 +78,6 @@ namespace Landscape.FoliagePipeline
             m_GrassBuffer = new ComputeBuffer(totalDensity, Marshal.SizeOf(typeof(FGrassBatch)));
 
             instanceCount = -1;
-            m_IsUpdateGPU = false;
-            m_ScatterFinish = true;
             m_DensityMap = new NativeArray<int>(densityMap.Length, Allocator.Persistent);
             m_heightmap = new NativeArray<float>(heightmap.Length, Allocator.Persistent);
 
@@ -109,11 +104,11 @@ namespace Landscape.FoliagePipeline
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public void BuildInstance(in int split, in float heightScale, in float densityScale, in float3 sectionPivot, in float4 widthScale)
+        public JobHandle BuildInstance(in int split, in float heightScale, in float densityScale, in float3 sectionPivot, in float4 widthScale)
         {
-            if (totalDensity == 0 || densityScale == 0) { return; }
+            if (totalDensity == 0 || densityScale == 0) { return default; }
 
-            m_GrassBatchs = new NativeList<FGrassBatch>(densityMap.Length, Allocator.Persistent);
+            m_GrassBatchs = new NativeList<FGrassBatch>(densityMap.Length, Allocator.TempJob);
             var grassScatterJob = new FGrassScatterJob();
             {
                 grassScatterJob.split = split;
@@ -125,22 +120,16 @@ namespace Landscape.FoliagePipeline
                 //grassScatterJob.heightMap = m_heightmap;
                 //grassScatterJob.heightScale = heightScale;
             }
-            m_Handle = grassScatterJob.Schedule();
+            return grassScatterJob.Schedule();
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public void SetupGPUData()
         {
-            if (!m_ScatterFinish && !m_Handle.IsCompleted) { return; }
-
-            m_Handle.Complete();
-            m_ScatterFinish = false;
-
-            if (!m_IsUpdateGPU && m_GrassBatchs.IsCreated && m_GrassBatchs.Length > 0)
+            if (m_GrassBatchs.IsCreated)
             {
-                m_IsUpdateGPU = true;
-                instanceCount = m_GrassBatchs.Length;
                 m_GrassBuffer.SetData<FGrassBatch>(m_GrassBatchs, 0, 0, m_GrassBatchs.Length);
+                instanceCount = m_GrassBatchs.Length;
                 m_GrassBatchs.Dispose();
             }
         }

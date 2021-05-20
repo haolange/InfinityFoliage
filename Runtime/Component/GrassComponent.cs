@@ -52,9 +52,11 @@ namespace Landscape.FoliagePipeline
         [HideInInspector]
         public FGrassSector[] grassSectors;
 
+        private int m_Count;
 
         protected override void OnRegister()
         {
+            m_Count = 0;
             terrain = GetComponent<Terrain>();
             terrainData = terrain.terrainData;
             foliageType = EFoliageType.Grass;
@@ -136,7 +138,6 @@ namespace Landscape.FoliagePipeline
             foreach(FGrassSector grassSector in grassSectors)
             {
                 grassSector.Init(boundSector, terrainData, shaderProperty);
-                grassSector.BuildInstance(SectionSize, TerrainScaleY, terrain.detailObjectDensity);
             }
         }
         
@@ -157,7 +158,31 @@ namespace Landscape.FoliagePipeline
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public override void DispatchSetup(CommandBuffer cmdBuffer, in NativeList<JobHandle> taskHandles)
         {
+            if(m_Count == boundSector.nativeSections.Length) { return; }
 
+            int limit = 1;
+            while (limit > 0 && m_Count < boundSector.nativeSections.Length)
+            {
+                FBoundSection boundSection = boundSector.nativeSections[m_Count];
+                NativeList<JobHandle> scatterHandle = new NativeList<JobHandle>(16, Allocator.Temp);
+
+                for (int i = 0; i < grassSectors.Length; ++i)
+                {
+                    FGrassSector grassSector = grassSectors[i];
+                    scatterHandle.Add(grassSector.sections[m_Count].BuildInstance(SectionSize, TerrainScaleY, terrain.detailObjectDensity, boundSection.pivotPosition, grassSector.widthScale));
+                }
+                JobHandle.CompleteAll(scatterHandle);
+
+                for (int j = 0; j < grassSectors.Length; ++j)
+                {
+                    FGrassSector grassSector = grassSectors[j];
+                    grassSector.sections[m_Count].SetupGPUData();
+                }
+
+                --limit;
+                ++m_Count;
+                scatterHandle.Dispose();
+            }
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -165,15 +190,12 @@ namespace Landscape.FoliagePipeline
         {
             for(int i = 0; i < boundSector.nativeSections.Length; ++i)
             {
+                if (boundSector.sectionsVisbible[i] == 0) { continue; }
+
                 for (int j = 0; j < grassSectors.Length; ++j)
                 {
                     FGrassSector grassSector = grassSectors[j];
-                    grassSector.sections[i].SetupGPUData();
-
-                    if (boundSector.sectionsVisbible[i] == 1) 
-                    {
-                        grassSector.sections[i].DispatchDraw(cmdBuffer, passIndex);
-                    }
+                    grassSector.sections[i].DispatchDraw(cmdBuffer, passIndex);
                 }
             }
         }
