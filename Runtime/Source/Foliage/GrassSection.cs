@@ -58,16 +58,15 @@ namespace Landscape.FoliagePipeline
         public int boundIndex;
         public int totalDensity;
         public int instanceCount;
-        public int[] densityMap;
         public float[] heightmap;
-        private NativeArray<int> m_DensityMap;
-        private NativeArray<float> m_heightmap;
-        private NativeList<FGrassBatch> m_GrassBatchs;
+        public Int32[] densityMap;
 
         private Mesh m_Mesh;
         private Material m_Material;
         private ComputeBuffer m_GrassBuffer;
-
+        private NativeArray<int> m_DensityMap;
+        private NativeArray<float> m_heightmap;
+        private NativeList<FGrassBatch> m_GrassBatchs;
 
         public void Init(Mesh mesh, Material material, in FGrassShaderProperty shaderProperty)
         {
@@ -78,19 +77,16 @@ namespace Landscape.FoliagePipeline
             m_GrassBuffer = new ComputeBuffer(totalDensity, Marshal.SizeOf(typeof(FGrassBatch)));
 
             instanceCount = -1;
-            m_DensityMap = new NativeArray<int>(densityMap.Length, Allocator.Persistent);
             m_heightmap = new NativeArray<float>(heightmap.Length, Allocator.Persistent);
+            m_DensityMap = new NativeArray<Int32>(densityMap.Length, Allocator.Persistent);
 
-            for (int i = 0; i < densityMap.Length; ++i)
-            {
-                m_DensityMap[i] = densityMap[i];
-                m_heightmap[i] = heightmap[i];
-            }
+            NativeArray<float>.Copy(heightmap, m_heightmap);
+            NativeArray<Int32>.Copy(densityMap, m_DensityMap);
 
             m_Material.SetBuffer(GrassShaderID.primitiveBuffer, m_GrassBuffer);
             m_Material.SetInt(GrassShaderID.terrainSize, shaderProperty.terrainSize + 1);
-            m_Material.SetVector(GrassShaderID.terrainPivotScaleY, shaderProperty.terrainPivotScaleY);
             m_Material.SetTexture(GrassShaderID.terrainHeightmap, shaderProperty.heightmapTexture);
+            m_Material.SetVector(GrassShaderID.terrainPivotScaleY, shaderProperty.terrainPivotScaleY);
         }
 
         public void Release()
@@ -113,11 +109,11 @@ namespace Landscape.FoliagePipeline
             {
                 grassScatterJob.split = split;
                 grassScatterJob.widthScale = widthScale;
+                //grassScatterJob.heightMap = m_heightmap;
                 grassScatterJob.densityMap = m_DensityMap;
                 grassScatterJob.grassBatchs = m_GrassBatchs;
                 grassScatterJob.densityScale = densityScale;
                 grassScatterJob.sectionPivot = sectionPivot;
-                //grassScatterJob.heightMap = m_heightmap;
                 //grassScatterJob.heightScale = heightScale;
             }
             return grassScatterJob.Schedule();
