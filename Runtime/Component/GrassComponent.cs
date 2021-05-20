@@ -58,8 +58,8 @@ namespace Landscape.FoliagePipeline
         {
             m_Count = 0;
             terrain = GetComponent<Terrain>();
-            terrainData = terrain.terrainData;
             foliageType = EFoliageType.Grass;
+            terrainData = terrain.terrainData;
 
             boundSector.BuildNativeCollection();
             InitGrassSectors();

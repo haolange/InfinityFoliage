@@ -30,8 +30,8 @@ namespace Landscape.FoliagePipeline
         protected override void OnRegister()
         {
             terrain = GetComponent<Terrain>();
-            terrainData = terrain.terrainData;
             foliageType = EFoliageType.Tree;
+            terrainData = terrain.terrainData;
 
             InitTreeSectors();
 
