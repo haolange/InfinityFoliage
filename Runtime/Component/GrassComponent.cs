@@ -160,18 +160,17 @@ namespace Landscape.FoliagePipeline
         {
             if(m_Count == boundSector.nativeSections.Length) { return; }
 
-            int limit = 2;
+            int limit = 1;
             while (limit > 0 && m_Count < boundSector.nativeSections.Length)
             {
                 FBoundSection boundSection = boundSector.nativeSections[m_Count];
-                NativeList<JobHandle> scatterHandle = new NativeList<JobHandle>(16, Allocator.Temp);
 
                 for (int i = 0; i < grassSectors.Length; ++i)
                 {
                     FGrassSector grassSector = grassSectors[i];
-                    scatterHandle.Add(grassSector.sections[m_Count].BuildInstance(SectionSize, TerrainScaleY, terrain.detailObjectDensity, boundSection.pivotPosition, grassSector.widthScale));
+                    taskHandles.Add(grassSector.sections[m_Count].BuildInstance(SectionSize, TerrainScaleY, terrain.detailObjectDensity, boundSection.pivotPosition, grassSector.widthScale));
                 }
-                JobHandle.CompleteAll(scatterHandle);
+                JobHandle.CompleteAll(taskHandles);
 
                 for (int j = 0; j < grassSectors.Length; ++j)
                 {
@@ -181,7 +180,7 @@ namespace Landscape.FoliagePipeline
 
                 --limit;
                 ++m_Count;
-                scatterHandle.Dispose();
+                taskHandles.Clear();
             }
         }
 
