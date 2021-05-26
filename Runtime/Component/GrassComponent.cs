@@ -168,7 +168,7 @@ namespace Landscape.FoliagePipeline
                 for (int i = 0; i < grassSectors.Length; ++i)
                 {
                     FGrassSector grassSector = grassSectors[i];
-                    taskHandles.Add(grassSector.sections[m_Count].BuildInstance(SectionSize, TerrainScaleY, terrain.detailObjectDensity, boundSection.pivotPosition, grassSector.widthScale));
+                    taskHandles.Add(grassSector.sections[m_Count].BuildInstance(SectionSize, grassSector.grass.GetHashCode() / 50000, TerrainScaleY, terrain.detailObjectDensity, boundSection.pivotPosition, grassSector.widthScale));
                 }
                 JobHandle.CompleteAll(taskHandles);
 

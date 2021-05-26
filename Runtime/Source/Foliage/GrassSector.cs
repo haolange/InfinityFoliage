@@ -44,12 +44,12 @@ namespace Landscape.FoliagePipeline
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public void BuildInstance(in int split, in float heightScale, in float densityScale)
+        public void BuildInstance(in int split, in float uniqueValue, in float heightScale, in float densityScale)
         {
             foreach (FGrassSection section in sections)
             {
                 FBoundSection boundSection = boundSector.nativeSections[section.boundIndex];
-                section.BuildInstance(split, heightScale, densityScale, boundSection.pivotPosition, widthScale);
+                section.BuildInstance(split, uniqueValue, heightScale, densityScale, boundSection.pivotPosition, widthScale);
             }
         }
 

@@ -8,7 +8,6 @@ using System.Collections.Generic;
 using System.Runtime.InteropServices;
 using Unity.Collections.LowLevel.Unsafe;
 using static Unity.Mathematics.mathExtent;
-using Random = Unity.Mathematics.Random;
 
 namespace Landscape.FoliagePipeline
 {
@@ -129,6 +128,9 @@ namespace Landscape.FoliagePipeline
         //public float heightScale;
 
         [ReadOnly]
+        public float uniqueValue;
+
+        [ReadOnly]
         public float densityScale;
 
         [ReadOnly]
@@ -165,11 +167,12 @@ namespace Landscape.FoliagePipeline
 
                 for (int j = 0; j < density; ++j)
                 {
-                    float randomRotate = randomFloat(((position.x + 0.5f) * (j + 1)) + (position.z + 0.5f));
-                    float2 randomPoint = randomFloat2(new float2(position.x + 0.5f, (position.z + 0.5f) * (j + 1)));
+                    float multiplier = (j + 1) * math.abs(uniqueValue);
+                    float randomRotate = randomFloat(((position.x + 0.5f) * multiplier) + (position.z + 0.5f));
+                    float2 randomPoint = randomFloat2(new float2(position.x + 0.5f, (position.z + 0.5f) * multiplier));
                     newPosition = position + new float3(randomPoint.x, 0, randomPoint.y);
 
-                    float randomScale = randomFloat(newPosition.x + newPosition.z) * 0.75f;
+                    float randomScale = randomFloat((newPosition.x + newPosition.z) * multiplier);
                     float yScale = widthScale.z + ((widthScale.w - widthScale.z) * randomScale);
                     float xzScale = widthScale.x + ((widthScale.y - widthScale.x) * randomScale);
                     scale = new float3(xzScale, yScale, xzScale);

@@ -1,6 +1,7 @@
 ﻿using System;
 using UnityEditor;
 using UnityEngine;
+using Unity.Mathematics;
 using System.Collections.Generic;
 
 namespace Landscape.FoliagePipeline
@@ -62,12 +63,7 @@ namespace Landscape.FoliagePipeline
 
         public override int GetHashCode()
         {
-            int hashCode = IsCreated ? 0 : 1;
-            hashCode += meshes.GetHashCode();
-            hashCode += lODInfo.GetHashCode();
-            hashCode += materials.GetHashCode();
-
-            return hashCode;
+            return new float4(IsCreated ? 0 : 1, meshes.GetHashCode(), lODInfo.GetHashCode(), materials.GetHashCode()).GetHashCode();
         }
     }
 
