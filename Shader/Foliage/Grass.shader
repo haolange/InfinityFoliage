@@ -3,43 +3,72 @@ Shader "Landscape/Grass"
 	Properties 
 	{
         [Header(Surface)]
-        [NoScaleOffset]_AlbedoTexture ("AlbedoTexture", 2D) = "white" {}
+        [NoScaleOffset]_AlbedoTexture ("Texture", 2D) = "white" {}
+        _Tint ("Tint", Color) = (1, 1, 1, 1)
+        _TintVariation ("Tint Variation", Color) = (1, 1, 1, 1)
+        _ColorVariation ("Color Variation", Float) = 0.0005
 
         [Header(Normal)]
-        [NoScaleOffset]_NomralTexture ("NomralTexture", 2D) = "bump" {}
+        [NoScaleOffset]_NomralTexture ("Texture", 2D) = "bump" {}
+		_VertexNormalStrength("VertexStrength", Range(0, 1)) = 1
 
-		//_Alpha("Alpha", Range(0, 1)) = 1
+		[Header(Wind)]
+        _PivotOffset("PivotOffsetY", Float) = 0.5
+        _WindVariation("Wind Variation", Range(0, 1)) = 0.3
+        _WindStrength("Wind Strength", Range(0, 2)) = 1
+        _TurbulenceStrength("Turbulence Strength", Range(0, 2)) = 1
+        _RecalculateWindNormals("Recalculate Normals", Range(0,1)) = 0.5
+
 		//[Header(State)]
 		//_ZTest("ZTest", Int) = 4
 		//_ZWrite("ZWrite", Int) = 1
-		//_Cull("Cull", Int) = 0
 	}
 
 	HLSLINCLUDE
-		#include "Include/Foliage.hlsl"
-		#include "Include/ShaderVariable.hlsl"
-		#include "Packages/com.unity.render-pipelines.core/ShaderLibrary/Common.hlsl"
-		#include "Packages/com.unity.render-pipelines.core/ShaderLibrary/UnityInstancing.hlsl"
+		cbuffer UnityPerMaterial 
+		{
+			float _PivotOffset;
+			float _WindStrength;
+			float _WindVariation;
+			float _ColorVariation;
+			float _TurbulenceStrength;
+			float _VertexNormalStrength;
+			float _RecalculateWindNormals;
+
+			float2 _WindFade;
+
+			float4 _Tint;
+			float4 _TintVariation;
+			float4 _TrunkBendFactor;
+		};
 
 		int _TerrainSize;
-		//float _Alpha;
 		float4 _TerrainPivotScaleY;
 		Texture2D _AlbedoTexture, _NomralTexture, _TerrainHeightmap;
-		SamplerState sampler_AlbedoTexture, sampler_NomralTexture, sampler_TerrainHeightmap;
+    	SamplerState sampler_AlbedoTexture, sampler_NomralTexture, sampler_TerrainHeightmap;
+
+		#include "Packages/com.unity.render-pipelines.core/ShaderLibrary/Common.hlsl"
+		#include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Input.hlsl"
+		#include "Packages/com.unity.render-pipelines.core/ShaderLibrary/UnityInstancing.hlsl"
+		#include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/UnityInput.hlsl"
+		#include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Lighting.hlsl"
+		#include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Shadows.hlsl"
+		
+		#include "Include/Wind.hlsl"
+		#include "Include/ColorVariation.hlsl"
+		#include "Include/ProceduralInstance.hlsl"
 	ENDHLSL
 
     SubShader
     {
-        Tags{"Queue" = "AlphaTest" "RenderPipeline" = "UniversalPipeline" "IgnoreProjector" = "True" "RenderType" = "Opaque"}
-		//AlphaToMask On
+        Tags{"Queue" = "AlphaTest" "RenderPipeline" = "UniversalPipeline" "IgnoreProjector" = "True" "RenderType" = "Opaque" "NatureRendererInstancing" = "True"}
+		AlphaToMask Off
 
         Pass
         {
             Name "ForwardLit"
 			Tags { "LightMode" = "UniversalForward" }
-			ZTest LEqual 
-			ZWrite On 
-			Cull Off
+			Cull Off ZTest LEqual ZWrite On 
 
             HLSLPROGRAM
 			#pragma target 4.5
@@ -47,11 +76,19 @@ Shader "Landscape/Grass"
             #pragma fragment frag
 			#pragma multi_compile_instancing
 			//#pragma enable_d3d11_debug_symbols
+			#pragma instancing_options procedural:SetupNatureRenderer
 
+			#pragma multi_compile _ _SHADOWS_SOFT
+			#pragma multi_compile _ _MAIN_LIGHT_SHADOWS
+			#pragma multi_compile _ _MAIN_LIGHT_SHADOWS_CASCADE
+			
+			#define _TYPE_GRASS
+			
 			struct Attributes
 			{
 				float2 uv0 : TEXCOORD0;
-				float3 normal : NORMAL;
+				float4 color : COLOR;
+				float3 normalLS : NORMAL;
 				float4 vertexOS : POSITION;
 				UNITY_VERTEX_INPUT_INSTANCE_ID
 			};
@@ -59,9 +96,11 @@ Shader "Landscape/Grass"
 			struct Varyings
 			{
 				float2 uv0 : TEXCOORD0;
-				float3 normal : TEXCOORD1;
-				float4 vertexCS : SV_POSITION;
+				float noise : TEXCOORD1;
+				float4 color : COLOR;
+				float3 normalWS : NORMAL;
 				float4 vertexWS : TEXCOORD2;
+				float4 vertexCS : SV_POSITION;
 				UNITY_VERTEX_INPUT_INSTANCE_ID
 			};
 
@@ -72,9 +111,26 @@ Shader "Landscape/Grass"
 				UNITY_TRANSFER_INSTANCE_ID(input, output);
 
 				output.uv0 = input.uv0;
-				output.normal = normalize(mul(input.normal, (float3x3)UNITY_MATRIX_M));
+				output.color = input.color;
+				output.normalWS = normalize(mul((float3x3)UNITY_MATRIX_M, input.normalLS));
 				output.vertexWS = mul(UNITY_MATRIX_M, input.vertexOS);
+
+				float3 objectPos = float3(UNITY_MATRIX_M[0].w, UNITY_MATRIX_M[1].w, UNITY_MATRIX_M[2].w);
+
+				FWindInput windInput;
+                windInput.fade = 1;
+                windInput.flutter = 1;
+                windInput.phaseOffset = 0;
+                windInput.speed = GetWindSpeed();
+                windInput.objectPivot = objectPos;
+                windInput.normalWS = output.normalWS;
+                windInput.direction = GetWindDirection();
+                windInput.mask = input.uv0.y * saturate(input.vertexOS.y / _PivotOffset) * GetWindVariation(objectPos);
+				Wind(windInput, output.vertexWS.xyz, output.normalWS);
+
+				output.noise = PerlinNoise(objectPos.xz, _ColorVariation);
 				output.vertexCS = mul(UNITY_MATRIX_VP, output.vertexWS);
+				output.normalWS = lerp(float3(0, 1, 0), output.normalWS, _VertexNormalStrength);
 				return output;
 			}
 
@@ -82,15 +138,30 @@ Shader "Landscape/Grass"
 			{
 				UNITY_SETUP_INSTANCE_ID(input);
 
+				float3 normalWS = input.normalWS;
 				float3 worldPos = input.vertexWS.xyz;
-				float4 color = _AlbedoTexture.Sample(sampler_AlbedoTexture, input.uv0);
+				float3 objectPos = float3(UNITY_MATRIX_M[0].w, UNITY_MATRIX_M[1].w, UNITY_MATRIX_M[2].w);
 
-				float crossFade = LODCrossDither(input.vertexCS.xy, unity_LODFade.x);
-				if (crossFade >= 0.5f)
-				{
-					discard;
-				}
-				return color;
+				//Shadow
+				float4 shadowCoord = 0;
+				#if defined(MAIN_LIGHT_CALCULATE_SHADOWS)
+					shadowCoord = TransformWorldToShadowCoord(worldPos);
+				#endif
+				float shadowTream = MainLightRealtimeShadow(shadowCoord);
+
+				//Lighting
+				float3 directDiffuse = (saturate(dot(normalize(_MainLightPosition.xyz), normalWS.xyz)) * 0.5 + 0.5) * _MainLightColor.rgb * shadowTream;
+
+				//Surface
+				float4 outColor = _AlbedoTexture.Sample(sampler_AlbedoTexture, input.uv0);
+				//outColor.rgb = float3(0.5, 1, 0);
+				outColor.rgb *= lerp(_TintVariation.rgb, _Tint.rgb, input.noise);
+				//outColor.rgb *= input.uv0.y;
+				outColor.rgb *= directDiffuse;
+				
+				if (outColor.a <= 0.5f) { discard; }
+				return outColor;
+				//return float4(worldPos, 1);
 			}
             ENDHLSL
         }
@@ -99,15 +170,15 @@ Shader "Landscape/Grass"
         {
             Name "ForwardLit-Instance"
 			Tags { "LightMode" = "UniversalForward-Instance" }
-			ZTest LEqual 
-			ZWrite On 
-			Cull Off
-
+			ZTest LEqual ZWrite On Cull Off
+			
             HLSLPROGRAM
 			#pragma target 4.5
             #pragma vertex vert
             #pragma fragment frag
 			//#pragma enable_d3d11_debug_symbols
+
+			#include "Packages/com.infinity.render-foliage/Shader/Foliage/Include/Foliage.hlsl"
 
 			struct Attributes
 			{
@@ -171,6 +242,84 @@ Shader "Landscape/Grass"
 					discard;
 				}
 				return float4(color.rgb, 1);
+			}
+            ENDHLSL
+        }
+
+        Pass
+        {
+            Name "Shadowmap"
+			Tags { "LightMode" = "ShadowCaster" }
+			Cull Off ZTest LEqual ZWrite On 
+
+            HLSLPROGRAM
+			#pragma target 4.5
+            #pragma vertex vert
+            #pragma fragment frag
+			#pragma multi_compile_instancing
+			#pragma enable_d3d11_debug_symbols
+			#pragma instancing_options procedural:SetupNatureRenderer
+
+			#define _TYPE_GRASS
+			
+			struct Attributes
+			{
+				float2 uv0 : TEXCOORD0;
+				float4 color : COLOR;
+				float3 normal : NORMAL;
+				float4 vertexOS : POSITION;
+				UNITY_VERTEX_INPUT_INSTANCE_ID
+			};
+
+			struct Varyings
+			{
+				float2 uv0 : TEXCOORD0;
+				float noise : TEXCOORD1;
+				float4 color : COLOR;
+				float3 normal : NORMAL;
+				float4 vertexCS : SV_POSITION;
+				float4 vertexWS : TEXCOORD2;
+				UNITY_VERTEX_INPUT_INSTANCE_ID
+			};
+
+			Varyings vert(Attributes input)
+			{
+				Varyings output = (Varyings)0;
+				UNITY_SETUP_INSTANCE_ID(input);
+				UNITY_TRANSFER_INSTANCE_ID(input, output);
+
+				output.uv0 = input.uv0;
+				output.color = input.color;
+				output.normal = normalize(mul((float3x3)UNITY_MATRIX_M, input.normal));
+				output.vertexWS = mul(UNITY_MATRIX_M, input.vertexOS);
+
+				float3 objectPos = float3(UNITY_MATRIX_M[0].w, UNITY_MATRIX_M[1].w, UNITY_MATRIX_M[2].w);
+
+				FWindInput windInput;
+                windInput.fade = 1;
+                windInput.flutter = 1;
+                windInput.phaseOffset = 0;
+                windInput.speed = GetWindSpeed();
+                windInput.objectPivot = objectPos;
+                windInput.normalWS = output.normal;
+                windInput.direction = GetWindDirection();
+                windInput.mask = input.uv0.y * saturate(input.vertexOS.y / _PivotOffset) * GetWindVariation(objectPos);
+				Wind(windInput, output.vertexWS.xyz, output.normal);
+
+				output.noise = PerlinNoise(objectPos.xz, _ColorVariation);
+				output.vertexCS = mul(UNITY_MATRIX_VP, output.vertexWS);
+				output.normal = lerp(float3(0, 1, 0), output.normal, _VertexNormalStrength);
+				return output;
+			}
+
+			float4 frag(Varyings input) : SV_Target
+			{
+				UNITY_SETUP_INSTANCE_ID(input);
+
+				float alpha = _AlbedoTexture.Sample(sampler_AlbedoTexture, input.uv0).a;
+				
+				if (alpha <= 0.5f) { discard; }
+				return 0;
 			}
             ENDHLSL
         }

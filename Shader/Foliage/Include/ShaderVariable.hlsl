@@ -1,5 +1,5 @@
-#ifndef __ShaderVariable__
-#define __ShaderVariable__
+#ifndef _ShaderVariableInclude_
+#define _ShaderVariableInclude_
 
 #include "Packages/com.unity.render-pipelines.core/ShaderLibrary/Common.hlsl"
 
