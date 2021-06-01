@@ -1,5 +1,5 @@
-#ifndef NODE_NATURE_RENDERER_INCLUDED
-#define NODE_NATURE_RENDERER_INCLUDED
+#ifndef _InstanceInculude
+#define _InstanceInculude
 
 #ifdef UNITY_PROCEDURAL_INSTANCING_ENABLED
 

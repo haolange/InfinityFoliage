@@ -1,5 +1,5 @@
-#ifndef _Geometry_
-#define _Geometry_
+#ifndef _GeometryInclude_
+#define _GeometryInclude_
 
 struct FBound
 {
@@ -12,6 +12,5 @@ struct FSphere
      float radius;
      float3 center;
 };
-
 
 #endif

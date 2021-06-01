@@ -1,5 +1,5 @@
-#ifndef _Foliage_
-#define _Foliage_
+#ifndef _FoliageBufferInclude
+#define _FoliageBufferInclude
 
 #include "Geometry.hlsl"
 #include "Packages/com.unity.render-pipelines.core/ShaderLibrary/Common.hlsl"

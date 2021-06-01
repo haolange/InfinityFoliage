@@ -2,6 +2,11 @@ Shader "Landscape/Grass"
 {
 	Properties 
 	{
+		[Header(Transparency)]
+        _AlphaThreshold("Alpha Threshold", Range(0.0, 1.0)) = 0.5
+        _AlphaFadeness ("Alpha Fadeness", Vector) = (50, 20, 0, 0)
+        [HideInInspector]_NatureRendererDistanceControl ("", Float) = 1
+
         [Header(Surface)]
         [NoScaleOffset]_AlbedoTexture ("Texture", 2D) = "white" {}
         _Tint ("Tint", Color) = (1, 1, 1, 1)
@@ -18,6 +23,7 @@ Shader "Landscape/Grass"
         _WindStrength("Wind Strength", Range(0, 2)) = 1
         _TurbulenceStrength("Turbulence Strength", Range(0, 2)) = 1
         _RecalculateWindNormals("Recalculate Normals", Range(0,1)) = 0.5
+		_WindFadeness("Wind Fadeness", Vector) = (50, 20, 0, 0)
 
 		//[Header(State)]
 		//_ZTest("ZTest", Int) = 4
@@ -43,7 +49,8 @@ Shader "Landscape/Grass"
 		};
 
 		int _TerrainSize;
-		float4 _TerrainPivotScaleY;
+		float _AlphaThreshold;
+		float4 _AlphaFadeness, _WindFadeness, _TerrainPivotScaleY;
 		Texture2D _AlbedoTexture, _NomralTexture, _TerrainHeightmap;
     	SamplerState sampler_AlbedoTexture, sampler_NomralTexture, sampler_TerrainHeightmap;
 
@@ -55,6 +62,8 @@ Shader "Landscape/Grass"
 		#include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Shadows.hlsl"
 		
 		#include "Include/Wind.hlsl"
+		#include "Include/ViewFade.hlsl"
+		#include "Include/Transmission.hlsl"
 		#include "Include/ColorVariation.hlsl"
 		#include "Include/ProceduralInstance.hlsl"
 	ENDHLSL
@@ -112,13 +121,17 @@ Shader "Landscape/Grass"
 
 				output.uv0 = input.uv0;
 				output.color = input.color;
-				output.normalWS = normalize(mul((float3x3)UNITY_MATRIX_M, input.normalLS));
 				output.vertexWS = mul(UNITY_MATRIX_M, input.vertexOS);
-
+				output.normalWS = normalize(mul((float3x3)UNITY_MATRIX_M, input.normalLS));
 				float3 objectPos = float3(UNITY_MATRIX_M[0].w, UNITY_MATRIX_M[1].w, UNITY_MATRIX_M[2].w);
 
+				float windFade;
+                float scaleFade;
+                PerVertexFade(objectPos, windFade, scaleFade);
+				output.noise = PerlinNoise(objectPos.xz, _ColorVariation);
+
 				FWindInput windInput;
-                windInput.fade = 1;
+                windInput.fade = windFade;
                 windInput.flutter = 1;
                 windInput.phaseOffset = 0;
                 windInput.speed = GetWindSpeed();
@@ -127,8 +140,8 @@ Shader "Landscape/Grass"
                 windInput.direction = GetWindDirection();
                 windInput.mask = input.uv0.y * saturate(input.vertexOS.y / _PivotOffset) * GetWindVariation(objectPos);
 				Wind(windInput, output.vertexWS.xyz, output.normalWS);
+				output.vertexWS.xyz = ApplyScaleFade(output.vertexWS.xyz, objectPos, scaleFade);
 
-				output.noise = PerlinNoise(objectPos.xz, _ColorVariation);
 				output.vertexCS = mul(UNITY_MATRIX_VP, output.vertexWS);
 				output.normalWS = lerp(float3(0, 1, 0), output.normalWS, _VertexNormalStrength);
 				return output;
@@ -142,26 +155,32 @@ Shader "Landscape/Grass"
 				float3 worldPos = input.vertexWS.xyz;
 				float3 objectPos = float3(UNITY_MATRIX_M[0].w, UNITY_MATRIX_M[1].w, UNITY_MATRIX_M[2].w);
 
+				float4 baseColor = _AlbedoTexture.Sample(sampler_AlbedoTexture, input.uv0);
+
+                float3 lightDir = normalize(_MainLightPosition.xyz);
+                float3 viewDir = normalize(_WorldSpaceCameraPos.xyz - worldPos);
+                float3 halfDir = normalize(viewDir + lightDir);
+
 				//Shadow
 				float4 shadowCoord = 0;
 				#if defined(MAIN_LIGHT_CALCULATE_SHADOWS)
 					shadowCoord = TransformWorldToShadowCoord(worldPos);
 				#endif
-				float shadowTream = MainLightRealtimeShadow(shadowCoord);
+				float lightShadow = MainLightRealtimeShadow(shadowCoord);
 
 				//Lighting
-				float3 directDiffuse = (saturate(dot(normalize(_MainLightPosition.xyz), normalWS.xyz)) * 0.5 + 0.5) * _MainLightColor.rgb * shadowTream;
+				//float phaseHG = HenyeyGreensteinPhase(saturate(dot(viewDir, lightDir)), 0.75) * 8;
+				float3 lightColor = _MainLightColor.rgb;
+				float3 directDiffuse = baseColor.rgb * saturate(dot(lightDir, normalWS.xyz));
+				float3 subsurfaceColor = Transmission(baseColor.rgb * float3(1, 1, 0.25), lightDir, viewDir, normalWS, halfDir, 1, 0.25);
 
 				//Surface
-				float4 outColor = _AlbedoTexture.Sample(sampler_AlbedoTexture, input.uv0);
-				//outColor.rgb = float3(0.5, 1, 0);
-				outColor.rgb *= lerp(_TintVariation.rgb, _Tint.rgb, input.noise);
-				//outColor.rgb *= input.uv0.y;
-				outColor.rgb *= directDiffuse;
+				float3 outColor = lerp(_TintVariation.rgb, _Tint.rgb, input.noise);
+				//outColor *= input.uv0.y;
+				outColor *= (directDiffuse + subsurfaceColor) * lightColor * lightShadow;
 				
-				if (outColor.a <= 0.5f) { discard; }
-				return outColor;
-				//return float4(worldPos, 1);
+				clip(baseColor.a - _AlphaThreshold);
+				return float4(outColor, baseColor.a);
 			}
             ENDHLSL
         }
