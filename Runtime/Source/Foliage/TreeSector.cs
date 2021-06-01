@@ -37,12 +37,9 @@ namespace Landscape.FoliagePipeline
 
         private ComputeBuffer m_TreeBuffer;
         private ComputeBuffer m_IndexBuffer;
-        private MaterialPropertyBlock m_PropertyBlock;
-
 
         public void Initialize()
         {
-            m_PropertyBlock = new MaterialPropertyBlock();
             m_TreeBatchs = new NativeList<FMeshBatch>(2048, Allocator.Persistent);
             m_TreeElements = new NativeList<FMeshElement>(4096, Allocator.Persistent);
         }
@@ -149,7 +146,7 @@ namespace Landscape.FoliagePipeline
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public void DispatchDraw(CommandBuffer cmdBuffer, in int passIndex)
+        public void DispatchDraw(CommandBuffer cmdBuffer, in int passIndex, MaterialPropertyBlock propertyBlock)
         {
             m_IndexBuffer.SetData(m_TreeBatchIndexs);
             //cmdBuffer.SetComputeBufferData(m_IndexBuffer, m_TreeBatchIndexs);
@@ -159,11 +156,11 @@ namespace Landscape.FoliagePipeline
                 Mesh mesh = tree.meshes[treeDrawCmd.lODIndex];
                 Material material = tree.materials[treeDrawCmd.matIndex];
 
-                m_PropertyBlock.Clear();
-                m_PropertyBlock.SetInt(TreeShaderID.offset, treeDrawCmd.countOffset.y);
-                m_PropertyBlock.SetBuffer(TreeShaderID.indexBuffer, m_IndexBuffer);
-                m_PropertyBlock.SetBuffer(TreeShaderID.primitiveBuffer, m_TreeBuffer);
-                cmdBuffer.DrawMeshInstancedProcedural(mesh, treeDrawCmd.meshIndex, material, passIndex, treeDrawCmd.countOffset.x, m_PropertyBlock);
+                propertyBlock.Clear();
+                propertyBlock.SetInt(TreeShaderID.offset, treeDrawCmd.countOffset.y);
+                propertyBlock.SetBuffer(TreeShaderID.indexBuffer, m_IndexBuffer);
+                propertyBlock.SetBuffer(TreeShaderID.primitiveBuffer, m_TreeBuffer);
+                cmdBuffer.DrawMeshInstancedProcedural(mesh, treeDrawCmd.meshIndex, material, passIndex, treeDrawCmd.countOffset.x, propertyBlock);
             }
 
             m_PassTreeElements.Clear();

@@ -25,6 +25,7 @@ namespace Landscape.FoliagePipeline
 
         [HideInInspector]
         public FTreeSector[] treeSectors;
+        private MaterialPropertyBlock m_PropertyBlock;
 
 
         protected override void OnRegister()
@@ -32,6 +33,7 @@ namespace Landscape.FoliagePipeline
             terrain = GetComponent<Terrain>();
             foliageType = EFoliageType.Tree;
             terrainData = terrain.terrainData;
+            m_PropertyBlock = new MaterialPropertyBlock();
 
             InitTreeSectors();
 
@@ -135,7 +137,7 @@ namespace Landscape.FoliagePipeline
         {
             foreach (var treeSector in treeSectors)
             {
-                treeSector.DispatchDraw(cmdBuffer, passIndex);
+                treeSector.DispatchDraw(cmdBuffer, passIndex, m_PropertyBlock);
             }
         }
         #endregion //Tree
