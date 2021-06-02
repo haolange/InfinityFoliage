@@ -59,7 +59,7 @@ void ApplyColorCorrection( inout float4 albedo, float noise )
         HSL_float( albedoHSV, _HSLVariation, albedo2 );
         albedo.rgb = lerp(albedo2, albedo1, noise);
     #else*/
-        albedo *= lerp(_TintVariation, _Tint, noise);
+        albedo *= lerp(_TintVariation, _TopTint, noise);
     //#endif
 }
 #endif
