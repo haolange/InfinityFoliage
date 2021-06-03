@@ -185,6 +185,10 @@ Shader "Landscape/Grass"
                 #endif
 
 				float3 indirectDiffuse = SampleSH(normalWS);
+				#if _ColorMap
+                    indirectDiffuse *= baseColor.rgb;
+                #endif
+
 				float3 subsurfaceColor = Transmission(baseColor.rgb, lightDir, viewDir, normalWS, halfDir, 1, 0.25);
 
 				//Surface
