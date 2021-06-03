@@ -379,19 +379,18 @@ namespace Landscape.FoliagePipeline
 
         public NativeList<FMeshDrawCommand> treeDrawCommands;
 
-
         public void Execute()
         {
             //Gather PassTreeElement
-            FTreeSection treeElement;
+            FTreeSection treeSection;
             for (int i = 0; i < treeSections.Length; ++i)
             {
-                treeElement = treeSections[i];
-                ref FTreeElement treeSection = ref treeElements[treeElement.batchIndex];
+                treeSection = treeSections[i];
+                ref FTreeElement treeElement = ref treeElements[treeSection.batchIndex];
 
-                if (viewTreeElements[treeElement.batchIndex] != 0 && treeElement.meshIndex == treeSection.meshIndex)
+                if (viewTreeElements[treeSection.batchIndex] != 0 && treeSection.meshIndex == treeElement.meshIndex)
                 {
-                    passTreeSections.Add(treeElement);
+                    passTreeSections.Add(treeSection);
                 }
             }
 
