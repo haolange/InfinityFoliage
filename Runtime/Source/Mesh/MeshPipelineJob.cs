@@ -372,10 +372,10 @@ namespace Landscape.FoliagePipeline
         [ReadOnly]
         public NativeList<FTreeSection> treeSections;
 
+        public NativeList<int> passTreeSections;
+
         [WriteOnly]
         public NativeArray<int> passTreeElements;
-
-        public NativeList<FTreeSection> passTreeSections;
 
         public NativeList<FMeshDrawCommand> treeDrawCommands;
 
@@ -390,7 +390,7 @@ namespace Landscape.FoliagePipeline
 
                 if (viewTreeElements[treeSection.batchIndex] != 0 && treeSection.meshIndex == treeElement.meshIndex)
                 {
-                    passTreeSections.Add(treeSection);
+                    passTreeSections.Add(i);
                 }
             }
 
@@ -403,7 +403,7 @@ namespace Landscape.FoliagePipeline
 
             for (int i = 0; i < passTreeSections.Length; ++i)
             {
-                passTreeSection = passTreeSections[i];
+                passTreeSection = treeSections[passTreeSections[i]];
                 passTreeElements[i] = passTreeSection.batchIndex;
 
                 if (!passTreeSection.Equals(cachePassTreeSection))

@@ -32,9 +32,9 @@ namespace Landscape.FoliagePipeline
         private NativeArray<float> m_TreeLODInfos;
         private NativeList<FTreeElement> m_TreeElements;
         private NativeList<FTreeSection> m_TreeSections;
+        private NativeList<int> m_PassTreeSections;
         private NativeArray<int> m_ViewTreeElements;
         private NativeArray<int> m_passTreeElements;
-        private NativeList<FTreeSection> m_PassTreeSections;
         private NativeList<FMeshDrawCommand> m_TreeDrawCommands;
 
         public void Initialize()
@@ -80,7 +80,7 @@ namespace Landscape.FoliagePipeline
 
             m_TreeDrawCommands = new NativeList<FMeshDrawCommand>(6, Allocator.Persistent);
             m_ViewTreeElements = new NativeArray<int>(m_TreeElements.Length, Allocator.Persistent);
-            m_PassTreeSections = new NativeList<FTreeSection>(m_TreeElements.Length, Allocator.Persistent);
+            m_PassTreeSections = new NativeList<int>(m_TreeElements.Length, Allocator.Persistent);
         }
 
         public void BuildTreeSection()
