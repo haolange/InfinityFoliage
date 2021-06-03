@@ -99,8 +99,8 @@ namespace Landscape.FoliagePipeline
             foreach (var treeSector in treeSectors)
             {
                 treeSector.Initialize();
-                treeSector.BuildMeshBatch();
-                treeSector.BuildMeshElement();
+                treeSector.BuildTreeElement();
+                treeSector.BuildTreeSection();
                 treeSector.BuildComputeBuffer();
             }
         }

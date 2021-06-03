@@ -108,10 +108,9 @@ namespace Landscape.FoliagePipeline
             for (int i = treeBatchLODs.Length - 1; i >= 0; --i)
             {
                 float LODSize = (treeBatchLODs[i] * treeBatchLODs[i]) * 0.5f;
-                //TreeBatch.LODIndex = math.select(TreeBatch.LODIndex, i, LODSize > ScreenRadiusSquared);
                 if (screenRadiusSquared < LODSize)
                 {
-                    treeBatch.lODIndex = i;
+                    treeBatch.meshIndex = i;
                     break;
                 }
             }
@@ -337,7 +336,7 @@ namespace Landscape.FoliagePipeline
 
                 if (mathExtent.sqr(TreeLODInfo * 0.5f) >= ScreenRadiusSquared)
                 {
-                    treeElement.lODIndex = LODIndex;
+                    treeElement.meshIndex = LODIndex;
                     break;
                 }
             }
@@ -390,7 +389,7 @@ namespace Landscape.FoliagePipeline
                 treeElement = treeSections[i];
                 ref FTreeElement treeSection = ref treeElements[treeElement.batchIndex];
 
-                if (viewTreeElements[treeElement.batchIndex] != 0 && treeElement.lODIndex == treeSection.lODIndex)
+                if (viewTreeElements[treeElement.batchIndex] != 0 && treeElement.meshIndex == treeSection.meshIndex)
                 {
                     passTreeSections.Add(treeElement);
                 }
@@ -414,9 +413,9 @@ namespace Landscape.FoliagePipeline
 
                     treeDrawCommand.countOffset.x = 0;
                     treeDrawCommand.countOffset.y = i;
-                    treeDrawCommand.lODIndex = passTreeSection.lODIndex;
-                    treeDrawCommand.matIndex = passTreeSection.matIndex;
                     treeDrawCommand.meshIndex = passTreeSection.meshIndex;
+                    treeDrawCommand.sectionIndex = passTreeSection.sectionIndex;
+                    treeDrawCommand.materialIndex = passTreeSection.materialIndex;
                     //TreeDrawCommand.InstanceGroupID = PassTreeSection.InstanceGroupID;
                     treeDrawCommands.Add(treeDrawCommand);
                 }

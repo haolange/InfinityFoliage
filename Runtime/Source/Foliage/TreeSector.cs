@@ -57,7 +57,7 @@ namespace Landscape.FoliagePipeline
             m_TreeElementBuffer.Dispose();
         }
 
-        public void BuildMeshBatch()
+        public void BuildTreeElement()
         {
             for (var i = 0; i < transforms.Count; ++i)
             {
@@ -65,7 +65,7 @@ namespace Landscape.FoliagePipeline
                 var matrixWorld = float4x4.TRS(transforms[i].position, quaternion.EulerXYZ(transforms[i].rotation), transforms[i].scale);
 
                 FTreeElement treeElement;
-                treeElement.lODIndex = 0;
+                treeElement.meshIndex = 0;
                 treeElement.matrix_World = matrixWorld;
                 treeElement.boundBox = Geometry.CaculateWorldBound(mesh.bounds, matrixWorld);
                 treeElement.boundSphere = new FSphere(Geometry.CaculateBoundRadius(treeElement.boundBox), treeElement.boundBox.center);
@@ -78,12 +78,12 @@ namespace Landscape.FoliagePipeline
                 m_TreeLODInfos[j] = tree.lODInfo[j].screenSize;
             }
 
+            m_TreeDrawCommands = new NativeList<FMeshDrawCommand>(6, Allocator.Persistent);
             m_ViewTreeElements = new NativeArray<int>(m_TreeElements.Length, Allocator.Persistent);
-            m_TreeDrawCommands = new NativeList<FMeshDrawCommand>(32, Allocator.Persistent);
             m_PassTreeSections = new NativeList<FTreeSection>(m_TreeElements.Length, Allocator.Persistent);
         }
 
-        public void BuildMeshElement()
+        public void BuildTreeSection()
         {
             for (var i = 0; i < transforms.Count; ++i)
             {
@@ -92,12 +92,12 @@ namespace Landscape.FoliagePipeline
 
                 for (var j = 0; j < tree.meshes.Length; ++j)
                 {
-                    treeSection.lODIndex = j;
+                    treeSection.meshIndex = j;
 
                     for (var k = 0; k < tree.meshes[j].subMeshCount; ++k)
                     {
-                        treeSection.meshIndex = k;
-                        treeSection.matIndex = tree.lODInfo[j].materialSlot[k];
+                        treeSection.sectionIndex = k;
+                        treeSection.materialIndex = tree.lODInfo[j].materialSlot[k];
                         m_TreeSections.Add(treeSection);
                     }
                 }
@@ -155,14 +155,14 @@ namespace Landscape.FoliagePipeline
 
             foreach (var treeDrawCmd in m_TreeDrawCommands)
             {
-                Mesh mesh = tree.meshes[treeDrawCmd.lODIndex];
-                Material material = tree.materials[treeDrawCmd.matIndex];
+                Mesh mesh = tree.meshes[treeDrawCmd.meshIndex];
+                Material material = tree.materials[treeDrawCmd.materialIndex];
 
                 propertyBlock.Clear();
                 propertyBlock.SetInt(TreeShaderID.offset, treeDrawCmd.countOffset.y);
                 propertyBlock.SetBuffer(TreeShaderID.indexBuffer, m_TreeIndexBuffer);
                 propertyBlock.SetBuffer(TreeShaderID.primitiveBuffer, m_TreeElementBuffer);
-                cmdBuffer.DrawMeshInstancedProcedural(mesh, treeDrawCmd.meshIndex, material, passIndex, treeDrawCmd.countOffset.x, propertyBlock);
+                cmdBuffer.DrawMeshInstancedProcedural(mesh, treeDrawCmd.sectionIndex, material, passIndex, treeDrawCmd.countOffset.x, propertyBlock);
             }
 
             m_PassTreeSections.Clear();
@@ -177,7 +177,7 @@ namespace Landscape.FoliagePipeline
             for (var i = 0; i < m_TreeElements.Length; ++i)
             {
                 var treeBatch = m_TreeElements[i];
-                ref var color = ref Geometry.LODColors[treeBatch.lODIndex];
+                ref var color = ref Geometry.LODColors[treeBatch.meshIndex];
                 if (m_ViewTreeElements[i] == 0)
                 {
                     continue;

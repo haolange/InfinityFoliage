@@ -5,23 +5,23 @@ namespace Landscape.FoliagePipeline
 {
     public struct FMeshDrawCommand : IEquatable<FMeshDrawCommand>
     {
-        public int lODIndex;
-        public int matIndex;
         public int meshIndex;
+        public int sectionIndex;
+        public int materialIndex;
         public int2 countOffset;
 
 
-        public FMeshDrawCommand(in int lODIndex, in int matIndex, in int meshIndex, in int2 countOffset)
+        public FMeshDrawCommand(in int meshIndex, in int sectionIndex, in int materialIndex, in int2 countOffset)
         {
-            this.lODIndex = lODIndex;
-            this.matIndex = matIndex;
             this.meshIndex = meshIndex;
+            this.sectionIndex = sectionIndex;
+            this.materialIndex = materialIndex;
             this.countOffset = countOffset;
         }
 
         public bool Equals(FMeshDrawCommand Target)
         {
-            return lODIndex.Equals(Target.lODIndex) && matIndex.Equals(Target.matIndex) && meshIndex.Equals(Target.meshIndex);
+            return meshIndex.Equals(Target.meshIndex) && materialIndex.Equals(Target.materialIndex) && sectionIndex.Equals(Target.sectionIndex);
         }
 
         public override bool Equals(object obj)
@@ -31,8 +31,8 @@ namespace Landscape.FoliagePipeline
 
         public override int GetHashCode()
         {
-            //return (meshIndex >> 16) + (lODIndex << 16 | matIndex);
-            return new int4(lODIndex, matIndex, meshIndex, countOffset.GetHashCode()).GetHashCode();
+            //return (sectionIndex >> 16) + (meshIndex << 16 | materialIndex);
+            return new int4(meshIndex, materialIndex, sectionIndex, countOffset.GetHashCode()).GetHashCode();
         }
     }
 }

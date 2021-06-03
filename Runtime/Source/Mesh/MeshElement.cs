@@ -21,29 +21,29 @@ namespace Landscape.FoliagePipeline
 
     public struct FTreeSection : IComparable<FTreeSection>, IEquatable<FTreeSection>
     {
-        public int lODIndex;
-        public int matIndex;
         public int meshIndex;
+        public int materialIndex;
+        public int sectionIndex;
         public int batchIndex;
         public int instanceId
         {
             get
             {
-                return new int3(lODIndex, matIndex, meshIndex).GetHashCode();
+                return new int3(meshIndex, materialIndex, sectionIndex).GetHashCode();
             }
         }
 
-        public FTreeSection(in int lODIndex, in int matIndex, in int meshIndex, in int batchIndex)
+        public FTreeSection(in int meshIndex, in int sectionIndex, in int materialIndex, in int batchIndex)
         {
-            this.lODIndex = lODIndex;
-            this.matIndex = matIndex;
             this.meshIndex = meshIndex;
+            this.sectionIndex = sectionIndex;
+            this.materialIndex = materialIndex;
             this.batchIndex = batchIndex;
         }
 
         public bool Equals(FTreeSection target)
         {
-            return lODIndex.Equals(target.lODIndex) && matIndex.Equals(target.matIndex) && meshIndex.Equals(target.meshIndex);
+            return meshIndex.Equals(target.meshIndex) && materialIndex.Equals(target.materialIndex) && sectionIndex.Equals(target.sectionIndex);
         }
 
         public override bool Equals(object target)
@@ -54,13 +54,13 @@ namespace Landscape.FoliagePipeline
         public int CompareTo(FTreeSection target)
         {
             return instanceId.CompareTo(target.instanceId);
-            //return ((meshIndex >> 16) + (lODIndex << 16 | matIndex)).CompareTo((target.meshIndex >> 16) + (target.lODIndex << 16 | target.matIndex));
+            //return ((meshIndex >> 16) + (lODIndex << 16 | materialIndex)).CompareTo((target.meshIndex >> 16) + (target.lODIndex << 16 | target.materialIndex));
         }
 
         public override int GetHashCode()
         {
             return instanceId;
-            //return (meshIndex >> 16) + (lODIndex << 16 | matIndex);
+            //return (meshIndex >> 16) + (lODIndex << 16 | materialIndex);
         }
     }
 }
