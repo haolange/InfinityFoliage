@@ -30,7 +30,7 @@ Shader "Landscape/TreeLeave"
     SubShader
     {
         Tags{"Queue" = "AlphaTest" "RenderPipeline" = "UniversalPipeline" "IgnoreProjector" = "True" "RenderType" = "Opaque"}
-		//AlphaToMask On
+		AlphaToMask On
 
         Pass
         {

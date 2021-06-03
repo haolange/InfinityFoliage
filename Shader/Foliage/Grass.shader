@@ -75,7 +75,7 @@ Shader "Landscape/Grass"
     SubShader
     {
         Tags{"Queue" = "AlphaTest" "RenderPipeline" = "UniversalPipeline" "IgnoreProjector" = "True" "RenderType" = "Opaque" "NatureRendererInstancing" = "True"}
-		AlphaToMask Off
+		AlphaToMask On
 
         Pass
         {
