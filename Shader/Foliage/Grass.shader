@@ -241,17 +241,18 @@ Shader "Landscape/Grass"
 			{
 				Varyings output = (Varyings)0;
 				output.PrimitiveId = input.InstanceId;
-				FGrassBatch grassBatch = _GrassBatchBuffer[input.InstanceId];
+				FGrassElement grassElement = _GrassElementBuffer[input.InstanceId];
 
-				float4 worldPos = mul(grassBatch.matrix_World, input.vertexOS);
+				float4 worldPos = mul(grassElement.matrix_World, input.vertexOS);
+				float3 objectPos = float3(grassElement.matrix_World[0].w, grassElement.matrix_World[1].w, grassElement.matrix_World[2].w);
 
 				float invSize = rcp(_TerrainSize);
-				float3 position = grassBatch.position - _TerrainPivotScaleY.xyz;
+				float3 position = objectPos - _TerrainPivotScaleY.xyz;
 				float4 leftTopH = _TerrainHeightmap.SampleLevel(Global_bilinear_clamp_sampler, (float2(1, 0) + position.xz) * invSize, 0, 0);
 				float4 leftBottomH = _TerrainHeightmap.SampleLevel(Global_bilinear_clamp_sampler, position.xz * invSize, 0, 0);
 				float4 rightTopH = _TerrainHeightmap.SampleLevel(Global_bilinear_clamp_sampler, (float2(1, 1) + position.xz) * invSize, 0, 0);
 				float4 rightBottomH = _TerrainHeightmap.SampleLevel(Global_bilinear_clamp_sampler, (float2(0, 1) + position.xz) * invSize, 0, 0);
-				float4 sampledHeight = SampleHeight(floor(grassBatch.position.xz * invSize) + 0.5, leftBottomH, leftTopH, rightBottomH, rightTopH);
+				float4 sampledHeight = SampleHeight(floor(objectPos.xz * invSize) + 0.5, leftBottomH, leftTopH, rightBottomH, rightTopH);
 				worldPos.y += UnpackHeightmap(sampledHeight) * (_TerrainPivotScaleY.w * 2);
 
 				output.uv0 = input.uv0;
@@ -264,7 +265,7 @@ Shader "Landscape/Grass"
 			float4 frag(Varyings input) : SV_Target
 			{
 				//float3 worldPos = input.vertexWS.xyz;
-				//FGrassBatch grassBatch = _GrassBatchBuffer[input.PrimitiveId];
+				//FGrassElement grassElement = _GrassElementBuffer[input.PrimitiveId];
 
 				float4 color = _AlbedoTexture.Sample(sampler_AlbedoTexture, input.uv0);
 				if (color.a <= 0.5f)

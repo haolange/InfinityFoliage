@@ -168,12 +168,12 @@ Shader "Landscape/TreeBrak"
 			{
 				Varyings output = (Varyings)0;
 				output.PrimitiveId  = _TreeIndexBuffer[input.InstanceId + _TreeIndexOffset];
-				FTreeBatch treeBatch = _TreeBatchBuffer[output.PrimitiveId];
+				FTreeElement treeElement = _TreeElementBuffer[output.PrimitiveId];
 
 				output.uv0 = input.uv0;
 				output.uv1 = input.uv1;
-				output.normal = normalize(mul((float3x3)treeBatch.matrix_World, input.normal));
-				output.vertexWS = mul(treeBatch.matrix_World, input.vertexOS);
+				output.normal = normalize(mul((float3x3)treeElement.matrix_World, input.normal));
+				output.vertexWS = mul(treeElement.matrix_World, input.vertexOS);
 				output.vertexCS = mul(UNITY_MATRIX_VP, output.vertexWS);
 				return output;
 			}

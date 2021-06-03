@@ -6,9 +6,9 @@
 
 SamplerState sampler_MainTex, Global_point_clamp_sampler, Global_bilinear_clamp_sampler, Global_trilinear_clamp_sampler, Global_point_repeat_sampler, Global_bilinear_repeat_sampler, Global_trilinear_repeat_sampler;
 
-struct FTreeBatch
+struct FTreeElement
 {
-     int lODIndex;
+     int meshIndex;
      FBound boundBox;
      FSphere boundSphere;
      float4x4 matrix_World;
@@ -16,15 +16,14 @@ struct FTreeBatch
 
 uint _TreeIndexOffset;
 Buffer<uint> _TreeIndexBuffer;
-StructuredBuffer<FTreeBatch> _TreeBatchBuffer;
+StructuredBuffer<FTreeElement> _TreeElementBuffer;
 
 
-struct FGrassBatch
+struct FGrassElement
 {
-     float3 position;
      float4x4 matrix_World;
 };
-StructuredBuffer<FGrassBatch> _GrassBatchBuffer;
+StructuredBuffer<FGrassElement> _GrassElementBuffer;
 
 
 float LODCrossDither(uint2 fadeMaskSeed, float ditherFactor)

@@ -16,7 +16,7 @@ namespace Landscape.FoliagePipeline
     {
         internal static int offset = Shader.PropertyToID("_TreeIndexOffset");
         internal static int indexBuffer = Shader.PropertyToID("_TreeIndexBuffer");
-        internal static int primitiveBuffer = Shader.PropertyToID("_TreeBatchBuffer");
+        internal static int elementBuffer = Shader.PropertyToID("_TreeElementBuffer");
     }
 
     [Serializable]
@@ -161,7 +161,7 @@ namespace Landscape.FoliagePipeline
                 propertyBlock.Clear();
                 propertyBlock.SetInt(TreeShaderID.offset, treeDrawCmd.countOffset.y);
                 propertyBlock.SetBuffer(TreeShaderID.indexBuffer, m_TreeIndexBuffer);
-                propertyBlock.SetBuffer(TreeShaderID.primitiveBuffer, m_TreeElementBuffer);
+                propertyBlock.SetBuffer(TreeShaderID.elementBuffer, m_TreeElementBuffer);
                 cmdBuffer.DrawMeshInstancedProcedural(mesh, treeDrawCmd.sectionIndex, material, passIndex, treeDrawCmd.countOffset.x, propertyBlock);
             }
 

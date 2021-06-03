@@ -145,7 +145,7 @@ namespace Landscape.FoliagePipeline
         //public NativeArray<float> heightMap;
 
         [WriteOnly]
-        public NativeList<FGrassBatch> grassBatchs;
+        public NativeList<FGrassElement> grassElements;
 
 
         public void Execute()
@@ -156,7 +156,7 @@ namespace Landscape.FoliagePipeline
             float3 position;
             float3 newPosition;
             float4x4 matrix_World;
-            FGrassBatch grassBatch = default;
+            FGrassElement grassElement = default;
 
             for (int i = 0; i < densityMap.Length; ++i)
             {
@@ -177,9 +177,8 @@ namespace Landscape.FoliagePipeline
                     scale = new float3(xzScale, yScale, xzScale);
                     matrix_World = float4x4.TRS(newPosition, quaternion.AxisAngle(new float3(0, 1, 0), math.radians(randomRotate * 360)), scale);
 
-                    grassBatch.position = newPosition;
-                    grassBatch.matrix_World = matrix_World;
-                    grassBatchs.Add(grassBatch);
+                    grassElement.matrix_World = matrix_World;
+                    grassElements.Add(grassElement);
                 }
             }
         }
