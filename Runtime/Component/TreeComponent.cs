@@ -101,6 +101,7 @@ namespace Landscape.FoliagePipeline
                 treeSector.Initialize();
                 treeSector.BuildMeshBatch();
                 treeSector.BuildMeshElement();
+                treeSector.BuildComputeBuffer();
             }
         }
         
