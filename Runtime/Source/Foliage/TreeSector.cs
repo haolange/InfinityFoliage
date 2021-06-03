@@ -59,42 +59,31 @@ namespace Landscape.FoliagePipeline
 
         public void BuildTreeElement()
         {
-            for (var i = 0; i < transforms.Count; ++i)
+            for (int i = 0; i < transforms.Count; ++i)
             {
-                var mesh = tree.meshes[0];
-                var matrixWorld = float4x4.TRS(transforms[i].position, quaternion.EulerXYZ(transforms[i].rotation), transforms[i].scale);
+                float4x4 matrixWorld = float4x4.TRS(transforms[i].position, quaternion.EulerXYZ(transforms[i].rotation), transforms[i].scale);
 
                 FTreeElement treeElement;
                 treeElement.meshIndex = 0;
                 treeElement.matrix_World = matrixWorld;
-                treeElement.boundBox = Geometry.CaculateWorldBound(mesh.bounds, matrixWorld);
+                treeElement.boundBox = Geometry.CaculateWorldBound(tree.boundBox, matrixWorld);
                 treeElement.boundSphere = new FSphere(Geometry.CaculateBoundRadius(treeElement.boundBox), treeElement.boundBox.center);
                 m_TreeElements.Add(treeElement);
             }
-
-            m_TreeLODInfos = new NativeArray<float>(tree.lODInfo.Length, Allocator.Persistent);
-            for (var j = 0; j < tree.lODInfo.Length; ++j)
-            {
-                m_TreeLODInfos[j] = tree.lODInfo[j].screenSize;
-            }
-
-            m_TreeDrawCommands = new NativeList<FMeshDrawCommand>(6, Allocator.Persistent);
-            m_ViewTreeElements = new NativeArray<int>(m_TreeElements.Length, Allocator.Persistent);
-            m_PassTreeSections = new NativeList<int>(m_TreeElements.Length, Allocator.Persistent);
         }
 
         public void BuildTreeSection()
         {
-            for (var i = 0; i < transforms.Count; ++i)
+            for (int i = 0; i < transforms.Count; ++i)
             {
                 FTreeSection treeSection;
                 treeSection.batchIndex = i;
 
-                for (var j = 0; j < tree.meshes.Length; ++j)
+                for (int j = 0; j < tree.numLOD; ++j)
                 {
                     treeSection.meshIndex = j;
 
-                    for (var k = 0; k < tree.meshes[j].subMeshCount; ++k)
+                    for (int k = 0; k < tree.numSections[j]; ++k)
                     {
                         treeSection.sectionIndex = k;
                         treeSection.materialIndex = tree.lODInfo[j].materialSlot[k];
@@ -104,11 +93,21 @@ namespace Landscape.FoliagePipeline
             }
 
             m_TreeSections.Sort();
-            m_passTreeElements = new NativeArray<int>(m_TreeSections.Length, Allocator.Persistent);
         }
 
-        public void BuildComputeBuffer()
+        public void BuildTreeBuffer()
         {
+            m_TreeLODInfos = new NativeArray<float>(tree.lODInfo.Length, Allocator.Persistent);
+            for (var j = 0; j < tree.lODInfo.Length; ++j)
+            {
+                m_TreeLODInfos[j] = tree.lODInfo[j].screenSize;
+            }
+
+            m_TreeDrawCommands = new NativeList<FMeshDrawCommand>(6, Allocator.Persistent);
+            m_ViewTreeElements = new NativeArray<int>(m_TreeElements.Length, Allocator.Persistent);
+            m_PassTreeSections = new NativeList<int>(m_TreeElements.Length, Allocator.Persistent);
+            m_passTreeElements = new NativeArray<int>(m_TreeSections.Length, Allocator.Persistent);
+
             m_TreeIndexBuffer = new ComputeBuffer(m_passTreeElements.Length, Marshal.SizeOf(typeof(int)));
             m_TreeElementBuffer = new ComputeBuffer(m_TreeElements.Length, Marshal.SizeOf(typeof(FTreeElement)));
             m_TreeElementBuffer.SetData(m_TreeElements.ToArray());

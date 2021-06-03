@@ -101,7 +101,7 @@ namespace Landscape.FoliagePipeline
                 treeSector.Initialize();
                 treeSector.BuildTreeElement();
                 treeSector.BuildTreeSection();
-                treeSector.BuildComputeBuffer();
+                treeSector.BuildTreeBuffer();
             }
         }
         

@@ -35,21 +35,29 @@ namespace Landscape.FoliagePipeline
     public struct FMesh : IEquatable<FMesh>
     {
         public bool IsCreated;
-
+        public float numLOD;
+        public Bounds boundBox;
+        public int[] numSections;
         public Mesh[] meshes;
-
         public Material[] materials;
-
         public FMeshLODInfo[] lODInfo;
-        
 
         public FMesh(Mesh[] meshes, Material[] materials, FMeshLODInfo[] lODInfo)
         {
             this.IsCreated = true;
             this.meshes = meshes;
             this.materials = materials;
+
             this.lODInfo = lODInfo;
-        }
+            this.numLOD = meshes.Length;
+            this.boundBox = meshes[0].bounds;
+            this.numSections = new int[meshes.Length];
+
+            for (int i = 0; i < numSections.Length; ++i)
+            {
+                this.numSections[i] = meshes[i].subMeshCount;
+            }
+}
 
         public bool Equals(FMesh Target)
         {
