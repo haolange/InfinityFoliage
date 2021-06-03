@@ -97,13 +97,13 @@ namespace Landscape.FoliagePipeline
         public NativeArray<float> treeBatchLODs;
 
         [NativeDisableUnsafePtrRestriction]
-        public FMeshBatch* treeBatchs;
+        public FTreeElement* treeBatchs;
 
 
         public void Execute(int index)
         {
             float screenRadiusSquared = 0;
-            ref FMeshBatch treeBatch = ref treeBatchs[index];
+            ref FTreeElement treeBatch = ref treeBatchs[index];
 
             for (int i = treeBatchLODs.Length - 1; i >= 0; --i)
             {
@@ -318,18 +318,18 @@ namespace Landscape.FoliagePipeline
 
         [ReadOnly]
         [NativeDisableUnsafePtrRestriction]
-        public FMeshBatch* treeBatchs;
+        public FTreeElement* treeElements;
 
         [WriteOnly]
-        public NativeArray<int> viewTreeBatchs;
+        public NativeArray<int> viewTreeElements;
 
 
         public void Execute(int index)
         {
-            ref FMeshBatch treeBatch = ref treeBatchs[index];
+            ref FTreeElement treeElement = ref treeElements[index];
 
             //Calculate LOD
-            float ScreenRadiusSquared = Geometry.ComputeBoundsScreenRadiusSquared(treeBatch.boundSphere.radius, treeBatch.boundBox.center, viewOringin, matrix_Proj);
+            float ScreenRadiusSquared = Geometry.ComputeBoundsScreenRadiusSquared(treeElement.boundSphere.radius, treeElement.boundBox.center, viewOringin, matrix_Proj);
 
             for (int LODIndex = numLOD; LODIndex >= 0; --LODIndex)
             {
@@ -337,7 +337,7 @@ namespace Landscape.FoliagePipeline
 
                 if (mathExtent.sqr(TreeLODInfo * 0.5f) >= ScreenRadiusSquared)
                 {
-                    treeBatch.lODIndex = LODIndex;
+                    treeElement.lODIndex = LODIndex;
                     break;
                 }
             }
@@ -349,12 +349,12 @@ namespace Landscape.FoliagePipeline
             for (int PlaneIndex = 0; PlaneIndex < 6; ++PlaneIndex)
             {
                 ref FPlane plane = ref planes[PlaneIndex];
-                distRadius.x = math.dot(plane.normalDist.xyz, treeBatch.boundBox.center) + plane.normalDist.w;
-                distRadius.y = math.dot(math.abs(plane.normalDist.xyz), treeBatch.boundBox.extents);
+                distRadius.x = math.dot(plane.normalDist.xyz, treeElement.boundBox.center) + plane.normalDist.w;
+                distRadius.y = math.dot(math.abs(plane.normalDist.xyz), treeElement.boundBox.extents);
 
                 visible = math.select(visible, 0, distRadius.x + distRadius.y < 0);
             }
-            viewTreeBatchs[index] = math.select(visible, 0, math.distance(viewOringin, treeBatch.boundBox.center) > maxDistance);
+            viewTreeElements[index] = math.select(visible, 0, math.distance(viewOringin, treeElement.boundBox.center) > maxDistance);
         }
     }
 
@@ -365,18 +365,18 @@ namespace Landscape.FoliagePipeline
 
         [ReadOnly]
         [NativeDisableUnsafePtrRestriction]
-        public FMeshBatch* treeBatchs;
+        public FTreeElement* treeElements;
 
         [ReadOnly]
-        public NativeArray<int> viewTreeBatchs;
+        public NativeArray<int> viewTreeElements;
+
+        [ReadOnly]
+        public NativeList<FTreeSection> treeSections;
 
         [WriteOnly]
-        public NativeArray<int> treeBatchIndexs;
+        public NativeArray<int> passTreeElements;
 
-        [ReadOnly]
-        public NativeList<FMeshElement> treeElements;
-
-        public NativeList<FMeshElement> passTreeElements;
+        public NativeList<FTreeSection> passTreeSections;
 
         public NativeList<FMeshDrawCommand> treeDrawCommands;
 
@@ -384,43 +384,40 @@ namespace Landscape.FoliagePipeline
         public void Execute()
         {
             //Gather PassTreeElement
-            FMeshElement treeElement;
-            for (int i = 0; i < treeElements.Length; ++i)
+            FTreeSection treeElement;
+            for (int i = 0; i < treeSections.Length; ++i)
             {
-                treeElement = treeElements[i];
-                ref FMeshBatch treeBatch = ref treeBatchs[treeElement.batchIndex];
+                treeElement = treeSections[i];
+                ref FTreeElement treeSection = ref treeElements[treeElement.batchIndex];
 
-                if (viewTreeBatchs[treeElement.batchIndex] != 0 && treeElement.lODIndex == treeBatch.lODIndex)
+                if (viewTreeElements[treeElement.batchIndex] != 0 && treeElement.lODIndex == treeSection.lODIndex)
                 {
-                    passTreeElements.Add(treeElement);
+                    passTreeSections.Add(treeElement);
                 }
             }
 
-            //Sort PassTreeElement
-            //PassTreeElements.Sort();
-
             //Build TreeDrawCommand
-            FMeshElement passTreeElement;
-            FMeshElement cachePassTreeElement = new FMeshElement(-1, -1, -1, -1);
+            FTreeSection passTreeSection;
+            FTreeSection cachePassTreeSection = new FTreeSection(-1, -1, -1, -1);
 
             FMeshDrawCommand treeDrawCommand;
             FMeshDrawCommand cacheTreeDrawCommand;
 
-            for (int i = 0; i < passTreeElements.Length; ++i)
+            for (int i = 0; i < passTreeSections.Length; ++i)
             {
-                passTreeElement = passTreeElements[i];
-                treeBatchIndexs[i] = passTreeElement.batchIndex;
+                passTreeSection = passTreeSections[i];
+                passTreeElements[i] = passTreeSection.batchIndex;
 
-                if (!passTreeElement.Equals(cachePassTreeElement))
+                if (!passTreeSection.Equals(cachePassTreeSection))
                 {
-                    cachePassTreeElement = passTreeElement;
+                    cachePassTreeSection = passTreeSection;
 
                     treeDrawCommand.countOffset.x = 0;
                     treeDrawCommand.countOffset.y = i;
-                    treeDrawCommand.lODIndex = passTreeElement.lODIndex;
-                    treeDrawCommand.matIndex = passTreeElement.matIndex;
-                    treeDrawCommand.meshIndex = passTreeElement.meshIndex;
-                    //TreeDrawCommand.InstanceGroupID = PassTreeElement.InstanceGroupID;
+                    treeDrawCommand.lODIndex = passTreeSection.lODIndex;
+                    treeDrawCommand.matIndex = passTreeSection.matIndex;
+                    treeDrawCommand.meshIndex = passTreeSection.meshIndex;
+                    //TreeDrawCommand.InstanceGroupID = PassTreeSection.InstanceGroupID;
                     treeDrawCommands.Add(treeDrawCommand);
                 }
 

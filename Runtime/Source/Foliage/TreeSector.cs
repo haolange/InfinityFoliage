@@ -27,33 +27,32 @@ namespace Landscape.FoliagePipeline
         public int cullDistance = 256;
         public List<FTransform> transforms;
 
-        private NativeArray<int> m_ViewTreeBatchs;
-        private NativeArray<int> m_TreeBatchIndexs;
-        private NativeArray<float> m_TreeLODInfos;
-        private NativeList<FMeshBatch> m_TreeBatchs;
-        private NativeList<FMeshElement> m_TreeElements;
-        private NativeList<FMeshElement> m_PassTreeElements;
-        private NativeList<FMeshDrawCommand> m_TreeDrawCommands;
-
         private ComputeBuffer m_TreeBuffer;
         private ComputeBuffer m_IndexBuffer;
+        private NativeArray<float> m_TreeLODInfos;
+        private NativeList<FTreeElement> m_TreeElements;
+        private NativeList<FTreeSection> m_TreeSections;
+        private NativeArray<int> m_ViewTreeElements;
+        private NativeArray<int> m_passTreeElements;
+        private NativeList<FTreeSection> m_PassTreeSections;
+        private NativeList<FMeshDrawCommand> m_TreeDrawCommands;
 
         public void Initialize()
         {
-            m_TreeBatchs = new NativeList<FMeshBatch>(2048, Allocator.Persistent);
-            m_TreeElements = new NativeList<FMeshElement>(4096, Allocator.Persistent);
+            m_TreeElements = new NativeList<FTreeElement>(2048, Allocator.Persistent);
+            m_TreeSections = new NativeList<FTreeSection>(4096, Allocator.Persistent);
         }
 
         public void Release()
         {
             m_TreeBuffer.Dispose();
-            m_TreeBatchs.Dispose();
             m_IndexBuffer.Dispose();
             m_TreeLODInfos.Dispose();
             m_TreeElements.Dispose();
-            m_ViewTreeBatchs.Dispose();
-            m_TreeBatchIndexs.Dispose();
-            m_PassTreeElements.Dispose();
+            m_TreeSections.Dispose();
+            m_ViewTreeElements.Dispose();
+            m_passTreeElements.Dispose();
+            m_PassTreeSections.Dispose();
             m_TreeDrawCommands.Dispose();
         }
 
@@ -64,16 +63,16 @@ namespace Landscape.FoliagePipeline
                 var mesh = tree.meshes[0];
                 var matrixWorld = float4x4.TRS(transforms[i].position, quaternion.EulerXYZ(transforms[i].rotation), transforms[i].scale);
 
-                FMeshBatch treeBatch;
-                treeBatch.lODIndex = 0;
-                treeBatch.matrix_World = matrixWorld;
-                treeBatch.boundBox = Geometry.CaculateWorldBound(mesh.bounds, matrixWorld);
-                treeBatch.boundSphere = new FSphere(Geometry.CaculateBoundRadius(treeBatch.boundBox), treeBatch.boundBox.center);
-                m_TreeBatchs.Add(treeBatch);
+                FTreeElement treeElement;
+                treeElement.lODIndex = 0;
+                treeElement.matrix_World = matrixWorld;
+                treeElement.boundBox = Geometry.CaculateWorldBound(mesh.bounds, matrixWorld);
+                treeElement.boundSphere = new FSphere(Geometry.CaculateBoundRadius(treeElement.boundBox), treeElement.boundBox.center);
+                m_TreeElements.Add(treeElement);
             }
 
-            m_TreeBuffer = new ComputeBuffer(m_TreeBatchs.Length, Marshal.SizeOf(typeof(FMeshBatch)));
-            m_TreeBuffer.SetData(m_TreeBatchs.ToArray());
+            m_TreeBuffer = new ComputeBuffer(m_TreeElements.Length, Marshal.SizeOf(typeof(FTreeElement)));
+            m_TreeBuffer.SetData(m_TreeElements.ToArray());
 
             m_TreeLODInfos = new NativeArray<float>(tree.lODInfo.Length, Allocator.Persistent);
             for (var j = 0; j < tree.lODInfo.Length; ++j)
@@ -81,35 +80,35 @@ namespace Landscape.FoliagePipeline
                 m_TreeLODInfos[j] = tree.lODInfo[j].screenSize;
             }
 
-            m_ViewTreeBatchs = new NativeArray<int>(m_TreeBatchs.Length, Allocator.Persistent);
+            m_ViewTreeElements = new NativeArray<int>(m_TreeElements.Length, Allocator.Persistent);
             m_TreeDrawCommands = new NativeList<FMeshDrawCommand>(32, Allocator.Persistent);
-            m_PassTreeElements = new NativeList<FMeshElement>(m_TreeBatchs.Length, Allocator.Persistent);
+            m_PassTreeSections = new NativeList<FTreeSection>(m_TreeElements.Length, Allocator.Persistent);
         }
 
         public void BuildMeshElement()
         {
             for (var i = 0; i < transforms.Count; ++i)
             {
-                FMeshElement treeElement;
-                treeElement.batchIndex = i;
+                FTreeSection treeSection;
+                treeSection.batchIndex = i;
 
                 for (var j = 0; j < tree.meshes.Length; ++j)
                 {
-                    treeElement.lODIndex = j;
+                    treeSection.lODIndex = j;
 
                     for (var k = 0; k < tree.meshes[j].subMeshCount; ++k)
                     {
-                        treeElement.meshIndex = k;
-                        treeElement.matIndex = tree.lODInfo[j].materialSlot[k];
-                        m_TreeElements.Add(treeElement);
+                        treeSection.meshIndex = k;
+                        treeSection.matIndex = tree.lODInfo[j].materialSlot[k];
+                        m_TreeSections.Add(treeSection);
                     }
                 }
             }
 
-            m_TreeElements.Sort();
+            m_TreeSections.Sort();
 
-            m_TreeBatchIndexs = new NativeArray<int>(m_TreeElements.Length, Allocator.Persistent);
-            m_IndexBuffer = new ComputeBuffer(m_TreeBatchIndexs.Length, Marshal.SizeOf(typeof(int)));
+            m_passTreeElements = new NativeArray<int>(m_TreeSections.Length, Allocator.Persistent);
+            m_IndexBuffer = new ComputeBuffer(m_passTreeElements.Length, Marshal.SizeOf(typeof(int)));
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -123,10 +122,10 @@ namespace Landscape.FoliagePipeline
                 treeViewProcessJob.matrix_Proj = matrixProj;
                 treeViewProcessJob.maxDistance = cullDistance;
                 treeViewProcessJob.treeLODInfos = (float*)m_TreeLODInfos.GetUnsafePtr();
-                treeViewProcessJob.viewTreeBatchs = m_ViewTreeBatchs;
-                treeViewProcessJob.treeBatchs = (FMeshBatch*)m_TreeBatchs.GetUnsafeList()->Ptr;
+                treeViewProcessJob.treeElements = (FTreeElement*)m_TreeElements.GetUnsafeList()->Ptr;
+                treeViewProcessJob.viewTreeElements = m_ViewTreeElements;
             }
-            return treeViewProcessJob.Schedule(m_ViewTreeBatchs.Length, 256);
+            return treeViewProcessJob.Schedule(m_ViewTreeElements.Length, 256);
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -135,11 +134,11 @@ namespace Landscape.FoliagePipeline
             var treeDrawCommandBuildJob = new FTreeDrawCommandBuildJob();
             {
                 treeDrawCommandBuildJob.maxLOD = tree.lODInfo.Length - 1;
-                treeDrawCommandBuildJob.treeElements = m_TreeElements;
-                treeDrawCommandBuildJob.treeBatchs = (FMeshBatch*)m_TreeBatchs.GetUnsafeList()->Ptr;
-                treeDrawCommandBuildJob.viewTreeBatchs = m_ViewTreeBatchs;
-                treeDrawCommandBuildJob.treeBatchIndexs = m_TreeBatchIndexs;
-                treeDrawCommandBuildJob.passTreeElements = m_PassTreeElements;
+                treeDrawCommandBuildJob.treeSections = m_TreeSections;
+                treeDrawCommandBuildJob.treeElements = (FTreeElement*)m_TreeElements.GetUnsafeList()->Ptr;
+                treeDrawCommandBuildJob.viewTreeElements = m_ViewTreeElements;
+                treeDrawCommandBuildJob.passTreeElements = m_passTreeElements;
+                treeDrawCommandBuildJob.passTreeSections = m_PassTreeSections;
                 treeDrawCommandBuildJob.treeDrawCommands = m_TreeDrawCommands;
             }
             return treeDrawCommandBuildJob.Schedule();
@@ -148,7 +147,7 @@ namespace Landscape.FoliagePipeline
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public void DispatchDraw(CommandBuffer cmdBuffer, in int passIndex, MaterialPropertyBlock propertyBlock)
         {
-            m_IndexBuffer.SetData(m_TreeBatchIndexs);
+            m_IndexBuffer.SetData(m_passTreeElements);
             //cmdBuffer.SetComputeBufferData(m_IndexBuffer, m_TreeBatchIndexs);
 
             foreach (var treeDrawCmd in m_TreeDrawCommands)
@@ -163,7 +162,7 @@ namespace Landscape.FoliagePipeline
                 cmdBuffer.DrawMeshInstancedProcedural(mesh, treeDrawCmd.meshIndex, material, passIndex, treeDrawCmd.countOffset.x, propertyBlock);
             }
 
-            m_PassTreeElements.Clear();
+            m_PassTreeSections.Clear();
             m_TreeDrawCommands.Clear();
         }
 
@@ -172,11 +171,11 @@ namespace Landscape.FoliagePipeline
         {
             if (Application.isPlaying == false) { return; }
 
-            for (var i = 0; i < m_TreeBatchs.Length; ++i)
+            for (var i = 0; i < m_TreeElements.Length; ++i)
             {
-                var treeBatch = m_TreeBatchs[i];
+                var treeBatch = m_TreeElements[i];
                 ref var color = ref Geometry.LODColors[treeBatch.lODIndex];
-                if (m_ViewTreeBatchs[i] == 0)
+                if (m_ViewTreeElements[i] == 0)
                 {
                     continue;
                 }
