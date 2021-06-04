@@ -27,7 +27,6 @@ namespace Landscape.FoliagePipeline
         public FTreeSector[] treeSectors;
         private MaterialPropertyBlock m_PropertyBlock;
 
-
         protected override void OnRegister()
         {
             terrain = GetComponent<Terrain>();
