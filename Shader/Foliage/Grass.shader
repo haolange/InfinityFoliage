@@ -189,7 +189,7 @@ Shader "Landscape/Grass"
                     indirectDiffuse *= baseColor.rgb;
                 #endif
 
-				float3 subsurfaceColor = Transmission(baseColor.rgb, lightDir, viewDir, normalWS, halfDir, 1, 0.25);
+				float3 subsurfaceColor = Transmission(baseColor.rgb * float3(0.8, 1, 0), lightDir, viewDir, normalWS, halfDir, 1, 0.25) * 2;
 
 				//Surface
 				float3 outColor = variantColor * (indirectDiffuse + (directDiffuse + subsurfaceColor) * attenuatedLightColor);

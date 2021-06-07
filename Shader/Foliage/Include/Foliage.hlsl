@@ -25,12 +25,4 @@ struct FGrassElement
 };
 StructuredBuffer<FGrassElement> _GrassElementBuffer;
 
-
-float LODCrossDither(uint2 fadeMaskSeed, float ditherFactor)
-{
-    float p = GenerateHashedRandomFloat(fadeMaskSeed);
-    return (ditherFactor - CopySign(p, ditherFactor));
-    //clip(f);
-}
-
 #endif

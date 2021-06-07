@@ -127,7 +127,7 @@ namespace Landscape.FoliagePipeline
 
         public override void AddRenderPasses(ScriptableRenderer renderer, ref RenderingData renderingData)
         {
-            renderer.AddPass(m_foliagePass);
+            renderer.EnqueuePass(m_foliagePass);
         }
 
         protected override void Dispose(bool disposing)
