@@ -34,7 +34,7 @@ namespace Landscape.FoliagePipeline
         private NativeList<FTreeSection> m_TreeSections;
         private NativeList<int> m_PassTreeSections;
         private NativeArray<int> m_ViewTreeElements;
-        private NativeArray<int> m_passTreeElements;
+        private NativeArray<int> m_PassTreeElements;
         private NativeList<FMeshDrawCommand> m_TreeDrawCommands;
 
         public void Initialize()
@@ -49,7 +49,7 @@ namespace Landscape.FoliagePipeline
             m_TreeElements.Dispose();
             m_TreeSections.Dispose();
             m_ViewTreeElements.Dispose();
-            m_passTreeElements.Dispose();
+            m_PassTreeElements.Dispose();
             m_PassTreeSections.Dispose();
             m_TreeDrawCommands.Dispose();
 
@@ -106,9 +106,9 @@ namespace Landscape.FoliagePipeline
             m_TreeDrawCommands = new NativeList<FMeshDrawCommand>(6, Allocator.Persistent);
             m_ViewTreeElements = new NativeArray<int>(m_TreeElements.Length, Allocator.Persistent);
             m_PassTreeSections = new NativeList<int>(m_TreeElements.Length, Allocator.Persistent);
-            m_passTreeElements = new NativeArray<int>(m_TreeSections.Length, Allocator.Persistent);
+            m_PassTreeElements = new NativeArray<int>(m_TreeSections.Length, Allocator.Persistent);
 
-            m_TreeIndexBuffer = new ComputeBuffer(m_passTreeElements.Length, Marshal.SizeOf(typeof(int)));
+            m_TreeIndexBuffer = new ComputeBuffer(m_PassTreeElements.Length, Marshal.SizeOf(typeof(int)));
             m_TreeElementBuffer = new ComputeBuffer(m_TreeElements.Length, Marshal.SizeOf(typeof(FTreeElement)));
             m_TreeElementBuffer.SetData(m_TreeElements.ToArray());
         }
@@ -139,7 +139,7 @@ namespace Landscape.FoliagePipeline
                 treeDrawCommandBuildJob.treeSections = m_TreeSections;
                 treeDrawCommandBuildJob.treeElements = (FTreeElement*)m_TreeElements.GetUnsafeList()->Ptr;
                 treeDrawCommandBuildJob.viewTreeElements = m_ViewTreeElements;
-                treeDrawCommandBuildJob.passTreeElements = m_passTreeElements;
+                treeDrawCommandBuildJob.passTreeElements = m_PassTreeElements;
                 treeDrawCommandBuildJob.passTreeSections = m_PassTreeSections;
                 treeDrawCommandBuildJob.treeDrawCommands = m_TreeDrawCommands;
             }
@@ -149,7 +149,7 @@ namespace Landscape.FoliagePipeline
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public void DispatchDraw(CommandBuffer cmdBuffer, in int passIndex, MaterialPropertyBlock propertyBlock)
         {
-            m_TreeIndexBuffer.SetData(m_passTreeElements);
+            m_TreeIndexBuffer.SetData(m_PassTreeElements);
             //cmdBuffer.SetComputeBufferData(m_IndexBuffer, m_TreeBatchIndexs);
 
             foreach (var treeDrawCmd in m_TreeDrawCommands)
