@@ -22,7 +22,7 @@ namespace Landscape.FoliagePipeline
     [Serializable]
     public unsafe class FTreeSubSector
     {
-
+        private NativeList<FTreeSection> m_TreeSections;
     }
 
     [Serializable]
@@ -35,8 +35,9 @@ namespace Landscape.FoliagePipeline
 
         private ComputeBuffer m_TreeIndexBuffer;
         private ComputeBuffer m_TreeElementBuffer;
+
         private NativeArray<float> m_TreeLODInfos;
-        private NativeList<FTreeElement> m_TreeElements;
+        private NativeArray<FTreeElement> m_TreeElements;
         private NativeList<FTreeSection> m_TreeSections;
         private NativeList<int> m_PassTreeSections;
         private NativeArray<int> m_ViewTreeElements;
@@ -45,7 +46,7 @@ namespace Landscape.FoliagePipeline
 
         public void Initialize()
         {
-            m_TreeElements = new NativeList<FTreeElement>(2048, Allocator.Persistent);
+            m_TreeElements = new NativeArray<FTreeElement>(transforms.Count, Allocator.Persistent);
             m_TreeSections = new NativeList<FTreeSection>(4096, Allocator.Persistent);
         }
 
@@ -74,7 +75,7 @@ namespace Landscape.FoliagePipeline
                 treeElement.matrix_World = matrixWorld;
                 treeElement.boundBox = Geometry.CaculateWorldBound(tree.boundBox, matrixWorld);
                 treeElement.boundSphere = new FSphere(Geometry.CaculateBoundRadius(treeElement.boundBox), treeElement.boundBox.center);
-                m_TreeElements.Add(treeElement);
+                m_TreeElements[i] = treeElement;
             }
         }
 
@@ -116,7 +117,7 @@ namespace Landscape.FoliagePipeline
 
             m_TreeIndexBuffer = new ComputeBuffer(m_PassTreeElements.Length, Marshal.SizeOf(typeof(int)));
             m_TreeElementBuffer = new ComputeBuffer(m_TreeElements.Length, Marshal.SizeOf(typeof(FTreeElement)));
-            m_TreeElementBuffer.SetData(m_TreeElements.ToArray());
+            m_TreeElementBuffer.SetData(m_TreeElements);
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -130,7 +131,7 @@ namespace Landscape.FoliagePipeline
                 treeViewProcessJob.matrix_Proj = matrixProj;
                 treeViewProcessJob.maxDistance = cullDistance;
                 treeViewProcessJob.treeLODInfos = (float*)m_TreeLODInfos.GetUnsafePtr();
-                treeViewProcessJob.treeElements = (FTreeElement*)m_TreeElements.GetUnsafeList()->Ptr;
+                treeViewProcessJob.treeElements = (FTreeElement*)m_TreeElements.GetUnsafePtr();
                 treeViewProcessJob.viewTreeElements = m_ViewTreeElements;
             }
             return treeViewProcessJob.Schedule(m_ViewTreeElements.Length, 256);
@@ -143,7 +144,7 @@ namespace Landscape.FoliagePipeline
             {
                 treeDrawCommandBuildJob.maxLOD = tree.lODInfo.Length - 1;
                 treeDrawCommandBuildJob.treeSections = m_TreeSections;
-                treeDrawCommandBuildJob.treeElements = (FTreeElement*)m_TreeElements.GetUnsafeList()->Ptr;
+                treeDrawCommandBuildJob.treeElements = (FTreeElement*)m_TreeElements.GetUnsafePtr();
                 treeDrawCommandBuildJob.viewTreeElements = m_ViewTreeElements;
                 treeDrawCommandBuildJob.passTreeElements = m_PassTreeElements;
                 treeDrawCommandBuildJob.passTreeSections = m_PassTreeSections;
