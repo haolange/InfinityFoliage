@@ -20,6 +20,12 @@ namespace Landscape.FoliagePipeline
     }
 
     [Serializable]
+    public unsafe class FTreeSubSector
+    {
+
+    }
+
+    [Serializable]
     public unsafe class FTreeSector
     {
         public FMesh tree;
@@ -35,7 +41,7 @@ namespace Landscape.FoliagePipeline
         private NativeList<int> m_PassTreeSections;
         private NativeArray<int> m_ViewTreeElements;
         private NativeArray<int> m_PassTreeElements;
-        private NativeList<FMeshDrawCommand> m_TreeDrawCommands;
+        private NativeList<FTreeDrawCommand> m_TreeDrawCommands;
 
         public void Initialize()
         {
@@ -103,7 +109,7 @@ namespace Landscape.FoliagePipeline
                 m_TreeLODInfos[j] = tree.lODInfo[j].screenSize;
             }
 
-            m_TreeDrawCommands = new NativeList<FMeshDrawCommand>(6, Allocator.Persistent);
+            m_TreeDrawCommands = new NativeList<FTreeDrawCommand>(6, Allocator.Persistent);
             m_ViewTreeElements = new NativeArray<int>(m_TreeElements.Length, Allocator.Persistent);
             m_PassTreeSections = new NativeList<int>(m_TreeElements.Length, Allocator.Persistent);
             m_PassTreeElements = new NativeArray<int>(m_TreeSections.Length, Allocator.Persistent);

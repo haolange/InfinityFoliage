@@ -376,7 +376,7 @@ namespace Landscape.FoliagePipeline
         [WriteOnly]
         public NativeArray<int> passTreeElements;
 
-        public NativeList<FMeshDrawCommand> treeDrawCommands;
+        public NativeList<FTreeDrawCommand> treeDrawCommands;
 
         public void Execute()
         {
@@ -397,8 +397,8 @@ namespace Landscape.FoliagePipeline
             FTreeSection passTreeSection;
             FTreeSection cachePassTreeSection = new FTreeSection(-1, -1, -1, -1);
 
-            FMeshDrawCommand treeDrawCommand;
-            FMeshDrawCommand cacheTreeDrawCommand;
+            FTreeDrawCommand treeDrawCommand;
+            FTreeDrawCommand cacheTreeDrawCommand;
 
             for (int i = 0; i < passTreeSections.Length; ++i)
             {
