@@ -125,18 +125,25 @@ namespace Landscape.FoliagePipeline
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public void InitView(in float cullDistance, in float3 viewPos, in float4x4 matrixProj, FPlane* planes, in NativeList<JobHandle> taskHandles)
         {
+            var treeElementLODCaculateJob = new FTreeElementLODCaculateJob();
+            {
+                treeElementLODCaculateJob.numLOD = m_TreeLODInfos.Length - 1;
+                treeElementLODCaculateJob.viewOringin = viewPos;
+                treeElementLODCaculateJob.matrix_Proj = matrixProj;
+                treeElementLODCaculateJob.treeLODInfos = (float*)m_TreeLODInfos.GetUnsafePtr();
+                treeElementLODCaculateJob.treeElements = (FTreeElement*)m_TreeElements.GetUnsafePtr();
+            }
+            JobHandle lodJobHandle = treeElementLODCaculateJob.Schedule(m_ViewTreeElements.Length, 256);
+
             var treeElementCullingJob = new FTreeElementCullingJob();
             {
                 treeElementCullingJob.planes = planes;
-                treeElementCullingJob.numLOD = m_TreeLODInfos.Length - 1;
                 treeElementCullingJob.viewOringin = viewPos;
-                treeElementCullingJob.matrix_Proj = matrixProj;
                 treeElementCullingJob.maxDistance = cullDistance;
-                treeElementCullingJob.treeLODInfos = (float*)m_TreeLODInfos.GetUnsafePtr();
                 treeElementCullingJob.treeElements = (FTreeElement*)m_TreeElements.GetUnsafePtr();
                 treeElementCullingJob.viewTreeElements = m_ViewTreeElements;
             }
-            taskHandles.Add(treeElementCullingJob.Schedule(m_ViewTreeElements.Length, 256));
+            taskHandles.Add(treeElementCullingJob.Schedule(m_ViewTreeElements.Length, 256, lodJobHandle));
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -146,14 +153,14 @@ namespace Landscape.FoliagePipeline
             {
                 subSector.treeSections.Clear();
 
-                var treeLODSelectJob = new FTreeLODSelectJob();
+                var treeSectionLODSelectJob = new FTreeSectionLODSelectJob();
                 {
-                    treeLODSelectJob.meshIndex = subSector.meshIndex;
-                    treeLODSelectJob.treeElements = m_TreeElements;
-                    treeLODSelectJob.viewTreeElements = m_ViewTreeElements;
-                    treeLODSelectJob.passTreeSections = subSector.treeSections;
+                    treeSectionLODSelectJob.meshIndex = subSector.meshIndex;
+                    treeSectionLODSelectJob.treeElements = m_TreeElements;
+                    treeSectionLODSelectJob.viewTreeElements = m_ViewTreeElements;
+                    treeSectionLODSelectJob.passTreeSections = subSector.treeSections;
                 }
-                taskHandles.Add(treeLODSelectJob.Schedule());
+                taskHandles.Add(treeSectionLODSelectJob.Schedule());
             }
         }
 

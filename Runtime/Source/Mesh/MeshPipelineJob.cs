@@ -114,7 +114,6 @@ namespace Landscape.FoliagePipeline
         [WriteOnly]
         public NativeList<FGrassElement> grassElements;
 
-
         public void Execute()
         {
             int density;
@@ -166,7 +165,6 @@ namespace Landscape.FoliagePipeline
         [WriteOnly]
         public NativeArray<int> visibleMap;
 
-
         public void Execute()
         {
             for (int index = 0; index < length; ++index)
@@ -200,7 +198,6 @@ namespace Landscape.FoliagePipeline
 
         [WriteOnly]
         public NativeArray<int> visibleMap;
-
 
         public void Execute(int index)
         {
@@ -239,7 +236,6 @@ namespace Landscape.FoliagePipeline
         [WriteOnly]
         public NativeArray<int> visibleMap;
 
-
         public void Execute(int index)
         {
             int visible = 1;
@@ -260,56 +256,12 @@ namespace Landscape.FoliagePipeline
 
 
     [BurstCompile]
-    public unsafe struct FTreeElementLODJob : IJobParallelFor
+    public unsafe struct FTreeElementLODCaculateJob : IJobParallelFor
     {
-        [ReadOnly]
-        public float3 viewOringin;
-
-        [ReadOnly]
-        public float4x4 matrix_Proj;
-
-        [ReadOnly]
-        public NativeArray<float> treeElementLODs;
-
-        [NativeDisableUnsafePtrRestriction]
-        public FTreeElement* treeElements;
-
-
-        public void Execute(int index)
-        {
-            float screenRadiusSquared = 0;
-            ref FTreeElement treeBatch = ref treeElements[index];
-
-            for (int i = treeElementLODs.Length - 1; i >= 0; --i)
-            {
-                float LODSize = (treeElementLODs[i] * treeElementLODs[i]) * 0.5f;
-                if (screenRadiusSquared < LODSize)
-                {
-                    treeBatch.meshIndex = i;
-                    break;
-                }
-            }
-        }
-    }
-
-
-    [BurstCompile]
-    public unsafe struct FTreeElementCullingJob : IJobParallelFor
-    {
-        [ReadOnly]
         public int numLOD;
 
-        [ReadOnly]
-        public float maxDistance;
-
-        [ReadOnly]
-        [NativeDisableUnsafePtrRestriction]
-        public FPlane* planes;
-
-        [ReadOnly]
         public float3 viewOringin;
 
-        [ReadOnly]
         public float4x4 matrix_Proj;
 
         [ReadOnly]
@@ -320,14 +272,9 @@ namespace Landscape.FoliagePipeline
         [NativeDisableUnsafePtrRestriction]
         public FTreeElement* treeElements;
 
-        [WriteOnly]
-        public NativeArray<int> viewTreeElements;
-
         public void Execute(int index)
         {
             ref FTreeElement treeElement = ref treeElements[index];
-
-            //CalcuLOD
             float screenRadiusSqr = Geometry.ComputeBoundsScreenRadiusSquared(treeElement.boundSphere.radius, treeElement.boundBox.center, viewOringin, matrix_Proj);
 
             for (int lodIndex = numLOD; lodIndex >= 0; --lodIndex)
@@ -340,10 +287,33 @@ namespace Landscape.FoliagePipeline
                     break;
                 }
             }
+        }
+    }
 
-            //Culling
+
+    [BurstCompile]
+    public unsafe struct FTreeElementCullingJob : IJobParallelFor
+    {
+        public float maxDistance;
+
+        [ReadOnly]
+        [NativeDisableUnsafePtrRestriction]
+        public FPlane* planes;
+
+        public float3 viewOringin;
+
+        [ReadOnly]
+        [NativeDisableUnsafePtrRestriction]
+        public FTreeElement* treeElements;
+
+        [WriteOnly]
+        public NativeArray<int> viewTreeElements;
+
+        public void Execute(int index)
+        {
             int visible = 1;
             float2 distRadius = new float2(0, 0);
+            ref FTreeElement treeElement = ref treeElements[index];
 
             for (int planeIndex = 0; planeIndex < 6; ++planeIndex)
             {
@@ -358,7 +328,7 @@ namespace Landscape.FoliagePipeline
     }
 
     [BurstCompile]
-    public unsafe struct FTreeLODSelectJob : IJob
+    public unsafe struct FTreeSectionLODSelectJob : IJob
     {
         public int meshIndex;
 
@@ -382,73 +352,4 @@ namespace Landscape.FoliagePipeline
             }
         }
     }
-
-    /*[BurstCompile]
-    public unsafe struct FTreeDrawCommandBuildJob : IJob
-    {
-        public int maxLOD;
-
-        [ReadOnly]
-        [NativeDisableUnsafePtrRestriction]
-        public FTreeElement* treeElements;
-
-        [ReadOnly]
-        public NativeArray<int> viewTreeElements;
-
-        [ReadOnly]
-        public NativeList<FTreeSection> treeSections;
-
-        public NativeList<int> passTreeSections;
-
-        [WriteOnly]
-        public NativeArray<int> passTreeElements;
-
-        public NativeList<FTreeDrawCommand> treeDrawCommands;
-
-        public void Execute()
-        {
-            //Gather PassTreeElement
-            FTreeSection treeSection;
-            for (int i = 0; i < treeSections.Length; ++i)
-            {
-                treeSection = treeSections[i];
-                ref FTreeElement treeElement = ref treeElements[treeSection.elementIndex];
-
-                if (viewTreeElements[treeSection.elementIndex] != 0 && treeSection.meshIndex == treeElement.meshIndex)
-                {
-                    passTreeSections.Add(i);
-                }
-            }
-
-            //Build TreeDrawCommand
-            FTreeSection passTreeSection;
-            FTreeSection cachePassTreeSection = new FTreeSection(-1, -1, -1, -1);
-
-            FTreeDrawCommand treeDrawCommand;
-            FTreeDrawCommand cacheTreeDrawCommand;
-
-            for (int i = 0; i < passTreeSections.Length; ++i)
-            {
-                passTreeSection = treeSections[passTreeSections[i]];
-                passTreeElements[i] = passTreeSection.elementIndex;
-
-                if (!passTreeSection.Equals(cachePassTreeSection))
-                {
-                    cachePassTreeSection = passTreeSection;
-
-                    treeDrawCommand.countOffset.x = 0;
-                    treeDrawCommand.countOffset.y = i;
-                    treeDrawCommand.meshIndex = passTreeSection.meshIndex;
-                    treeDrawCommand.sectionIndex = passTreeSection.sectionIndex;
-                    treeDrawCommand.materialIndex = passTreeSection.materialIndex;
-                    //TreeDrawCommand.InstanceGroupID = PassTreeSection.InstanceGroupID;
-                    treeDrawCommands.Add(treeDrawCommand);
-                }
-
-                cacheTreeDrawCommand = treeDrawCommands[treeDrawCommands.Length - 1];
-                cacheTreeDrawCommand.countOffset.x += 1;
-                treeDrawCommands[treeDrawCommands.Length - 1] = cacheTreeDrawCommand;
-            }
-        }
-    }*/
 }

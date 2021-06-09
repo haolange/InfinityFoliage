@@ -3,6 +3,7 @@ Shader "Landscape/TreeBrak"
 	Properties 
 	{
         [Header(Texture)]
+		[Toggle (_Mask)] _Mask ("Mask", Range(0, 1)) = 1
 		[NoScaleOffset]_BrakMask ("BrakMask", 2D) = "white" {}
         [NoScaleOffset]_BrakColor ("BrakColor", 2D) = "white" {}
         [NoScaleOffset]_BrakNormal ("BrakNormal", 2D) = "bump" {}
@@ -50,12 +51,14 @@ Shader "Landscape/TreeBrak"
 			#pragma target 4.5
             #pragma vertex vert
             #pragma fragment frag
+
 			#pragma multi_compile_instancing
 			//#pragma enable_d3d11_debug_symbols
-
 			#pragma multi_compile _ _SHADOWS_SOFT
 			#pragma multi_compile _ _MAIN_LIGHT_SHADOWS
 			#pragma multi_compile _ _MAIN_LIGHT_SHADOWS_CASCADE
+
+			#pragma shader_feature _Mask
 
 			struct Attributes
 			{
@@ -98,10 +101,13 @@ Shader "Landscape/TreeBrak"
 				float3 worldPos = input.vertexWS.xyz;
 
 				//Surface
-				float brakMask = _BrakMask.Sample(sampler_BrakMask, input.uv0).a;
-				float4 brakColor = _BrakColor.Sample(sampler_BrakColor, input.uv1);
 				float4 trunkColor = _TrunkColor.Sample(sampler_TrunkColor, input.uv0);
-				float4 baseColor = lerp(trunkColor, brakColor, brakMask);
+				float4 baseColor = trunkColor;
+				#if _Mask
+					float brakMask = _BrakMask.Sample(sampler_BrakMask, input.uv0).a;
+					float4 brakColor = _BrakColor.Sample(sampler_BrakColor, input.uv1);
+                    baseColor = lerp(trunkColor, brakColor, brakMask);
+                #endif
 
 				//Shadow
 				float4 shadowCoord = 0;
@@ -194,13 +200,16 @@ Shader "Landscape/TreeBrak"
 				//float4 directDiffuse = saturate(dot(normalize(_MainLightPosition.xyz), input.normal.xyz)) * float4(_MainLightColor.rgb, 1) * shadowTream;
 
 				//Surface
-				float brakMask = _BrakMask.Sample(sampler_BrakMask, input.uv0).a;
-				float4 brakColor = _BrakColor.Sample(sampler_BrakColor, input.uv1);
 				float4 trunkColor = _TrunkColor.Sample(sampler_TrunkColor, input.uv0);
-				float4 outColor = lerp(trunkColor, brakColor, brakMask);
-				//outColor.rgb *= directDiffuse.rgb;
+				float4 baseColor = trunkColor;
+				#if _Mask
+					float brakMask = _BrakMask.Sample(sampler_BrakMask, input.uv0).a;
+					float4 brakColor = _BrakColor.Sample(sampler_BrakColor, input.uv1);
+                    baseColor = lerp(trunkColor, brakColor, brakMask);
+                #endif
+				//baseColor.rgb *= directDiffuse.rgb;
 
-				return outColor;
+				return baseColor;
 			}
             ENDHLSL
         }
