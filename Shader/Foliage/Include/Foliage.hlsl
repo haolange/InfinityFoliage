@@ -14,7 +14,6 @@ struct FTreeElement
      float4x4 matrix_World;
 };
 
-uint _TreeIndexOffset;
 Buffer<uint> _TreeIndexBuffer;
 StructuredBuffer<FTreeElement> _TreeElementBuffer;
 

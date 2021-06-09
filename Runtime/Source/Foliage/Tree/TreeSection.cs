@@ -10,7 +10,6 @@ namespace Landscape.FoliagePipeline
         public float3 rotation;
         public float3 scale;
 
-
         public FTransform(float3 position, float3 rotation, float3 scale)
         {
             this.scale = scale;
@@ -21,29 +20,16 @@ namespace Landscape.FoliagePipeline
 
     public struct FTreeSection : IComparable<FTreeSection>, IEquatable<FTreeSection>
     {
-        public int meshIndex;
-        public int materialIndex;
-        public int sectionIndex;
-        public int batchIndex;
-        public int instanceId
-        {
-            get
-            {
-                return new int3(meshIndex, materialIndex, sectionIndex).GetHashCode();
-            }
-        }
+        public int elementIndex;
 
-        public FTreeSection(in int meshIndex, in int sectionIndex, in int materialIndex, in int batchIndex)
+        public FTreeSection(in int elementIndex)
         {
-            this.meshIndex = meshIndex;
-            this.sectionIndex = sectionIndex;
-            this.materialIndex = materialIndex;
-            this.batchIndex = batchIndex;
+            this.elementIndex = elementIndex;
         }
 
         public bool Equals(FTreeSection target)
         {
-            return meshIndex.Equals(target.meshIndex) && materialIndex.Equals(target.materialIndex) && sectionIndex.Equals(target.sectionIndex);
+            return elementIndex.Equals(target.elementIndex);
         }
 
         public override bool Equals(object target)
@@ -53,14 +39,12 @@ namespace Landscape.FoliagePipeline
 
         public int CompareTo(FTreeSection target)
         {
-            return instanceId.CompareTo(target.instanceId);
-            //return ((meshIndex >> 16) + (lODIndex << 16 | materialIndex)).CompareTo((target.meshIndex >> 16) + (target.lODIndex << 16 | target.materialIndex));
+            return elementIndex.CompareTo(target.elementIndex);
         }
 
         public override int GetHashCode()
         {
-            return instanceId;
-            //return (meshIndex >> 16) + (lODIndex << 16 | materialIndex);
+            return elementIndex.GetHashCode();
         }
     }
 }

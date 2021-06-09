@@ -40,15 +40,15 @@ namespace Landscape.FoliagePipeline
         public int[] numSections;
         public Mesh[] meshes;
         public Material[] materials;
-        public FMeshLODInfo[] lODInfo;
+        public FMeshLODInfo[] lODInfos;
 
-        public FMesh(Mesh[] meshes, Material[] materials, FMeshLODInfo[] lODInfo)
+        public FMesh(Mesh[] meshes, Material[] materials, FMeshLODInfo[] lODInfos)
         {
             this.IsCreated = true;
             this.meshes = meshes;
             this.materials = materials;
 
-            this.lODInfo = lODInfo;
+            this.lODInfos = lODInfos;
             this.numLOD = meshes.Length;
             this.boundBox = meshes[0].bounds;
             this.numSections = new int[meshes.Length];
@@ -61,7 +61,7 @@ namespace Landscape.FoliagePipeline
 
         public bool Equals(FMesh Target)
         {
-            return IsCreated.Equals(Target.IsCreated) && meshes.Equals(Target.meshes) && lODInfo.Equals(Target.lODInfo) && materials.Equals(Target.materials);
+            return IsCreated.Equals(Target.IsCreated) && meshes.Equals(Target.meshes) && lODInfos.Equals(Target.lODInfos) && materials.Equals(Target.materials);
         }
 
         public override bool Equals(object obj)
@@ -71,7 +71,7 @@ namespace Landscape.FoliagePipeline
 
         public override int GetHashCode()
         {
-            return new float4(IsCreated ? 0 : 1, meshes.GetHashCode(), lODInfo.GetHashCode(), materials.GetHashCode()).GetHashCode();
+            return new float4(IsCreated ? 0 : 1, meshes.GetHashCode(), lODInfos.GetHashCode(), materials.GetHashCode()).GetHashCode();
         }
     }
 

@@ -36,25 +36,7 @@ namespace Landscape.FoliagePipeline
 
             InitTreeSectors();
 
-            if (terrain.drawTreesAndFoliage == true)
-            {
-                terrain.drawTreesAndFoliage = false;
-            }
-        }
-
-        protected override void OnTransformChange()
-        {
-
-        }
-
-        protected override void EventPlay()
-        {
-
-        }
-
-        protected override void EventTick()
-        {
-
+            if (terrain.drawTreesAndFoliage == true) { terrain.drawTreesAndFoliage = false; }
         }
 
         protected override void UnRegister()
@@ -98,9 +80,7 @@ namespace Landscape.FoliagePipeline
             foreach (var treeSector in treeSectors)
             {
                 treeSector.Initialize();
-                treeSector.BuildTreeElement();
-                treeSector.BuildTreeSection();
-                treeSector.BuildTreeBuffer();
+                treeSector.BuildRuntimeData();
             }
         }
         
@@ -127,8 +107,7 @@ namespace Landscape.FoliagePipeline
         {
             foreach (var treeSector in treeSectors)
             {
-                var taskHandle = treeSector.DispatchSetup();
-                taskHandles.Add(taskHandle); 
+                treeSector.DispatchSetup(taskHandles);
             }
         }
 

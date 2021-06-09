@@ -168,7 +168,7 @@ Shader "Landscape/TreeBrak"
 			Varyings vert(Attributes input)
 			{
 				Varyings output = (Varyings)0;
-				output.PrimitiveId  = _TreeIndexBuffer[input.InstanceId + _TreeIndexOffset];
+				output.PrimitiveId  = _TreeIndexBuffer[input.InstanceId];
 				FTreeElement treeElement = _TreeElementBuffer[output.PrimitiveId];
 
 				output.uv0 = input.uv0;

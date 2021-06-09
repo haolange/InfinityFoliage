@@ -85,39 +85,6 @@ namespace Landscape.FoliagePipeline
 #endif
 
     [BurstCompile]
-    public unsafe struct FTreeBatchLODJob : IJobParallelFor
-    {
-        [ReadOnly]
-        public float3 viewOringin;
-
-        [ReadOnly]
-        public float4x4 matrix_Proj;
-
-        [ReadOnly]
-        public NativeArray<float> treeBatchLODs;
-
-        [NativeDisableUnsafePtrRestriction]
-        public FTreeElement* treeBatchs;
-
-
-        public void Execute(int index)
-        {
-            float screenRadiusSquared = 0;
-            ref FTreeElement treeBatch = ref treeBatchs[index];
-
-            for (int i = treeBatchLODs.Length - 1; i >= 0; --i)
-            {
-                float LODSize = (treeBatchLODs[i] * treeBatchLODs[i]) * 0.5f;
-                if (screenRadiusSquared < LODSize)
-                {
-                    treeBatch.meshIndex = i;
-                    break;
-                }
-            }
-        }
-    }
-
-    [BurstCompile]
     public unsafe struct FGrassScatterJob : IJob
     {
         [ReadOnly]
@@ -291,8 +258,43 @@ namespace Landscape.FoliagePipeline
         }
     }
 
+
     [BurstCompile]
-    public unsafe struct FTreeBatchCullingJob : IJobParallelFor
+    public unsafe struct FTreeElementLODJob : IJobParallelFor
+    {
+        [ReadOnly]
+        public float3 viewOringin;
+
+        [ReadOnly]
+        public float4x4 matrix_Proj;
+
+        [ReadOnly]
+        public NativeArray<float> treeElementLODs;
+
+        [NativeDisableUnsafePtrRestriction]
+        public FTreeElement* treeElements;
+
+
+        public void Execute(int index)
+        {
+            float screenRadiusSquared = 0;
+            ref FTreeElement treeBatch = ref treeElements[index];
+
+            for (int i = treeElementLODs.Length - 1; i >= 0; --i)
+            {
+                float LODSize = (treeElementLODs[i] * treeElementLODs[i]) * 0.5f;
+                if (screenRadiusSquared < LODSize)
+                {
+                    treeBatch.meshIndex = i;
+                    break;
+                }
+            }
+        }
+    }
+
+
+    [BurstCompile]
+    public unsafe struct FTreeElementCullingJob : IJobParallelFor
     {
         [ReadOnly]
         public int numLOD;
@@ -321,32 +323,31 @@ namespace Landscape.FoliagePipeline
         [WriteOnly]
         public NativeArray<int> viewTreeElements;
 
-
         public void Execute(int index)
         {
             ref FTreeElement treeElement = ref treeElements[index];
 
-            //Calculate LOD
-            float ScreenRadiusSquared = Geometry.ComputeBoundsScreenRadiusSquared(treeElement.boundSphere.radius, treeElement.boundBox.center, viewOringin, matrix_Proj);
+            //CalcuLOD
+            float screenRadiusSqr = Geometry.ComputeBoundsScreenRadiusSquared(treeElement.boundSphere.radius, treeElement.boundBox.center, viewOringin, matrix_Proj);
 
-            for (int LODIndex = numLOD; LODIndex >= 0; --LODIndex)
+            for (int lodIndex = numLOD; lodIndex >= 0; --lodIndex)
             {
-                ref float TreeLODInfo = ref treeLODInfos[LODIndex];
+                ref float treeLODInfo = ref treeLODInfos[lodIndex];
 
-                if (mathExtent.sqr(TreeLODInfo * 0.5f) >= ScreenRadiusSquared)
+                if (mathExtent.sqr(treeLODInfo * 0.5f) >= screenRadiusSqr)
                 {
-                    treeElement.meshIndex = LODIndex;
+                    treeElement.meshIndex = lodIndex;
                     break;
                 }
             }
 
-            //Culling Batch
+            //Culling
             int visible = 1;
             float2 distRadius = new float2(0, 0);
 
-            for (int PlaneIndex = 0; PlaneIndex < 6; ++PlaneIndex)
+            for (int planeIndex = 0; planeIndex < 6; ++planeIndex)
             {
-                ref FPlane plane = ref planes[PlaneIndex];
+                ref FPlane plane = ref planes[planeIndex];
                 distRadius.x = math.dot(plane.normalDist.xyz, treeElement.boundBox.center) + plane.normalDist.w;
                 distRadius.y = math.dot(math.abs(plane.normalDist.xyz), treeElement.boundBox.extents);
 
@@ -357,6 +358,32 @@ namespace Landscape.FoliagePipeline
     }
 
     [BurstCompile]
+    public unsafe struct FTreeLODSelectJob : IJob
+    {
+        public int meshIndex;
+
+        [ReadOnly]
+        public NativeArray<FTreeElement> treeElements;
+
+        [ReadOnly]
+        public NativeArray<int> viewTreeElements;
+
+        [WriteOnly]
+        public NativeList<int> passTreeSections;
+
+        public void Execute()
+        {
+            for (int i = 0; i < treeElements.Length; ++i)
+            {
+                if (viewTreeElements[i] != 0 && treeElements[i].meshIndex == meshIndex)
+                {
+                    passTreeSections.Add(i);
+                }
+            }
+        }
+    }
+
+    /*[BurstCompile]
     public unsafe struct FTreeDrawCommandBuildJob : IJob
     {
         public int maxLOD;
@@ -385,9 +412,9 @@ namespace Landscape.FoliagePipeline
             for (int i = 0; i < treeSections.Length; ++i)
             {
                 treeSection = treeSections[i];
-                ref FTreeElement treeElement = ref treeElements[treeSection.batchIndex];
+                ref FTreeElement treeElement = ref treeElements[treeSection.elementIndex];
 
-                if (viewTreeElements[treeSection.batchIndex] != 0 && treeSection.meshIndex == treeElement.meshIndex)
+                if (viewTreeElements[treeSection.elementIndex] != 0 && treeSection.meshIndex == treeElement.meshIndex)
                 {
                     passTreeSections.Add(i);
                 }
@@ -403,7 +430,7 @@ namespace Landscape.FoliagePipeline
             for (int i = 0; i < passTreeSections.Length; ++i)
             {
                 passTreeSection = treeSections[passTreeSections[i]];
-                passTreeElements[i] = passTreeSection.batchIndex;
+                passTreeElements[i] = passTreeSection.elementIndex;
 
                 if (!passTreeSection.Equals(cachePassTreeSection))
                 {
@@ -423,5 +450,5 @@ namespace Landscape.FoliagePipeline
                 treeDrawCommands[treeDrawCommands.Length - 1] = cacheTreeDrawCommand;
             }
         }
-    }
+    }*/
 }

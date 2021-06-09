@@ -11,7 +11,6 @@ namespace Landscape.FoliagePipeline
         public FSphere boundSphere;
         public float4x4 matrix_World;
 
-
         public bool Equals(FTreeElement target)
         {
             return meshIndex.Equals(target.meshIndex) && boundBox.Equals(target.boundBox) && boundSphere.Equals(target.boundSphere) && matrix_World.Equals(target.matrix_World);
