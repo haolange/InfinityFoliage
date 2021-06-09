@@ -97,8 +97,7 @@ namespace Landscape.FoliagePipeline
         {
             foreach (var treeSector in treeSectors)
             {
-                var taskHandle = treeSector.InitView(drawDistance, viewOrigin, matrixProj, planes);
-                taskHandles.Add(taskHandle); 
+                treeSector.InitView(drawDistance, viewOrigin, matrixProj, planes, taskHandles);
             }
         }
 
