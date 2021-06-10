@@ -51,14 +51,14 @@ Shader "Landscape/TreeBrak"
 			#pragma target 4.5
             #pragma vertex vert
             #pragma fragment frag
+			//#pragma enable_d3d11_debug_symbols
+
+			#pragma shader_feature _Mask
 
 			#pragma multi_compile_instancing
-			//#pragma enable_d3d11_debug_symbols
 			#pragma multi_compile _ _SHADOWS_SOFT
 			#pragma multi_compile _ _MAIN_LIGHT_SHADOWS
 			#pragma multi_compile _ _MAIN_LIGHT_SHADOWS_CASCADE
-
-			#pragma shader_feature _Mask
 
 			struct Attributes
 			{
@@ -143,6 +143,8 @@ Shader "Landscape/TreeBrak"
             #pragma fragment frag
 			//#pragma enable_d3d11_debug_symbols
 
+			#pragma shader_feature _Mask
+			
 			/*#pragma multi_compile _ _SHADOWS_SOFT
 			#pragma multi_compile _ _MAIN_LIGHT_SHADOWS
 			#pragma multi_compile _ _ADDITIONAL_LIGHT_SHADOWS
@@ -207,6 +209,7 @@ Shader "Landscape/TreeBrak"
 					float4 brakColor = _BrakColor.Sample(sampler_BrakColor, input.uv1);
                     baseColor = lerp(trunkColor, brakColor, brakMask);
                 #endif
+
 				//baseColor.rgb *= directDiffuse.rgb;
 
 				return baseColor;
@@ -225,7 +228,7 @@ Shader "Landscape/TreeBrak"
             #pragma vertex vert
             #pragma fragment frag
 			#pragma multi_compile_instancing
-			#pragma enable_d3d11_debug_symbols
+			//#pragma enable_d3d11_debug_symbols
 			
 			struct Attributes
 			{

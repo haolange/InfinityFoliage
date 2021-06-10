@@ -49,9 +49,10 @@ Shader "Landscape/TreeLeave"
 			#pragma target 4.5
             #pragma vertex vert
             #pragma fragment frag
-			#pragma multi_compile_instancing
 			//#pragma enable_d3d11_debug_symbols
+			//#pragma fragmentoption ARB_precision_hint_nicest
 
+			#pragma multi_compile_instancing
 			#pragma multi_compile _ _SHADOWS_SOFT
 			#pragma multi_compile _ _MAIN_LIGHT_SHADOWS
 			#pragma multi_compile _ _MAIN_LIGHT_SHADOWS_CASCADE
