@@ -125,25 +125,25 @@ namespace Landscape.FoliagePipeline
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public void InitView(in float cullDistance, in float3 viewPos, in float4x4 matrixProj, FPlane* planes, in NativeList<JobHandle> taskHandles)
         {
-            var treeElementLODCaculateJob = new FTreeElementLODCaculateJob();
+            var treeComputeJob = new FTreeComputeLODJob();
             {
-                treeElementLODCaculateJob.numLOD = m_TreeLODInfos.Length - 1;
-                treeElementLODCaculateJob.viewOringin = viewPos;
-                treeElementLODCaculateJob.matrix_Proj = matrixProj;
-                treeElementLODCaculateJob.treeLODInfos = (float*)m_TreeLODInfos.GetUnsafePtr();
-                treeElementLODCaculateJob.treeElements = (FTreeElement*)m_TreeElements.GetUnsafePtr();
+                treeComputeJob.numLOD = m_TreeLODInfos.Length - 1;
+                treeComputeJob.viewOringin = viewPos;
+                treeComputeJob.matrix_Proj = matrixProj;
+                treeComputeJob.treeLODInfos = (float*)m_TreeLODInfos.GetUnsafePtr();
+                treeComputeJob.treeElements = (FTreeElement*)m_TreeElements.GetUnsafePtr();
             }
-            JobHandle lodJobHandle = treeElementLODCaculateJob.Schedule(m_ViewTreeElements.Length, 256);
+            JobHandle lodJobHandle = treeComputeJob.Schedule(m_ViewTreeElements.Length, 256);
 
-            var treeElementCullingJob = new FTreeElementCullingJob();
+            var treeCullingJob = new FTreeCullingJob();
             {
-                treeElementCullingJob.planes = planes;
-                treeElementCullingJob.viewOringin = viewPos;
-                treeElementCullingJob.maxDistance = cullDistance;
-                treeElementCullingJob.treeElements = (FTreeElement*)m_TreeElements.GetUnsafePtr();
-                treeElementCullingJob.viewTreeElements = m_ViewTreeElements;
+                treeCullingJob.planes = planes;
+                treeCullingJob.viewOringin = viewPos;
+                treeCullingJob.maxDistance = cullDistance;
+                treeCullingJob.treeElements = (FTreeElement*)m_TreeElements.GetUnsafePtr();
+                treeCullingJob.viewTreeElements = m_ViewTreeElements;
             }
-            taskHandles.Add(treeElementCullingJob.Schedule(m_ViewTreeElements.Length, 256, lodJobHandle));
+            taskHandles.Add(treeCullingJob.Schedule(m_ViewTreeElements.Length, 256, lodJobHandle));
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -153,14 +153,14 @@ namespace Landscape.FoliagePipeline
             {
                 subSector.treeSections.Clear();
 
-                var treeSectionLODSelectJob = new FTreeSectionLODSelectJob();
+                var treeSelectLODJob = new FTreeSelectLODJob();
                 {
-                    treeSectionLODSelectJob.meshIndex = subSector.meshIndex;
-                    treeSectionLODSelectJob.treeElements = m_TreeElements;
-                    treeSectionLODSelectJob.viewTreeElements = m_ViewTreeElements;
-                    treeSectionLODSelectJob.passTreeSections = subSector.treeSections;
+                    treeSelectLODJob.meshIndex = subSector.meshIndex;
+                    treeSelectLODJob.treeElements = m_TreeElements;
+                    treeSelectLODJob.viewTreeElements = m_ViewTreeElements;
+                    treeSelectLODJob.passTreeSections = subSector.treeSections;
                 }
-                taskHandles.Add(treeSectionLODSelectJob.Schedule());
+                taskHandles.Add(treeSelectLODJob.Schedule());
             }
         }
 

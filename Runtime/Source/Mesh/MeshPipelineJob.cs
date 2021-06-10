@@ -218,7 +218,7 @@ namespace Landscape.FoliagePipeline
     }
 
     [BurstCompile]
-    public unsafe struct FGrassSectionCullingJob : IJobParallelFor
+    public unsafe struct FGrassCullingJob : IJobParallelFor
     {
         [ReadOnly]
         public float maxDistance;
@@ -256,7 +256,7 @@ namespace Landscape.FoliagePipeline
 
 
     [BurstCompile]
-    public unsafe struct FTreeElementLODCaculateJob : IJobParallelFor
+    public unsafe struct FTreeComputeLODJob : IJobParallelFor
     {
         public int numLOD;
 
@@ -292,7 +292,7 @@ namespace Landscape.FoliagePipeline
 
 
     [BurstCompile]
-    public unsafe struct FTreeElementCullingJob : IJobParallelFor
+    public unsafe struct FTreeCullingJob : IJobParallelFor
     {
         public float maxDistance;
 
@@ -328,7 +328,7 @@ namespace Landscape.FoliagePipeline
     }
 
     [BurstCompile]
-    public unsafe struct FTreeSectionLODSelectJob : IJob
+    public unsafe struct FTreeSelectLODJob : IJob
     {
         public int meshIndex;
 

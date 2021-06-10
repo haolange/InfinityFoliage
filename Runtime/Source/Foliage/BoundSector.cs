@@ -62,15 +62,15 @@ namespace Landscape.FoliagePipeline
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public JobHandle InitView(in float cullDistance, in float3 viewOrigin, FPlane* planes)
         {
-            var sectionCullingJob = new FGrassSectionCullingJob();
+            var grassCullingJob = new FGrassCullingJob();
             {
-                sectionCullingJob.planes = planes;
-                sectionCullingJob.viewOrigin = viewOrigin;
-                sectionCullingJob.maxDistance = cullDistance;
-                sectionCullingJob.visibleMap = sectionsVisbible;
-                sectionCullingJob.sectionBounds = (FBoundSection*)nativeSections.GetUnsafePtr();
+                grassCullingJob.planes = planes;
+                grassCullingJob.viewOrigin = viewOrigin;
+                grassCullingJob.maxDistance = cullDistance;
+                grassCullingJob.visibleMap = sectionsVisbible;
+                grassCullingJob.sectionBounds = (FBoundSection*)nativeSections.GetUnsafePtr();
             }
-            return sectionCullingJob.Schedule(nativeSections.Length, 32);
+            return grassCullingJob.Schedule(nativeSections.Length, 32);
         }
 
 #if UNITY_EDITOR
