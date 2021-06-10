@@ -69,7 +69,7 @@ namespace Landscape.FoliagePipeline
                 if (boundsVisible[i] == 0) { continue; }
 
                 FoliageComponent foliageComponent = FoliageComponent.FoliageComponents[i];
-                foliageComponent.InitViewFoliage(viewOrigin, matrixProj, planesPtr, taskHandles);
+                foliageComponent.InitView(viewOrigin, matrixProj, planesPtr, taskHandles);
             }
             JobHandle.CompleteAll(taskHandles);
             taskHandles.Clear();
@@ -80,7 +80,7 @@ namespace Landscape.FoliagePipeline
             {
                 if (boundsVisible[i] == 0) { continue; }
                 FoliageComponent foliageComponent = FoliageComponent.FoliageComponents[i];
-                foliageComponent.DispatchSetup(cmdBuffer, taskHandles);
+                foliageComponent.DispatchSetup(viewOrigin, matrixProj, taskHandles);
             }
             JobHandle.CompleteAll(taskHandles);
             taskHandles.Clear();

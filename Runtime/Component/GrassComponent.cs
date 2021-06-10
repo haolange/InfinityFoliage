@@ -150,13 +150,13 @@ namespace Landscape.FoliagePipeline
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public override void InitViewFoliage(in float3 viewOrigin, in float4x4 matrixProj, FPlane* planes, in NativeList<JobHandle> taskHandles)
+        public override void InitView(in float3 viewOrigin, in float4x4 matrixProj, FPlane* planes, in NativeList<JobHandle> taskHandles)
         {
             taskHandles.Add(boundSector.InitView(DrawDistance, viewOrigin, planes));
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public override void DispatchSetup(CommandBuffer cmdBuffer, in NativeList<JobHandle> taskHandles)
+        public override void DispatchSetup(in float3 viewOrigin, in float4x4 matrixProj, in NativeList<JobHandle> taskHandles)
         {
             if(m_Count == boundSector.nativeSections.Length) { return; }
 

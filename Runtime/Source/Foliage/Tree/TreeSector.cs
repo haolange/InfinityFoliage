@@ -147,7 +147,7 @@ namespace Landscape.FoliagePipeline
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public void DispatchSetup(in NativeList<JobHandle> taskHandles)
+        public void DispatchSetup(in float3 viewOrigin, in float4x4 matrixProj, in NativeList<JobHandle> taskHandles)
         {
             foreach (var subSector in m_SubSectors)
             {

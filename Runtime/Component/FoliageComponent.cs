@@ -124,10 +124,10 @@ namespace Landscape.FoliagePipeline
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public abstract void InitViewFoliage(in float3 viewOrigin, in float4x4 matrixProj, FPlane* planes, in NativeList<JobHandle> taskHandles);
+        public abstract void InitView(in float3 viewOrigin, in float4x4 matrixProj, FPlane* planes, in NativeList<JobHandle> taskHandles);
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public abstract void DispatchSetup(CommandBuffer cmdBuffer, in NativeList<JobHandle> taskHandles);
+        public abstract void DispatchSetup(in float3 viewOrigin, in float4x4 matrixProj,in NativeList<JobHandle> taskHandles);
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public abstract void DispatchDraw(CommandBuffer cmdBuffer, in int passIndex);
