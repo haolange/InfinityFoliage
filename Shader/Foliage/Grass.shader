@@ -110,8 +110,8 @@ Shader "Landscape/Grass"
 
 			struct Varyings
 			{
-				float2 uv0 : TEXCOORD0;
 				float noise : TEXCOORD1;
+				float2 uv0 : TEXCOORD0;
 				float4 color : COLOR;
 				float3 normalWS : NORMAL;
 				float4 vertexWS : TEXCOORD2;
@@ -210,7 +210,13 @@ Shader "Landscape/Grass"
 			#pragma target 4.5
             #pragma vertex vert
             #pragma fragment frag
-			//#pragma enable_d3d11_debug_symbols
+			#pragma enable_d3d11_debug_symbols
+
+			#pragma shader_feature _ColorMap
+
+			#pragma multi_compile _ _SHADOWS_SOFT
+			#pragma multi_compile _ _MAIN_LIGHT_SHADOWS
+			#pragma multi_compile _ _MAIN_LIGHT_SHADOWS_CASCADE
 
 			#include "Packages/com.infinity.render-foliage/Shader/Foliage/Include/Foliage.hlsl"
 
@@ -218,17 +224,20 @@ Shader "Landscape/Grass"
 			{
 				uint InstanceId : SV_InstanceID;
 				float2 uv0 : TEXCOORD0;
-				float3 normal : NORMAL;
+				float4 color : COLOR;
+				float3 normalOS : NORMAL;
 				float4 vertexOS : POSITION;
 			};
 
 			struct Varyings
 			{
 				uint PrimitiveId  : SV_InstanceID;
+				float noise : TEXCOORD1;
 				float2 uv0 : TEXCOORD0;
-				float3 normal : NORMAL;
+				float4 color : COLOR;
+				float3 normalWS : NORMAL;
+				float4 vertexWS : TEXCOORD2;
 				float4 vertexCS : SV_POSITION;
-				float4 vertexWS : TEXCOORD1;
 			};
 
 			float4 Blerp(float4 c00, float4 c10, float4 c01, float4 c11, float tx, float ty)
@@ -260,7 +269,7 @@ Shader "Landscape/Grass"
 				worldPos.y += UnpackHeightmap(sampledHeight) * (_TerrainPivotScaleY.w * 2);
 
 				output.uv0 = input.uv0;
-				output.normal = normalize(mul(input.normal, (float3x3)unity_WorldToObject));
+				output.normalWS = normalize(mul(input.normalOS, (float3x3)unity_WorldToObject));
 				output.vertexWS = worldPos;
 				output.vertexCS = mul(unity_MatrixVP, output.vertexWS);
 				return output;
@@ -268,15 +277,47 @@ Shader "Landscape/Grass"
 
 			float4 frag(Varyings input) : SV_Target
 			{
-				//float3 worldPos = input.vertexWS.xyz;
-				//FGrassElement grassElement = _GrassElementBuffer[input.PrimitiveId];
+				FGrassElement grassElement = _GrassElementBuffer[input.PrimitiveId];
 
-				float4 color = _AlbedoTexture.Sample(sampler_AlbedoTexture, input.uv0);
-				if (color.a <= 0.5f)
-				{
-					discard;
-				}
-				return float4(color.rgb, 1);
+				float3 normalWS = input.normalWS;
+				float3 worldPos = input.vertexWS.xyz;
+				float3 objectPos = float3(grassElement.matrix_World[0].w, grassElement.matrix_World[1].w, grassElement.matrix_World[2].w);
+
+                float3 lightDir = normalize(_MainLightPosition.xyz);
+                float3 viewDir = normalize(_WorldSpaceCameraPos.xyz - worldPos);
+                float3 halfDir = normalize(viewDir + lightDir);
+
+				//Light&Shadow
+				float4 shadowCoord = 0;
+				#if defined(MAIN_LIGHT_CALCULATE_SHADOWS)
+					shadowCoord = TransformWorldToShadowCoord(worldPos);
+				#endif
+				Light mainLight = GetMainLight(shadowCoord, worldPos, 1);
+				//float lightShadow = MainLightRealtimeShadow(shadowCoord);
+				float3 attenuatedLightColor = mainLight.color * (mainLight.distanceAttenuation * mainLight.shadowAttenuation);
+				
+				//Surface
+				float4 baseColor = _AlbedoTexture.Sample(sampler_AlbedoTexture, input.uv0);
+				float3 variantColor = lerp(lerp(_BottomTint.rgb, _TopTint.rgb, input.uv0.y), _TintVariation.rgb, input.noise);
+
+				//Lighting
+				float3 directDiffuse = saturate(dot(lightDir, normalWS.xyz));
+				#if _ColorMap
+                    directDiffuse *= baseColor.rgb;
+                #endif
+
+				float3 indirectDiffuse = SampleSH(normalWS);
+				#if _ColorMap
+                    indirectDiffuse *= baseColor.rgb;
+                #endif
+
+				float3 subsurfaceColor = Transmission(baseColor.rgb * float3(0.8, 1, 0), lightDir, viewDir, normalWS, halfDir, 1, 0.25) * 2;
+
+				//Surface
+				float3 outColor = variantColor * (indirectDiffuse + (directDiffuse + subsurfaceColor) * attenuatedLightColor);
+				
+				clip(baseColor.a - _AlphaThreshold);
+				return float4(outColor, baseColor.a);
 			}
             ENDHLSL
         }
