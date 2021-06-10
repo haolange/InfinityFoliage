@@ -123,32 +123,32 @@ namespace Landscape.FoliagePipeline
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public void InitView(in float cullDistance, in float3 viewPos, in float4x4 matrixProj, FPlane* planes, in NativeList<JobHandle> taskHandles)
+        public void InitView(in float cullDistance, in float3 viewOrigin, in float4x4 matrixProj, FPlane* planes, in NativeList<JobHandle> taskHandles)
         {
-            var treeComputeJob = new FTreeComputeLODJob();
-            {
-                treeComputeJob.numLOD = m_TreeLODInfos.Length - 1;
-                treeComputeJob.viewOringin = viewPos;
-                treeComputeJob.matrix_Proj = matrixProj;
-                treeComputeJob.treeLODInfos = (float*)m_TreeLODInfos.GetUnsafePtr();
-                treeComputeJob.treeElements = (FTreeElement*)m_TreeElements.GetUnsafePtr();
-            }
-            JobHandle lodJobHandle = treeComputeJob.Schedule(m_ViewTreeElements.Length, 256);
-
             var treeCullingJob = new FTreeCullingJob();
             {
                 treeCullingJob.planes = planes;
-                treeCullingJob.viewOringin = viewPos;
+                treeCullingJob.viewOringin = viewOrigin;
                 treeCullingJob.maxDistance = cullDistance;
                 treeCullingJob.treeElements = (FTreeElement*)m_TreeElements.GetUnsafePtr();
                 treeCullingJob.viewTreeElements = m_ViewTreeElements;
             }
-            taskHandles.Add(treeCullingJob.Schedule(m_ViewTreeElements.Length, 256, lodJobHandle));
+            taskHandles.Add(treeCullingJob.Schedule(m_ViewTreeElements.Length, 256));
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public void DispatchSetup(in float3 viewOrigin, in float4x4 matrixProj, in NativeList<JobHandle> taskHandles)
         {
+            var treeComputeJob = new FTreeComputeLODJob();
+            {
+                treeComputeJob.numLOD = m_TreeLODInfos.Length - 1;
+                treeComputeJob.viewOringin = viewOrigin;
+                treeComputeJob.matrix_Proj = matrixProj;
+                treeComputeJob.treeLODInfos = (float*)m_TreeLODInfos.GetUnsafePtr();
+                treeComputeJob.treeElements = (FTreeElement*)m_TreeElements.GetUnsafePtr();
+            }
+            JobHandle lodJobHandle = treeComputeJob.Schedule(m_ViewTreeElements.Length, 256);
+            
             foreach (var subSector in m_SubSectors)
             {
                 subSector.treeSections.Clear();
@@ -160,7 +160,7 @@ namespace Landscape.FoliagePipeline
                     treeSelectLODJob.viewTreeElements = m_ViewTreeElements;
                     treeSelectLODJob.passTreeSections = subSector.treeSections;
                 }
-                taskHandles.Add(treeSelectLODJob.Schedule());
+                taskHandles.Add(treeSelectLODJob.Schedule(lodJobHandle));
             }
         }
 
