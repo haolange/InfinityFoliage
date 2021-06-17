@@ -57,7 +57,7 @@ namespace Landscape.FoliagePipeline
             {
                 this.numSections[i] = meshes[i].subMeshCount;
             }
-}
+        }
 
         public bool Equals(FMesh Target)
         {
@@ -95,7 +95,7 @@ namespace Landscape.FoliagePipeline
 
         [Header("Proxy")]
         [HideInInspector]
-        public FMesh Tree;
+        public FMesh tree;
 
 
         public MeshAsset()
@@ -106,25 +106,25 @@ namespace Landscape.FoliagePipeline
         void Awake()
         {
             //Debug.Log("Awake");
-            BuildMeshProxy();
+            //BuildMeshProxy();
         }
 
         void Reset()
         {
             //Debug.Log("Reset");
-            BuildMeshProxy();
+            //BuildMeshProxy();
         }
 
         void OnEnable()
         {
             //Debug.Log("OnEnable");
-            BuildMeshProxy();
+            //BuildMeshProxy();
         }
 
         void OnValidate()
         {
             //Debug.Log("OnValidate");
-            BuildMeshProxy();
+            //BuildMeshProxy();
         }
 
         void OnDisable()
@@ -137,17 +137,13 @@ namespace Landscape.FoliagePipeline
             //Debug.Log("OnDestroy");
         }
 
-        void BuildMeshProxy()
-        {
-            this.Tree = new FMesh(meshes, materials, lODInfos);
-        }
-
 #if UNITY_EDITOR
         void BuildMeshAsset(Mesh[] meshes, Material[] materials, FMeshLODInfo[] lODInfos)
         {
             this.meshes = meshes;
             this.materials = materials;
             this.lODInfos = lODInfos;
+            this.tree = new FMesh(meshes, materials, lODInfos);
         }
 
         internal static void BuildMeshAssetFromLODGroup(GameObject cloneTarget, MeshAsset meshAsset)
@@ -189,7 +185,6 @@ namespace Landscape.FoliagePipeline
             }
 
             meshAsset.BuildMeshAsset(meshes.ToArray(), materials.ToArray(), lODInfos);
-            meshAsset.BuildMeshProxy();
             EditorUtility.SetDirty(meshAsset);
         }
 
@@ -222,7 +217,6 @@ namespace Landscape.FoliagePipeline
             }
 
             meshAsset.BuildMeshAsset(meshes.ToArray(), materials.ToArray(), lODInfos);
-            meshAsset.BuildMeshProxy();
             EditorUtility.SetDirty(meshAsset);
         }
 

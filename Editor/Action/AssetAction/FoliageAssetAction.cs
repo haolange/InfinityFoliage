@@ -68,6 +68,7 @@ namespace Landscape.Editor.FoliagePipeline
 
             MeshAssetWizard meshAssetWizard = ScriptableWizard.DisplayWizard<MeshAssetWizard>("Build MeshAsset", "Build");
             meshAssetWizard.SetMeshAsset((MeshAsset)activeObject);
+            EditorUtility.SetDirty(activeObject);
         }
         #endregion //MeshAsset
     }

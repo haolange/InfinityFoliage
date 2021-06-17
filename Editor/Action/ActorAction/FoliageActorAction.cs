@@ -79,6 +79,8 @@ namespace Landscape.Editor.FoliagePipeline
                     }
                     treeComponent.treeSectors[TreeIndex].tree = new FMesh(Meshes.ToArray(), Materials.ToArray(), LODInfos);
                 }
+
+                EditorUtility.SetDirty(treeComponent);
             }
         }
 
@@ -125,6 +127,8 @@ namespace Landscape.Editor.FoliagePipeline
                         jobsHandle.Add(updateTreeJob.Schedule());
                     }
                 }
+
+                EditorUtility.SetDirty(selectObject);
             }
 
             for (var j = 0; j < jobsHandle.Count; ++j)
@@ -205,6 +209,8 @@ namespace Landscape.Editor.FoliagePipeline
                         grassComponent.grassSectors[index].sections[k] = grassSection;
                     }
                 }
+
+                EditorUtility.SetDirty(selectObject);
             }
         }
 
@@ -270,6 +276,8 @@ namespace Landscape.Editor.FoliagePipeline
                         jobsHandle.Add(updateGrassJob.Schedule());
                     }
                 }
+
+                EditorUtility.SetDirty(selectObject);
             }
 
             for (var j = 0; j < tasksHandle.Count; ++j)
