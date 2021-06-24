@@ -160,7 +160,7 @@ namespace Landscape.FoliagePipeline
         {
             if(m_Count == boundSector.nativeSections.Length) { return; }
 
-            int limit = 1;
+            int limit = 16;
             while (limit > 0 && m_Count < boundSector.nativeSections.Length)
             {
                 FBoundSection boundSection = boundSector.nativeSections[m_Count];
