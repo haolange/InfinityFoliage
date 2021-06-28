@@ -56,14 +56,14 @@ namespace Landscape.FoliagePipeline
         public int boundIndex;
         public int totalDensity;
         public int instanceCount;
-        public float[] heightmap;
-        public Int32[] densityMap;
+        //public float[] heightmap;
+        public byte[] densityMap;
 
         private Mesh m_Mesh;
         private Material m_Material;
         private ComputeBuffer m_GrassBuffer;
-        private NativeArray<int> m_DensityMap;
-        private NativeArray<float> m_heightmap;
+        private NativeArray<byte> m_DensityMap;
+        //private NativeArray<float> m_heightmap;
         private NativeList<FGrassElement> m_GrassElements;
 
         public void Init(Mesh mesh, Material material, in FGrassShaderProperty shaderProperty)
@@ -75,24 +75,26 @@ namespace Landscape.FoliagePipeline
             m_GrassBuffer = new ComputeBuffer(totalDensity, Marshal.SizeOf(typeof(FGrassElement)));
 
             instanceCount = -1;
-            m_heightmap = new NativeArray<float>(heightmap.Length, Allocator.Persistent);
-            m_DensityMap = new NativeArray<Int32>(densityMap.Length, Allocator.Persistent);
+            //m_heightmap = new NativeArray<float>(heightmap.Length, Allocator.Persistent);
+            m_DensityMap = new NativeArray<byte>(densityMap.Length, Allocator.Persistent);
 
-            NativeArray<float>.Copy(heightmap, m_heightmap);
-            NativeArray<Int32>.Copy(densityMap, m_DensityMap);
+            //NativeArray<float>.Copy(heightmap, m_heightmap);
+            NativeArray<byte>.Copy(densityMap, m_DensityMap);
 
             m_Material.SetBuffer(GrassShaderID.elementBuffer, m_GrassBuffer);
             m_Material.SetInt(GrassShaderID.terrainSize, shaderProperty.terrainSize + 1);
             m_Material.SetTexture(GrassShaderID.terrainHeightmap, shaderProperty.heightmapTexture);
             m_Material.SetVector(GrassShaderID.terrainPivotScaleY, shaderProperty.terrainPivotScaleY);
+
+            densityMap = null;
         }
 
         public void Release()
         {
             if (totalDensity == 0) { return; }
 
-            m_heightmap.Dispose();
-            m_DensityMap.Dispose();
+            //m_heightmap.Dispose();
+            //m_DensityMap.Dispose();
             m_GrassBuffer.Dispose();
             UnityEngine.Object.DestroyImmediate(m_Material);
         }
@@ -102,7 +104,7 @@ namespace Landscape.FoliagePipeline
         {
             if (totalDensity == 0 || densityScale == 0) { return default; }
 
-            m_GrassElements = new NativeList<FGrassElement>(densityMap.Length, Allocator.TempJob);
+            m_GrassElements = new NativeList<FGrassElement>(m_DensityMap.Length, Allocator.TempJob);
             var grassScatterJob = new FGrassScatterJob();
             {
                 grassScatterJob.split = split;
@@ -125,6 +127,8 @@ namespace Landscape.FoliagePipeline
             {
                 m_GrassBuffer.SetData<FGrassElement>(m_GrassElements, 0, 0, m_GrassElements.Length);
                 instanceCount = m_GrassElements.Length;
+
+                m_DensityMap.Dispose();
                 m_GrassElements.Dispose();
             }
         }

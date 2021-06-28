@@ -152,7 +152,7 @@ namespace Landscape.FoliagePipeline
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public override void InitView(in float3 viewOrigin, in float4x4 matrixProj, FPlane* planes, in NativeList<JobHandle> taskHandles)
         {
-            taskHandles.Add(boundSector.InitView(DrawDistance, viewOrigin, planes));
+            taskHandles.Add(boundSector.InitView(new float4(viewOrigin, DrawDistance), planes));
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]

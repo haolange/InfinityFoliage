@@ -50,10 +50,10 @@ namespace Landscape.FoliagePipeline
     public struct FUpdateGrassTask : ITask
     {
         public int length;
-        public int[] dscDensity;
+        public byte[] dscDensity;
         public int[,] srcDensity;
         public float[,] srcHeight;
-        public float[] dscHeight;
+        //public float[] dscHeight;
         public FGrassSection grassSection;
 
 
@@ -64,8 +64,8 @@ namespace Landscape.FoliagePipeline
                 for (int k = 0; k < length; ++k)
                 {
                     int densityIndex = j * length + k;
-                    dscHeight[densityIndex] = srcHeight[j, k];
-                    dscDensity[densityIndex] = srcDensity[j, k];
+                    //dscHeight[densityIndex] = srcHeight[j, k];
+                    dscDensity[densityIndex] = (byte)srcDensity[j, k];
                     grassSection.totalDensity += srcDensity[j, k];
                 }
             }
@@ -106,7 +106,7 @@ namespace Landscape.FoliagePipeline
         public float4 widthScale;
 
         [ReadOnly]
-        public NativeArray<int> densityMap;
+        public NativeArray<byte> densityMap;
 
         //[ReadOnly]
         //public NativeArray<float> heightMap;
@@ -221,10 +221,7 @@ namespace Landscape.FoliagePipeline
     public unsafe struct FGrassCullingJob : IJobParallelFor
     {
         [ReadOnly]
-        public float maxDistance;
-
-        [ReadOnly]
-        public float3 viewOrigin;
+        public float4 viewOrigin;
 
         [ReadOnly]
         [NativeDisableUnsafePtrRestriction]
@@ -250,7 +247,8 @@ namespace Landscape.FoliagePipeline
 
                 visible = math.select(visible, 0, distRadius.x + distRadius.y < 0);
             }
-            visibleMap[index] = math.select(visible, 0, math.distance(viewOrigin, sectionBound.boundBox.center) > maxDistance);
+            float4 boundPivot = new float4(sectionBound.boundBox.center.x, sectionBound.boundBox.center.y + sectionBound.boundBox.extents.y, sectionBound.boundBox.center.z, 1);
+            visibleMap[index] = math.select(visible, 0, math.distance(viewOrigin.xyz, boundPivot.xyz) > viewOrigin.w);
         }
     }
 
