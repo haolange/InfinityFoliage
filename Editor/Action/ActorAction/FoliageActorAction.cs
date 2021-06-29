@@ -195,8 +195,8 @@ namespace Landscape.Editor.FoliagePipeline
 
                     for (int j = 0; j < meshRenderer.sharedMaterials.Length; ++j)
                     {
-                        ref int MaterialSlot = ref LODInfo.materialSlot[j];
-                        MaterialSlot = materials.IndexOf(meshRenderer.sharedMaterials[j]);
+                        ref int materialSlot = ref LODInfo.materialSlot[j];
+                        materialSlot = materials.IndexOf(meshRenderer.sharedMaterials[j]);
                     }
                     grassComponent.grassSectors[index].grass = new FMesh(meshes.ToArray(), materials.ToArray(), LODInfos);
                     grassComponent.grassSectors[index].grassIndex = index;
@@ -284,6 +284,38 @@ namespace Landscape.Editor.FoliagePipeline
             {
                 jobsHandle[j].Complete();
                 tasksHandle[j].Free();
+            }
+
+            foreach (GameObject selectObject in selectObjects)
+            {
+                Terrain terrain = selectObject.GetComponent<Terrain>();
+                TerrainData terrainData = terrain.terrainData;
+                if (!terrain)
+                {
+                    Debug.LogWarning(selectObject.name + " doesn't have terrain component");
+                    continue;
+                }
+
+                GrassComponent grassComponent = selectObject.GetComponent<GrassComponent>();
+                if (grassComponent == null)
+                {
+                    grassComponent = selectObject.AddComponent<GrassComponent>();
+                }
+                
+                FBoundSector boundSector = grassComponent.boundSector;
+                for (int index = 0; index < grassComponent.grassSectors.Length; ++index)
+                {
+                    FGrassSector grassSector = grassComponent.grassSectors[index];
+
+                    for (int i = 0; i < grassSector.sections.Length; ++i)
+                    {
+                        FGrassSection grassSection = grassSector.sections[i];
+                        if(grassSection.totalDensity == 0)
+                        {
+                            grassSection.densityMap = null;
+                        }
+                    }
+                }
             }
         }
         #endregion //Grass
