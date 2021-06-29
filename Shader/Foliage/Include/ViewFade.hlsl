@@ -15,7 +15,7 @@ void PerVertexFade(float3 objectPivot, out float windFade, out float scaleFade )
 
 float3 ApplyScaleFade(float3 vertexWS, float3 objectPivot, float fade)
 {
-     vertexWS.y = lerp(objectPivot.y, vertexWS.y, max(fade, 0.2));
+     vertexWS = lerp(objectPivot, vertexWS, max(fade, 0));
      return vertexWS;
 }
 

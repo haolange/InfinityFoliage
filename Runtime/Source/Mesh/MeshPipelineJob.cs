@@ -224,6 +224,9 @@ namespace Landscape.FoliagePipeline
         public float4 viewOrigin;
 
         [ReadOnly]
+        public float cullDistance;
+
+        [ReadOnly]
         [NativeDisableUnsafePtrRestriction]
         public FPlane* planes;
 
@@ -248,7 +251,7 @@ namespace Landscape.FoliagePipeline
                 visible = math.select(visible, 0, distRadius.x + distRadius.y < 0);
             }
             float4 boundPivot = new float4(sectionBound.boundBox.center.x, sectionBound.boundBox.center.y + sectionBound.boundBox.extents.y, sectionBound.boundBox.center.z, 1);
-            visibleMap[index] = math.select(visible, 0, math.distance(viewOrigin.xyz, boundPivot.xyz) > viewOrigin.w);
+            visibleMap[index] = math.select(visible, 0, math.distance(viewOrigin.xyz, boundPivot.xyz) > cullDistance);
         }
     }
 

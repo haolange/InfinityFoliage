@@ -60,13 +60,14 @@ namespace Landscape.FoliagePipeline
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public JobHandle InitView(in float4 viewOrigin, FPlane* planes)
+        public JobHandle InitView(in float drawDistance, in float4 viewOrigin, FPlane* planes)
         {
             var grassCullingJob = new FGrassCullingJob();
             {
                 grassCullingJob.planes = planes;
                 grassCullingJob.viewOrigin = viewOrigin;
                 grassCullingJob.visibleMap = sectionsVisbible;
+                grassCullingJob.cullDistance = drawDistance + (drawDistance / 2);
                 grassCullingJob.sectionBounds = (FBoundSection*)nativeSections.GetUnsafePtr();
             }
             return grassCullingJob.Schedule(nativeSections.Length, 32);

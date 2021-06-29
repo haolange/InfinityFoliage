@@ -33,13 +33,6 @@ namespace Landscape.FoliagePipeline
                 return SectorSize / numSection;
             }
         }
-        public float DrawDistance
-        {
-            get
-            {
-                return terrain.detailObjectDistance + (terrain.detailObjectDistance * 0.5f);
-            }
-        }
         public float TerrainScaleY
         {
             get
@@ -47,6 +40,8 @@ namespace Landscape.FoliagePipeline
                 return terrainData.size.y;
             }
         }
+        [HideInInspector]
+        public float drawDistance;
         [HideInInspector]
         public float lastNumSection;
         [HideInInspector]
@@ -61,13 +56,8 @@ namespace Landscape.FoliagePipeline
             foliageType = EFoliageType.Grass;
             terrainData = terrain.terrainData;
 
-            boundSector.BuildNativeCollection();
             InitGrassSectors();
-
-            if (terrain.drawTreesAndFoliage == true)
-            {
-                terrain.drawTreesAndFoliage = false;
-            }
+            terrain.detailObjectDistance = 0;
         }
 
         protected override void OnTransformChange()
@@ -88,12 +78,7 @@ namespace Landscape.FoliagePipeline
         protected override void UnRegister()
         {
             ReleaseGrassSectors();
-            boundSector.ReleaseNativeCollection();
-
-            if (terrain.drawTreesAndFoliage == false && FoliageComponents.Count < 2)
-            {
-                terrain.drawTreesAndFoliage = true;
-            }
+            terrain.detailObjectDistance = drawDistance;
         }
 
 #if UNITY_EDITOR
@@ -130,6 +115,9 @@ namespace Landscape.FoliagePipeline
         #region Grass
         private void InitGrassSectors()
         {
+            boundSector.BuildNativeCollection();
+            drawDistance = terrain.detailObjectDistance;
+
             FGrassShaderProperty shaderProperty;
             shaderProperty.terrainSize = SectorSize;
             shaderProperty.terrainPivotScaleY = new float4(transform.position, TerrainScaleY);
@@ -143,6 +131,8 @@ namespace Landscape.FoliagePipeline
         
         private void ReleaseGrassSectors()
         {
+            boundSector.ReleaseNativeCollection();
+
             foreach (FGrassSector grassSector in grassSectors)
             {
                 grassSector.Release();
@@ -152,7 +142,7 @@ namespace Landscape.FoliagePipeline
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public override void InitView(in float3 viewOrigin, in float4x4 matrixProj, FPlane* planes, in NativeList<JobHandle> taskHandles)
         {
-            taskHandles.Add(boundSector.InitView(new float4(viewOrigin, DrawDistance), planes));
+            taskHandles.Add(boundSector.InitView(drawDistance, new float4(viewOrigin, 1), planes));
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]

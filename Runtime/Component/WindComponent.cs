@@ -65,23 +65,30 @@ namespace Landscape.FoliagePipeline
       Shader.SetGlobalVector("g_SmoothTime", new Vector4((float) this._smoothWindOffset * 6f, (float) this._smoothWindOffset * 0.15f, (float) this._smoothWindOffset * 3.5f, (float) this._smoothWindOffset * 3.5f));
     }
 
-    private void OnEnable()
+    void OnEnable()
     {
       WindComponent.Instance = this;
       this.ValidateWindZone();
-      if ((Object) this._sourceWindZone != (Object) null)
+      if ((Object)this._sourceWindZone != (Object)null)
         this.CopyFromWindZone();
       else
-        this.UpdateDirection(false);
+        //this.UpdateDirection(false);
+        
       this._windSettings.Apply(this._gustNoise);
     }
 
-    private void Update()
+    void Update()
     {
       if ((Object) this._sourceWindZone != (Object) null && this.WindZoneHasChanged())
+      {
         this.CopyAndApply();
+      }
+        
       if (Application.isPlaying)
+      {
         this.UpdateTime((double) Time.time);
+      }
+
       this.UpdateDirection(true);
     }
 

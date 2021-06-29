@@ -129,6 +129,7 @@ Shader "Landscape/Grass"
 				output.color = input.color;
 				output.vertexWS = mul(UNITY_MATRIX_M, input.vertexOS);
 				output.normalWS = normalize(mul((float3x3)UNITY_MATRIX_M, input.normalOS));
+				output.normalWS = lerp(float3(0, 1, 0), output.normalWS, _VertexNormalStrength);
 				float3 objectPos = float3(UNITY_MATRIX_M[0].w, UNITY_MATRIX_M[1].w, UNITY_MATRIX_M[2].w);
 
 				float windFade;
@@ -149,7 +150,6 @@ Shader "Landscape/Grass"
 				output.vertexWS.xyz = ApplyScaleFade(output.vertexWS.xyz, objectPos, scaleFade);
 
 				output.vertexCS = mul(UNITY_MATRIX_VP, float4(output.vertexWS.xyz, 1));
-				output.normalWS = lerp(float3(0, 1, 0), output.normalWS, _VertexNormalStrength);
 				return output;
 			}
 
@@ -256,21 +256,42 @@ Shader "Landscape/Grass"
 				output.PrimitiveId = input.InstanceId;
 				FGrassElement grassElement = _GrassElementBuffer[input.InstanceId];
 
-				float4 worldPos = mul(grassElement.matrix_World, input.vertexOS);
-				float3 objectPos = float3(grassElement.matrix_World[0].w, grassElement.matrix_World[1].w, grassElement.matrix_World[2].w);
+				output.uv0 = input.uv0;
+				output.color = input.color;
+				output.vertexWS = mul(grassElement.matrix_World, input.vertexOS);
+				output.normalWS = normalize(mul(input.normalOS, (float3x3)unity_WorldToObject));
+				output.normalWS = lerp(float3(0, 1, 0), output.normalWS, _VertexNormalStrength);
 
 				float invSize = rcp(_TerrainSize);
+				float3 objectPos = float3(grassElement.matrix_World[0].w, grassElement.matrix_World[1].w, grassElement.matrix_World[2].w);
+
 				float3 position = objectPos - _TerrainPivotScaleY.xyz;
-				float4 leftTopH = _TerrainHeightmap.SampleLevel(Global_bilinear_clamp_sampler, (float2(1, 0) + position.xz) * invSize, 0, 0);
 				float4 leftBottomH = _TerrainHeightmap.SampleLevel(Global_bilinear_clamp_sampler, position.xz * invSize, 0, 0);
+				objectPos.y += UnpackHeightmap(leftBottomH) * (_TerrainPivotScaleY.w * 2);
+
+				float4 leftTopH = _TerrainHeightmap.SampleLevel(Global_bilinear_clamp_sampler, (float2(1, 0) + position.xz) * invSize, 0, 0);
 				float4 rightTopH = _TerrainHeightmap.SampleLevel(Global_bilinear_clamp_sampler, (float2(1, 1) + position.xz) * invSize, 0, 0);
 				float4 rightBottomH = _TerrainHeightmap.SampleLevel(Global_bilinear_clamp_sampler, (float2(0, 1) + position.xz) * invSize, 0, 0);
 				float4 sampledHeight = SampleHeight(floor(objectPos.xz * invSize) + 0.5, leftBottomH, leftTopH, rightBottomH, rightTopH);
-				worldPos.y += UnpackHeightmap(sampledHeight) * (_TerrainPivotScaleY.w * 2);
+				output.vertexWS.y += UnpackHeightmap(sampledHeight) * (_TerrainPivotScaleY.w * 2);
 
-				output.uv0 = input.uv0;
-				output.normalWS = normalize(mul(input.normalOS, (float3x3)unity_WorldToObject));
-				output.vertexWS = worldPos;
+				float windFade;
+                float scaleFade;
+                PerVertexFade(objectPos, windFade, scaleFade);
+				output.noise = PerlinNoise(objectPos.xz, _ColorVariation);
+
+				FWindInput windInput;
+                windInput.fade = windFade;
+                windInput.flutter = 1;
+                windInput.phaseOffset = 0;
+                windInput.speed = GetWindSpeed();
+                windInput.objectPivot = objectPos;
+                windInput.normalWS = output.normalWS;
+                windInput.direction = GetWindDirection();
+                windInput.mask = input.uv0.y * saturate(input.vertexOS.y / _PivotOffset) * GetWindVariation(objectPos);
+				Wind(windInput, output.vertexWS.xyz, output.normalWS);
+				output.vertexWS.xyz = ApplyScaleFade(output.vertexWS.xyz, objectPos, scaleFade);
+
 				output.vertexCS = mul(unity_MatrixVP, output.vertexWS);
 				return output;
 			}

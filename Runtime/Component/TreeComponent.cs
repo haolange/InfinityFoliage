@@ -15,14 +15,8 @@ namespace Landscape.FoliagePipeline
         [Header("Debug")]
         public bool showBounds = false;
 #endif
-        public float drawDistance
-        {
-            get
-            {
-                return terrain.treeDistance;
-            }
-        }
-
+        [HideInInspector]
+        public float drawDistance;
         [HideInInspector]
         public FTreeSector[] treeSectors;
         private MaterialPropertyBlock m_PropertyBlock;
@@ -35,18 +29,13 @@ namespace Landscape.FoliagePipeline
             m_PropertyBlock = new MaterialPropertyBlock();
 
             InitTreeSectors();
-
-            if (terrain.drawTreesAndFoliage == true) { terrain.drawTreesAndFoliage = false; }
+            terrain.treeDistance = 0;
         }
 
         protected override void UnRegister()
         {
             ReleaseTreeSectors();
-
-            if (terrain.drawTreesAndFoliage == false && FoliageComponents.Count < 2)
-            {
-                terrain.drawTreesAndFoliage = true;
-            }
+            terrain.treeDistance = drawDistance;
         }
 
 #if UNITY_EDITOR
@@ -77,6 +66,8 @@ namespace Landscape.FoliagePipeline
         #region Tree
         private void InitTreeSectors()
         {
+            drawDistance = terrain.treeDistance;
+
             foreach (var treeSector in treeSectors)
             {
                 treeSector.Initialize();
