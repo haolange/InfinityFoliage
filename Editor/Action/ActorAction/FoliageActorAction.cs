@@ -217,8 +217,8 @@ namespace Landscape.Editor.FoliagePipeline
         [MenuItem("GameObject/EntityAction/Landscape/UpdateTerrainGrass", false, 12)]
         public static void UpdateTerrainGrass(MenuCommand menuCommand)
         {
-            var tasksHandle = new List<GCHandle>(32);
             var jobsHandle = new List<JobHandle>(32);
+            var tasksHandle = new List<GCHandle>(32);
             GameObject[] selectObjects = Selection.gameObjects;
 
             foreach (GameObject selectObject in selectObjects)
@@ -310,7 +310,7 @@ namespace Landscape.Editor.FoliagePipeline
                     for (int i = 0; i < grassSector.sections.Length; ++i)
                     {
                         FGrassSection grassSection = grassSector.sections[i];
-                        if(grassSection.totalDensity == 0)
+                        if(grassSection.instanceCount == 0)
                         {
                             grassSection.densityMap = null;
                         }

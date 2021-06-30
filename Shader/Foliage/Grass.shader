@@ -315,7 +315,7 @@ Shader "Landscape/Grass"
 				#endif
 				Light mainLight = GetMainLight(shadowCoord, worldPos, 1);
 				//float lightShadow = MainLightRealtimeShadow(shadowCoord);
-				float3 attenuatedLightColor = mainLight.color * (mainLight.distanceAttenuation * mainLight.shadowAttenuation);
+				float3 attenuatedLightColor = mainLight.color * (/*mainLight.distanceAttenuation */ mainLight.shadowAttenuation);
 				
 				//Surface
 				float4 baseColor = _AlbedoTexture.Sample(sampler_AlbedoTexture, input.uv0);

@@ -30,7 +30,7 @@ namespace Landscape.FoliagePipeline
 
             foreach (FGrassSection section in sections)
             {
-                if (section.totalDensity == 0) { continue; }
+                if (section.instanceCount == 0) { continue; }
                 section.Init(grass.meshes[0], grass.materials[0], shaderProperty);
             }
         }
@@ -39,7 +39,7 @@ namespace Landscape.FoliagePipeline
         {
             foreach (FGrassSection section in sections)
             {
-                if (section.totalDensity == 0) { continue; }
+                if (section.instanceCount == 0) { continue; }
                 section.Release();
             }
         }
@@ -49,7 +49,7 @@ namespace Landscape.FoliagePipeline
         {
             foreach (FGrassSection section in sections)
             {
-                if (section.totalDensity == 0) { continue; }
+                if (section.instanceCount == 0) { continue; }
 
                 FBoundSection boundSection = boundSector.nativeSections[section.boundIndex];
                 section.BuildInstance(split, uniqueValue, heightScale, densityScale, boundSection.pivotPosition, widthScale);

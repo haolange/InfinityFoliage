@@ -54,7 +54,7 @@ namespace Landscape.FoliagePipeline
     public class FGrassSection
     {
         public int boundIndex;
-        public int totalDensity;
+        public int instanceCount;
         //public float[] heightmap;
         public byte[] densityMap;
 
@@ -67,11 +67,11 @@ namespace Landscape.FoliagePipeline
 
         public void Init(Mesh mesh, Material material, in FGrassShaderProperty shaderProperty)
         {
-            if(totalDensity == 0) { return; }
+            if(instanceCount == 0) { return; }
 
             m_Mesh = mesh;
             m_Material = new Material(material);
-            m_GrassBuffer = new ComputeBuffer(totalDensity, Marshal.SizeOf(typeof(FGrassElement)));
+            m_GrassBuffer = new ComputeBuffer(instanceCount, Marshal.SizeOf(typeof(FGrassElement)));
 
             //m_heightmap = new NativeArray<float>(heightmap.Length, Allocator.Persistent);
             m_DensityMap = new NativeArray<byte>(densityMap.Length, Allocator.Persistent);
@@ -90,7 +90,7 @@ namespace Landscape.FoliagePipeline
 
         public void Release()
         {
-            if (totalDensity == 0) { return; }
+            if (instanceCount == 0) { return; }
 
             //m_heightmap.Dispose();
             //m_DensityMap.Dispose();
@@ -101,7 +101,7 @@ namespace Landscape.FoliagePipeline
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public JobHandle BuildInstance(in int split, in float uniqueValue, in float heightScale, in float densityScale, in float3 sectionPivot, in float4 widthScale)
         {
-            if (totalDensity == 0 || densityScale == 0) { return default; }
+            if (instanceCount == 0 || densityScale == 0) { return default; }
 
             m_GrassElements = new NativeList<FGrassElement>(m_DensityMap.Length, Allocator.TempJob);
             var grassScatterJob = new FGrassScatterJob();
@@ -134,8 +134,8 @@ namespace Landscape.FoliagePipeline
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public void DispatchDraw(CommandBuffer cmdBuffer,in int passIndex)
         {
-            if (totalDensity <= 0) { return; }
-            cmdBuffer.DrawMeshInstancedProcedural(m_Mesh, 0, m_Material, passIndex, totalDensity);
+            if (instanceCount <= 0) { return; }
+            cmdBuffer.DrawMeshInstancedProcedural(m_Mesh, 0, m_Material, passIndex, instanceCount);
         }
     }
 }

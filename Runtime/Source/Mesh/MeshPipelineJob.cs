@@ -66,7 +66,7 @@ namespace Landscape.FoliagePipeline
                     int densityIndex = j * length + k;
                     //dscHeight[densityIndex] = srcHeight[j, k];
                     dscDensity[densityIndex] = (byte)srcDensity[j, k];
-                    grassSection.totalDensity += srcDensity[j, k];
+                    grassSection.instanceCount += srcDensity[j, k];
                 }
             }
         }
