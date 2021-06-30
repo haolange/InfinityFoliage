@@ -84,8 +84,6 @@ namespace Landscape.FoliagePipeline
             m_Material.SetInt(GrassShaderID.terrainSize, shaderProperty.terrainSize + 1);
             m_Material.SetTexture(GrassShaderID.terrainHeightmap, shaderProperty.heightmapTexture);
             m_Material.SetVector(GrassShaderID.terrainPivotScaleY, shaderProperty.terrainPivotScaleY);
-
-
         }
 
         public void Release()
