@@ -139,20 +139,18 @@ Shader "Landscape/TreeLeave"
             #pragma fragment frag
 			//#pragma enable_d3d11_debug_symbols
 
-			/*#pragma multi_compile _ _SHADOWS_SOFT
+			#pragma multi_compile _ _SHADOWS_SOFT
 			#pragma multi_compile _ _MAIN_LIGHT_SHADOWS
-			#pragma multi_compile _ _ADDITIONAL_LIGHT_SHADOWS
-			#pragma multi_compile _ _MIXED_LIGHTING_SUBTRACTIVE
 			#pragma multi_compile _ _MAIN_LIGHT_SHADOWS_CASCADE
-			#pragma multi_compile _ _ADDITIONAL_LIGHTS_VERTEX _ADDITIONAL_LIGHTS*/
 
 			#include "Include/Foliage.hlsl"
+			#include "Include/Transmission.hlsl"
 
 			struct Attributes
 			{
 				uint InstanceId : SV_InstanceID;
 				float2 uv0 : TEXCOORD0;
-				float3 normal : NORMAL;
+				float3 normalOS : NORMAL;
 				float4 vertexOS : POSITION;
 			};
 
@@ -160,7 +158,7 @@ Shader "Landscape/TreeLeave"
 			{
 				uint PrimitiveId  : SV_InstanceID;
 				float2 uv0 : TEXCOORD0;
-				float3 normal : NORMAL;
+				float3 normalWS : NORMAL;
 				float4 vertexCS : SV_POSITION;
 				float4 vertexWS : TEXCOORD1;
 			};
@@ -172,7 +170,7 @@ Shader "Landscape/TreeLeave"
 				FTreeElement treeElement = _TreeElementBuffer[output.PrimitiveId];
 
 				output.uv0 = input.uv0;
-				output.normal = normalize(mul((float3x3)treeElement.matrix_World, input.normal));
+				output.normalWS = normalize(mul((float3x3)treeElement.matrix_World, input.normalOS));
 				output.vertexWS = mul(treeElement.matrix_World, input.vertexOS);
 				output.vertexCS = mul(UNITY_MATRIX_VP, output.vertexWS);
 				return output;
@@ -181,27 +179,32 @@ Shader "Landscape/TreeLeave"
 			float4 frag(Varyings input) : SV_Target
 			{
 				float3 worldPos = input.vertexWS.xyz;
+                float3 lightDir = normalize(_MainLightPosition.xyz);
+                float3 viewDir = normalize(_WorldSpaceCameraPos.xyz - worldPos);
+                float3 halfDir = normalize(viewDir + lightDir);
 
+				//Surface
+				float4 baseColor = _AlbedoTexture.Sample(sampler_AlbedoTexture, input.uv0);
+				
 				//Shadow
-				/*float4 shadowCoord = 0;
+				float4 shadowCoord = 0;
 				#if defined(MAIN_LIGHT_CALCULATE_SHADOWS)
 					shadowCoord = TransformWorldToShadowCoord(worldPos);
 				#endif
-				float shadowTream = MainLightRealtimeShadow(shadowCoord);*/
+				Light mainLight = GetMainLight(shadowCoord, worldPos, 1);
+				//float lightShadow = MainLightRealtimeShadow(shadowCoord);
+				float3 lightAttenuated = mainLight.color * (mainLight.distanceAttenuation * mainLight.shadowAttenuation);
 
 				//Lighting
-				//float4 directDiffuse = saturate(dot(normalize(_MainLightPosition.xyz), input.normal.xyz)) * float4(_MainLightColor.rgb, 1) * shadowTream;
+				float3 directDiffuse = saturate(dot(normalize(_MainLightPosition.xyz), input.normalWS)) * baseColor.rgb;
+				float3 indirectDiffuse = SampleSH(input.normalWS) * baseColor.rgb;
+				float3 subsurfaceColor = Transmission(baseColor.rgb * float3(0.95, 1, 0), lightDir, viewDir, input.normalWS, halfDir, 1, 0.25) * 2;
 
-				//Surface
-				float4 outColor = _AlbedoTexture.Sample(sampler_AlbedoTexture, input.uv0);
-				//outColor.rgb *= directDiffuse.rgb;
-				if (outColor.a <= 0.5f)
-				{
-					discard;
-				}
+				//CrossFade
+				//float crossFade = LODCrossDither(input.vertexCS.xy, unity_LODFade.x);
+				if (baseColor.a <= 0.5f) { discard; }
 
-				return outColor;
-				//return float4(input.normal, 1);
+				return float4(indirectDiffuse + (directDiffuse + subsurfaceColor) * lightAttenuated, baseColor.a);
 			}
             ENDHLSL
         }
@@ -217,7 +220,7 @@ Shader "Landscape/TreeLeave"
             #pragma vertex vert
             #pragma fragment frag
 			#pragma multi_compile_instancing
-			#pragma enable_d3d11_debug_symbols
+			//#pragma enable_d3d11_debug_symbols
 			
 			struct Attributes
 			{

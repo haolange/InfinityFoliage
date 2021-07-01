@@ -145,12 +145,9 @@ Shader "Landscape/TreeBrak"
 
 			#pragma shader_feature _Mask
 			
-			/*#pragma multi_compile _ _SHADOWS_SOFT
+			#pragma multi_compile _ _SHADOWS_SOFT
 			#pragma multi_compile _ _MAIN_LIGHT_SHADOWS
-			#pragma multi_compile _ _ADDITIONAL_LIGHT_SHADOWS
-			#pragma multi_compile _ _MIXED_LIGHTING_SUBTRACTIVE
 			#pragma multi_compile _ _MAIN_LIGHT_SHADOWS_CASCADE
-			#pragma multi_compile _ _ADDITIONAL_LIGHTS_VERTEX _ADDITIONAL_LIGHTS*/
 
 			#include "Packages/com.infinity.render-foliage/Shader/Foliage/Include/Foliage.hlsl"
 
@@ -159,7 +156,7 @@ Shader "Landscape/TreeBrak"
 				uint InstanceId : SV_InstanceID;
 				float2 uv0 : TEXCOORD0;
 				float2 uv1 : TEXCOORD1;
-				float3 normal : NORMAL;
+				float3 normalOS : NORMAL;
 				float4 vertexOS : POSITION;
 			};
 
@@ -168,7 +165,7 @@ Shader "Landscape/TreeBrak"
 				uint PrimitiveId  : SV_InstanceID;
 				float2 uv0 : TEXCOORD0;
 				float2 uv1 : TEXCOORD1;
-				float3 normal : NORMAL;
+				float3 normalWS : NORMAL;
 				float4 vertexCS : SV_POSITION;
 				float4 vertexWS : TEXCOORD2;
 			};
@@ -181,7 +178,7 @@ Shader "Landscape/TreeBrak"
 
 				output.uv0 = input.uv0;
 				output.uv1 = input.uv1;
-				output.normal = normalize(mul((float3x3)treeElement.matrix_World, input.normal));
+				output.normalWS = normalize(mul((float3x3)treeElement.matrix_World, input.normalOS));
 				output.vertexWS = mul(treeElement.matrix_World, input.vertexOS);
 				output.vertexCS = mul(UNITY_MATRIX_VP, output.vertexWS);
 				return output;
@@ -190,16 +187,6 @@ Shader "Landscape/TreeBrak"
 			float4 frag(Varyings input) : SV_Target
 			{
 				float3 worldPos = input.vertexWS.xyz;
-
-				//Shadow
-				/*float4 shadowCoord = 0;
-				#if defined(MAIN_LIGHT_CALCULATE_SHADOWS)
-					shadowCoord = TransformWorldToShadowCoord(worldPos);
-				#endif
-				float shadowTream = MainLightRealtimeShadow(shadowCoord);*/
-
-				//Lighting
-				//float4 directDiffuse = saturate(dot(normalize(_MainLightPosition.xyz), input.normal.xyz)) * float4(_MainLightColor.rgb, 1) * shadowTream;
 
 				//Surface
 				float4 trunkColor = _TrunkColor.Sample(sampler_TrunkColor, input.uv0);
@@ -210,9 +197,22 @@ Shader "Landscape/TreeBrak"
                     baseColor = lerp(trunkColor, brakColor, brakMask);
                 #endif
 
-				//baseColor.rgb *= directDiffuse.rgb;
+				//Shadow
+				float4 shadowCoord = 0;
+				#if defined(MAIN_LIGHT_CALCULATE_SHADOWS)
+					shadowCoord = TransformWorldToShadowCoord(worldPos);
+				#endif
+				float shadowTream = MainLightRealtimeShadow(shadowCoord);
 
-				return baseColor;
+				//Lighting
+				float3 directDiffuse = saturate(dot(normalize(_MainLightPosition.xyz), input.normalWS)) * _MainLightColor.rgb * shadowTream * baseColor.rgb;
+				float3 indirectDiffuse = SampleSH(input.normalWS) * baseColor.rgb;
+
+				//CrossFade
+				float crossFade = LODCrossDither(input.vertexCS.xy, unity_LODFade.x);
+				if (crossFade >= 0.5f){ discard; }
+
+				return float4(directDiffuse + indirectDiffuse, 1);
 			}
             ENDHLSL
         }

@@ -88,7 +88,7 @@ Shader "Landscape/Grass"
             #pragma vertex vert
             #pragma fragment frag
 			#pragma multi_compile_instancing
-			#pragma enable_d3d11_debug_symbols
+			//#pragma enable_d3d11_debug_symbols
 			#pragma instancing_options procedural:SetupNatureRenderer
 
 			#pragma shader_feature _ColorMap
@@ -210,7 +210,7 @@ Shader "Landscape/Grass"
 			#pragma target 4.5
             #pragma vertex vert
             #pragma fragment frag
-			#pragma enable_d3d11_debug_symbols
+			//#pragma enable_d3d11_debug_symbols
 
 			#pragma shader_feature _ColorMap
 
@@ -354,7 +354,7 @@ Shader "Landscape/Grass"
             #pragma vertex vert
             #pragma fragment frag
 			#pragma multi_compile_instancing
-			#pragma enable_d3d11_debug_symbols
+			//#pragma enable_d3d11_debug_symbols
 			#pragma instancing_options procedural:SetupNatureRenderer
 
 			#define _TYPE_GRASS
