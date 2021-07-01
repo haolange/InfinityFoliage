@@ -242,9 +242,9 @@ namespace Landscape.FoliagePipeline
             float2 distRadius = new float2(0, 0);
             ref FBoundSection sectionBound = ref sectionBounds[index];
 
-            for (int PlaneIndex = 0; PlaneIndex < 6; ++PlaneIndex)
+            for (int i = 0; i < 6; ++i)
             {
-                ref FPlane plane = ref planes[PlaneIndex];
+                ref FPlane plane = ref planes[i];
                 distRadius.x = math.dot(plane.normalDist.xyz, sectionBound.boundBox.center) + plane.normalDist.w;
                 distRadius.y = math.dot(math.abs(plane.normalDist.xyz), sectionBound.boundBox.extents);
 
