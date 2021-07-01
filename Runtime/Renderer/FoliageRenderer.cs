@@ -38,7 +38,7 @@ namespace Landscape.FoliagePipeline
 
             #region InitViewBound
             NativeList<JobHandle> taskHandles = new NativeList<JobHandle>(256, Allocator.Temp);
-            NativeArray<int> boundsVisible = new NativeArray<int>(FoliageComponent.FoliageComponents.Count, Allocator.TempJob);
+            NativeArray<byte> boundsVisible = new NativeArray<byte>(FoliageComponent.FoliageComponents.Count, Allocator.TempJob);
             NativeArray<FBound> sectorsBound = new NativeArray<FBound>(FoliageComponent.FoliageComponents.Count, Allocator.TempJob);
 
             for (int i = 0; i < sectorsBound.Length; ++i)

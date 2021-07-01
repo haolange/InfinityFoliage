@@ -163,7 +163,7 @@ namespace Landscape.FoliagePipeline
         public FBound* sectorBounds;
 
         [WriteOnly]
-        public NativeArray<int> visibleMap;
+        public NativeArray<byte> visibleMap;
 
         public void Execute()
         {
@@ -181,7 +181,7 @@ namespace Landscape.FoliagePipeline
 
                     visible = math.select(visible, 0, distRadius.x + distRadius.y < 0);
                 }
-                visibleMap[index] = visible;
+                visibleMap[index] = (byte)visible;
             }
         }
     }
@@ -197,7 +197,7 @@ namespace Landscape.FoliagePipeline
         public FBound* sectorBounds;
 
         [WriteOnly]
-        public NativeArray<int> visibleMap;
+        public NativeArray<byte> visibleMap;
 
         public void Execute(int index)
         {
@@ -213,7 +213,7 @@ namespace Landscape.FoliagePipeline
 
                 visible = math.select(visible, 0, distRadius.x + distRadius.y < 0);
             }
-            visibleMap[index] = visible;
+            visibleMap[index] = (byte)visible;
         }
     }
 
@@ -234,7 +234,7 @@ namespace Landscape.FoliagePipeline
         public FBoundSection* sectionBounds;
 
         [WriteOnly]
-        public NativeArray<int> visibleMap;
+        public NativeArray<byte> visibleMap;
 
         public void Execute(int index)
         {
@@ -251,10 +251,9 @@ namespace Landscape.FoliagePipeline
                 visible = math.select(visible, 0, distRadius.x + distRadius.y < 0);
             }
             float4 boundPivot = new float4(sectionBound.boundBox.center.x, sectionBound.boundBox.center.y + sectionBound.boundBox.extents.y, sectionBound.boundBox.center.z, 1);
-            visibleMap[index] = math.select(visible, 0, math.distance(viewOrigin.xyz, boundPivot.xyz) > cullDistance);
+            visibleMap[index] = (byte)math.select(visible, 0, math.distance(viewOrigin.xyz, boundPivot.xyz) > cullDistance);
         }
     }
-
 
     [BurstCompile]
     public unsafe struct FTreeComputeLODJob : IJobParallelFor
@@ -290,7 +289,6 @@ namespace Landscape.FoliagePipeline
             }
         }
     }
-
 
     [BurstCompile]
     public unsafe struct FTreeCullingJob : IJobParallelFor

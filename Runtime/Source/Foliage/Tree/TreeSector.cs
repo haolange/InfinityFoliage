@@ -58,7 +58,7 @@ namespace Landscape.FoliagePipeline
     }
 
     [Serializable]
-    public unsafe class FTreeSector
+    public class FTreeSector
     {
         public FMesh tree;
         public int treeIndex;
@@ -86,6 +86,8 @@ namespace Landscape.FoliagePipeline
                 treeElement.boundSphere = new FSphere(Geometry.CaculateBoundRadius(treeElement.boundBox), treeElement.boundBox.center);
                 m_TreeElements[i] = treeElement;
             }
+
+            transforms = null;
         }
 
         public void BuildRuntimeData()
@@ -123,7 +125,7 @@ namespace Landscape.FoliagePipeline
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public void InitView(in float cullDistance, in float3 viewOrigin, in float4x4 matrixProj, FPlane* planes, in NativeList<JobHandle> taskHandles)
+        public unsafe void InitView(in float cullDistance, in float3 viewOrigin, in float4x4 matrixProj, FPlane* planes, in NativeList<JobHandle> taskHandles)
         {
             var treeCullingJob = new FTreeCullingJob();
             {
@@ -137,7 +139,7 @@ namespace Landscape.FoliagePipeline
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public void DispatchSetup(in float3 viewOrigin, in float4x4 matrixProj, in NativeList<JobHandle> taskHandles)
+        public unsafe void DispatchSetup(in float3 viewOrigin, in float4x4 matrixProj, in NativeList<JobHandle> taskHandles)
         {
             var treeComputeJob = new FTreeComputeLODJob();
             {

@@ -10,13 +10,12 @@ using Unity.Collections.LowLevel.Unsafe;
 namespace Landscape.FoliagePipeline
 {
     [Serializable]
-    public unsafe class FBoundSector
+    public class FBoundSector
     {
         public FBound bound;
         public FBoundSection[] sections;
-        public NativeArray<int> sectionsVisbible;
+        public NativeArray<byte> visibleMap;
         public NativeArray<FBoundSection> nativeSections;
-
 
         public FBoundSector(in int sectorSize, in int numSection, in int sectionSize, in float3 sectorPivotPosition, in FAABB sectorBound)
         {
@@ -44,29 +43,27 @@ namespace Landscape.FoliagePipeline
 
         public void BuildNativeCollection()
         {
+            visibleMap = new NativeArray<byte>(sections.Length, Allocator.Persistent);
             nativeSections = new NativeArray<FBoundSection>(sections.Length, Allocator.Persistent);
-            sectionsVisbible = new NativeArray<int>(sections.Length, Allocator.Persistent);
-
-            for (int i = 0; i < sections.Length; ++i)
-            {
-                nativeSections[i] = sections[i];
-            }
+            
+            NativeArray<FBoundSection>.Copy(sections, nativeSections);
+            sections = null;
         }
 
         public void ReleaseNativeCollection()
         {
+            visibleMap.Dispose();
             nativeSections.Dispose();
-            sectionsVisbible.Dispose();
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public JobHandle InitView(in float drawDistance, in float4 viewOrigin, FPlane* planes)
+        public unsafe JobHandle InitView(in float drawDistance, in float4 viewOrigin, FPlane* planes)
         {
             var grassCullingJob = new FGrassCullingJob();
             {
                 grassCullingJob.planes = planes;
                 grassCullingJob.viewOrigin = viewOrigin;
-                grassCullingJob.visibleMap = sectionsVisbible;
+                grassCullingJob.visibleMap = visibleMap;
                 grassCullingJob.cullDistance = drawDistance + (drawDistance / 2);
                 grassCullingJob.sectionBounds = (FBoundSection*)nativeSections.GetUnsafePtr();
             }
@@ -80,7 +77,7 @@ namespace Landscape.FoliagePipeline
 
             for (int i = 0; i < nativeSections.Length; ++i)
             {
-                Geometry.DrawBound(nativeSections[i].boundBox, sectionsVisbible[i] == 1 ? Color.green : Color.red);
+                Geometry.DrawBound(nativeSections[i].boundBox, visibleMap[i] == 1 ? Color.green : Color.red);
             }
         }
 
@@ -88,9 +85,9 @@ namespace Landscape.FoliagePipeline
         {
             int SectorSize_Half = sectorSize / 2;
 
-            for (int i = 0; i < sections.Length; ++i)
+            for (int i = 0; i < nativeSections.Length; ++i)
             {
-                ref FBoundSection Section = ref sections[i];
+                FBoundSection Section = nativeSections[i];
 
                 float2 PositionScale = new float2(terrianPosition.x, terrianPosition.z) + new float2(SectorSize_Half, SectorSize_Half);
                 float2 RectUV = new float2((Section.pivotPosition.x - PositionScale.x) + SectorSize_Half, (Section.pivotPosition.z - PositionScale.y) + SectorSize_Half);

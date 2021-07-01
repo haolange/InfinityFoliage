@@ -179,7 +179,7 @@ namespace Landscape.FoliagePipeline
         {
             for(int i = 0; i < boundSector.nativeSections.Length; ++i)
             {
-                if (boundSector.sectionsVisbible[i] == 0) { continue; }
+                if (boundSector.visibleMap[i] == 0) { continue; }
 
                 for (int j = 0; j < grassSectors.Length; ++j)
                 {
