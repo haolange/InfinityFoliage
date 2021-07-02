@@ -26,16 +26,24 @@ namespace Landscape.FoliagePipeline
             terrain = GetComponent<Terrain>();
             foliageType = EFoliageType.Tree;
             terrainData = terrain.terrainData;
+            drawDistance = terrain.treeDistance;
+            //terrain.treeDistance = 0;
             m_PropertyBlock = new MaterialPropertyBlock();
 
-            InitTreeSectors();
-            terrain.treeDistance = 0;
+            foreach (var treeSector in treeSectors)
+            {
+                treeSector.Initialize();
+                treeSector.BuildRuntimeData();
+            }
         }
 
         protected override void UnRegister()
         {
-            ReleaseTreeSectors();
-            terrain.treeDistance = drawDistance;
+            //terrain.treeDistance = drawDistance;
+            foreach (var treeSector in treeSectors)
+            {
+                treeSector.Release();
+            }
         }
 
 #if UNITY_EDITOR
@@ -43,6 +51,7 @@ namespace Landscape.FoliagePipeline
         {
             terrain = GetComponent<Terrain>();
             terrainData = GetComponent<TerrainCollider>().terrainData;
+
             int sectorSize = terrainData.heightmapResolution - 1;
             boundSector = new FBoundSector(sectorSize, 0, 0, transform.position, terrainData.bounds);
         }
@@ -64,25 +73,6 @@ namespace Landscape.FoliagePipeline
 #endif
 
         #region Tree
-        private void InitTreeSectors()
-        {
-            drawDistance = terrain.treeDistance;
-
-            foreach (var treeSector in treeSectors)
-            {
-                treeSector.Initialize();
-                treeSector.BuildRuntimeData();
-            }
-        }
-        
-        private void ReleaseTreeSectors()
-        {
-            foreach (var treeSector in treeSectors)
-            {
-                treeSector.Release();
-            }
-        }
-
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public override void InitView(in float3 viewOrigin, in float4x4 matrixProj, FPlane* planes, in NativeList<JobHandle> taskHandles)
         {

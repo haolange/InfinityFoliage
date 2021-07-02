@@ -255,6 +255,31 @@ namespace Landscape.FoliagePipeline
         }
     }
 
+
+    [BurstCompile]
+    public unsafe struct FTreeScatterJob : IJobParallelFor
+    {
+        public Bounds boundBox;
+
+        [ReadOnly]
+        public NativeArray<FTransform> transforms;
+
+        [WriteOnly]
+        public NativeArray<FTreeElement> treeElements;
+
+        public void Execute(int index)
+        {
+            float4x4 matrixWorld = float4x4.TRS(transforms[index].position, quaternion.EulerXYZ(transforms[index].rotation), transforms[index].scale);
+
+            FTreeElement treeElement;
+            treeElement.meshIndex = 0;
+            treeElement.matrix_World = matrixWorld;
+            treeElement.boundBox = Geometry.CaculateWorldBound(boundBox, matrixWorld);
+            treeElement.boundSphere = new FSphere(Geometry.CaculateBoundRadius(treeElement.boundBox), treeElement.boundBox.center);
+            treeElements[index] = treeElement;
+        }
+    }
+
     [BurstCompile]
     public unsafe struct FTreeComputeLODJob : IJobParallelFor
     {

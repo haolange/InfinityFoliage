@@ -55,9 +55,19 @@ namespace Landscape.FoliagePipeline
             terrain = GetComponent<Terrain>();
             foliageType = EFoliageType.Grass;
             terrainData = terrain.terrainData;
-
-            InitGrassSectors();
+            drawDistance = terrain.detailObjectDistance;
             terrain.detailObjectDistance = 0;
+
+            FGrassShaderProperty shaderProperty;
+            shaderProperty.terrainSize = SectorSize;
+            shaderProperty.terrainPivotScaleY = new float4(transform.position, TerrainScaleY);
+            shaderProperty.heightmapTexture = terrainData.heightmapTexture;
+            
+            boundSector.BuildNativeCollection();
+            foreach(FGrassSector grassSector in grassSectors)
+            {
+                grassSector.Init(boundSector, terrainData, shaderProperty);
+            }
         }
 
         protected override void OnTransformChange()
@@ -77,8 +87,13 @@ namespace Landscape.FoliagePipeline
 
         protected override void UnRegister()
         {
-            ReleaseGrassSectors();
+            boundSector.ReleaseNativeCollection();
             terrain.detailObjectDistance = drawDistance;
+
+            foreach (FGrassSector grassSector in grassSectors)
+            {
+                grassSector.Release();
+            }
         }
 
 #if UNITY_EDITOR
@@ -112,33 +127,7 @@ namespace Landscape.FoliagePipeline
         }
 #endif
 
-        #region Grass
-        private void InitGrassSectors()
-        {
-            boundSector.BuildNativeCollection();
-            drawDistance = terrain.detailObjectDistance;
-
-            FGrassShaderProperty shaderProperty;
-            shaderProperty.terrainSize = SectorSize;
-            shaderProperty.terrainPivotScaleY = new float4(transform.position, TerrainScaleY);
-            shaderProperty.heightmapTexture = terrainData.heightmapTexture;
-            
-            foreach(FGrassSector grassSector in grassSectors)
-            {
-                grassSector.Init(boundSector, terrainData, shaderProperty);
-            }
-        }
-        
-        private void ReleaseGrassSectors()
-        {
-            boundSector.ReleaseNativeCollection();
-
-            foreach (FGrassSector grassSector in grassSectors)
-            {
-                grassSector.Release();
-            }
-        }
-
+        #region Grass 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public override void InitView(in float3 viewOrigin, in float4x4 matrixProj, FPlane* planes, in NativeList<JobHandle> taskHandles)
         {

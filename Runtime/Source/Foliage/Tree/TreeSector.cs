@@ -75,7 +75,17 @@ namespace Landscape.FoliagePipeline
             m_SubSectors = new List<FTreeSubSector>(8);
             m_TreeElements = new NativeArray<FTreeElement>(transforms.Count, Allocator.Persistent);
 
-            for (int i = 0; i < transforms.Count; ++i)
+            NativeArray<FTransform> nativeTransforms = transforms.ToNativeArray(Allocator.TempJob);
+            var treeScatterJob = new FTreeScatterJob();
+            {
+                treeScatterJob.boundBox = tree.boundBox;
+                treeScatterJob.transforms = nativeTransforms;
+                treeScatterJob.treeElements = m_TreeElements;
+            }
+            treeScatterJob.Schedule(transforms.Count, 128).Complete();
+            nativeTransforms.Dispose();
+            
+            /*for (int i = 0; i < transforms.Count; ++i)
             {
                 float4x4 matrixWorld = float4x4.TRS(transforms[i].position, quaternion.EulerXYZ(transforms[i].rotation), transforms[i].scale);
 
@@ -85,9 +95,9 @@ namespace Landscape.FoliagePipeline
                 treeElement.boundBox = Geometry.CaculateWorldBound(tree.boundBox, matrixWorld);
                 treeElement.boundSphere = new FSphere(Geometry.CaculateBoundRadius(treeElement.boundBox), treeElement.boundBox.center);
                 m_TreeElements[i] = treeElement;
-            }
+            }*/
 
-            transforms = null;
+            //transforms = null;
         }
 
         public void BuildRuntimeData()
