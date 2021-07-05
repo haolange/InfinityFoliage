@@ -85,10 +85,9 @@ namespace Landscape.FoliagePipeline
         {
             int SectorSize_Half = sectorSize / 2;
 
-            for (int i = 0; i < nativeSections.Length; ++i)
+            for (int i = 0; i < sections.Length; ++i)
             {
-                FBoundSection Section = nativeSections[i];
-
+                ref FBoundSection Section = ref sections[i];
                 float2 PositionScale = new float2(terrianPosition.x, terrianPosition.z) + new float2(SectorSize_Half, SectorSize_Half);
                 float2 RectUV = new float2((Section.pivotPosition.x - PositionScale.x) + SectorSize_Half, (Section.pivotPosition.z - PositionScale.y) + SectorSize_Half);
 
