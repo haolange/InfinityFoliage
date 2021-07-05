@@ -81,7 +81,7 @@ namespace Landscape.FoliagePipeline
             }
         }
 
-        public void BuildBounds(int sectorSize, int sectionSize, float scaleY, float3 terrianPosition, Texture2D heightmap)
+        public void BuildBounds(in int sectorSize, in int sectionSize, in float scaleY, in float3 terrianPosition, Texture2D heightmap)
         {
             int SectorSize_Half = sectorSize / 2;
 
