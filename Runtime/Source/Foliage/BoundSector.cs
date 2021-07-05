@@ -25,9 +25,9 @@ namespace Landscape.FoliagePipeline
             bound = new FBound(new float3(sectorPivotPosition.x + sectorSize_Half, sectorPivotPosition.y + (sectorBound.size.y / 2), sectorPivotPosition.z + sectorSize_Half), sectorBound.size * 0.5f);
             sections = new FBoundSection[numSection * numSection];
 
-            for (int x = 0; x <= numSection - 1; ++x)
+            for (int x = 0; x < numSection; ++x)
             {
-                for (int y = 0; y <= numSection - 1; ++y)
+                for (int y = 0; y < numSection; ++y)
                 {
                     int SectionIndex = (x * numSection) + y;
                     float3 SectionPivotPosition = sectorPivotPosition + new float3(sectionSize * x, 0, sectionSize * y);
