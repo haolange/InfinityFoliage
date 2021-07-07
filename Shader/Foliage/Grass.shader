@@ -4,6 +4,7 @@ Shader "Landscape/Grass"
 	{
 		[Header(Transparency)]
         _AlphaThreshold("Alpha Threshold", Range(0.0, 1.0)) = 0.5
+		_ScaleDensity ("Fade Density", Range(0.0, 0.99)) = 0.125
         _AlphaFadeness ("Fade Out Alpha", Vector) = (50, 20, 0, 0)
         [HideInInspector]_NatureRendererDistanceControl ("", Float) = 1
 
@@ -37,6 +38,8 @@ Shader "Landscape/Grass"
 	HLSLINCLUDE
 		cbuffer UnityPerMaterial 
 		{
+			float _ScaleDensity;
+			float _AlphaThreshold;
 			float _PivotOffset;
 			float _WindStrength;
 			float _WindVariation;
@@ -44,17 +47,15 @@ Shader "Landscape/Grass"
 			float _TurbulenceStrength;
 			float _VertexNormalStrength;
 			float _RecalculateWindNormals;
-
-			float2 _WindFade;
-
 			float4 _TopTint, _BottomTint;
 			float4 _TintVariation;
 			float4 _TrunkBendFactor;
+			float4 _WindFadeness, _AlphaFadeness;
 		};
 
 		int _TerrainSize;
-		float _AlphaThreshold;
-		float4 _AlphaFadeness, _WindFadeness, _TerrainPivotScaleY;
+		float2 _WindFade;
+		float4 _TerrainPivotScaleY;
 		Texture2D _AlbedoTexture, _NomralTexture, _TerrainHeightmap;
     	SamplerState sampler_AlbedoTexture, sampler_NomralTexture, sampler_TerrainHeightmap;
 

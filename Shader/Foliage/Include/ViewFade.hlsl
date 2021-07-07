@@ -8,8 +8,13 @@ void PerVertexFade(float3 objectPivot, out float windFade, out float scaleFade )
           scaleFade = 1.0;
      #else
           float distanceToCamera = distance(objectPivot, _WorldSpaceCameraPos);
+
           windFade = 1.0 - saturate((distanceToCamera - _WindFadeness.x) / _WindFadeness.y);
           scaleFade = 1.0 - saturate((distanceToCamera - _AlphaFadeness.x) / _AlphaFadeness.y);
+     
+          float dither = saturate(frac(objectPivot.x * 3 + objectPivot.y * 6) + (_ScaleDensity * 2 - 1)); 
+          float fade = 1 - saturate((distanceToCamera - _AlphaFadeness.z) / _AlphaFadeness.w );
+          scaleFade *= dither <= _ScaleDensity ? fade : 1;
      #endif
 }
 
