@@ -323,7 +323,6 @@ Shader "Landscape/Grass"
 				//Surface
 				float4 baseColor = _AlbedoTexture.Sample(sampler_AlbedoTexture, input.uv0);
 				clip(baseColor.a - _AlphaThreshold);
-
 				float3 variantColor = lerp(lerp(_BottomTint.rgb, _TopTint.rgb, input.uv0.y), _TintVariation.rgb, input.noise);
 				variantColor = lerp(variantColor, _DarkTint.rgb, input.noiseDetail);
 
