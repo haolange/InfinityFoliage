@@ -3,7 +3,10 @@ guid: c20c5033f62842043a081f6880bb974a
 MonoImporter:
   externalObjects: {}
   serializedVersion: 2
-  defaultReferences: []
+  defaultReferences:
+  - _sourceWindZone: {instanceID: 0}
+  - _gustNoise: {fileID: 2800000, guid: b80caabb7da49cb4aae7ed68b37a48b5, type: 3}
+  - perlinNoise: {fileID: 2800000, guid: 35ce94de330fece47a005f8381cd0341, type: 3}
   executionOrder: 0
   icon: {instanceID: 0}
   userData: 

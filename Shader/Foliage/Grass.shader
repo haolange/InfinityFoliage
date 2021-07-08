@@ -16,6 +16,11 @@ Shader "Landscape/Grass"
         _TintVariation ("Tint Variation", Color) = (1, 1, 1, 1)
         _ColorVariation ("Color Variation", Float) = 0.0005
 
+		[Header(DetailDark)]
+        _DarkTint ("Dark Tint", Color) = (1, 1, 1, 1)
+        _DarkVariation ("Dark Variation", Float) = 0.0005
+		_DarkFadeness("Fade Out Dark", Vector) = (50, 20, 0, 0)
+
         [Header(Normal)]
         [NoScaleOffset]_NomralTexture ("Texture", 2D) = "bump" {}
 		_VertexNormalStrength("VertexStrength", Range(0, 1)) = 1
@@ -44,15 +49,14 @@ Shader "Landscape/Grass"
 			float _AlphaThreshold;
 			float _PivotOffset;
 			float _WindStrength;
-			float _WindVariation;
-			float _ColorVariation;
+			float _DarkVariation, _WindVariation, _ColorVariation;
 			float _TurbulenceStrength;
 			float _VertexNormalStrength;
 			float _RecalculateWindNormals;
 			float4 _TopTint, _BottomTint;
-			float4 _TintVariation;
+			float4 _DarkTint, _TintVariation;
 			float4 _TrunkBendFactor;
-			float4 _WindFadeness, _AlphaFadeness;
+			float4 _DarkFadeness, _WindFadeness, _AlphaFadeness;
 		};
 
 		int _TerrainSize;
@@ -114,10 +118,11 @@ Shader "Landscape/Grass"
 			struct Varyings
 			{
 				float noise : TEXCOORD1;
+				float noiseDetail : TEXCOORD2;
 				float2 uv0 : TEXCOORD0;
 				float4 color : COLOR;
 				float3 normalWS : NORMAL;
-				float4 vertexWS : TEXCOORD2;
+				float4 vertexWS : TEXCOORD3;
 				float4 vertexCS : SV_POSITION;
 				UNITY_VERTEX_INPUT_INSTANCE_ID
 			};
@@ -139,6 +144,8 @@ Shader "Landscape/Grass"
                 float scaleFade;
                 PerVertexFade(objectPos, windFade, scaleFade);
 				output.noise = PerlinNoise(objectPos.xz, _ColorVariation);
+				output.noiseDetail = PerlinNoise(objectPos.xz, _DarkVariation);
+				output.noiseDetail *= 1.0 - saturate((distance(objectPos, _WorldSpaceCameraPos) - _DarkFadeness.x) / _DarkFadeness.y);
 
 				FWindInput windInput;
                 windInput.fade = windFade;
@@ -168,7 +175,9 @@ Shader "Landscape/Grass"
 				//Surface
 				float4 baseColor = _AlbedoTexture.Sample(sampler_AlbedoTexture, input.uv0);
 				clip(baseColor.a - _AlphaThreshold);
+
 				float3 variantColor = lerp(lerp(_BottomTint.rgb, _TopTint.rgb, input.uv0.y), _TintVariation.rgb, input.noise);
+				variantColor = lerp(variantColor, _DarkTint.rgb, input.noiseDetail);
 
 				//BXDF Context
                 float3 lightDir = normalize(_MainLightPosition.xyz);
@@ -182,7 +191,7 @@ Shader "Landscape/Grass"
 				#endif
 				Light mainLight = GetMainLight(shadowCoord, worldPos, 1);
 				//float lightShadow = MainLightRealtimeShadow(shadowCoord);
-				float3 attenuatedLightColor = mainLight.color * (mainLight.distanceAttenuation * mainLight.shadowAttenuation);
+				float3 attenuatedLightColor = mainLight.color * (/*mainLight.distanceAttenuation */ mainLight.shadowAttenuation);
 
 				//Lighting
 				float3 directDiffuse = saturate(dot(lightDir, normalWS.xyz));
@@ -237,10 +246,11 @@ Shader "Landscape/Grass"
 			{
 				uint PrimitiveId  : SV_InstanceID;
 				float noise : TEXCOORD1;
+				float noiseDetail : TEXCOORD2;
 				float2 uv0 : TEXCOORD0;
 				float4 color : COLOR;
 				float3 normalWS : NORMAL;
-				float4 vertexWS : TEXCOORD2;
+				float4 vertexWS : TEXCOORD3;
 				float4 vertexCS : SV_POSITION;
 			};
 
@@ -283,6 +293,8 @@ Shader "Landscape/Grass"
                 float scaleFade;
                 PerVertexFade(objectPos, windFade, scaleFade);
 				output.noise = PerlinNoise(objectPos.xz, _ColorVariation);
+				output.noiseDetail = PerlinNoise(objectPos.xz, _DarkVariation);
+				output.noiseDetail *= 1.0 - saturate((distance(objectPos, _WorldSpaceCameraPos) - _DarkFadeness.x) / _DarkFadeness.y);
 
 				FWindInput windInput;
                 windInput.fade = windFade;
@@ -311,7 +323,9 @@ Shader "Landscape/Grass"
 				//Surface
 				float4 baseColor = _AlbedoTexture.Sample(sampler_AlbedoTexture, input.uv0);
 				clip(baseColor.a - _AlphaThreshold);
+
 				float3 variantColor = lerp(lerp(_BottomTint.rgb, _TopTint.rgb, input.uv0.y), _TintVariation.rgb, input.noise);
+				variantColor = lerp(variantColor, _DarkTint.rgb, input.noiseDetail);
 
 				//BXDF Context
                 float3 lightDir = normalize(_MainLightPosition.xyz);
@@ -325,7 +339,7 @@ Shader "Landscape/Grass"
 				#endif
 				Light mainLight = GetMainLight(shadowCoord, worldPos, 1);
 				//float lightShadow = MainLightRealtimeShadow(shadowCoord);
-				float3 attenuatedLightColor = mainLight.color * (mainLight.distanceAttenuation * mainLight.shadowAttenuation);
+				float3 attenuatedLightColor = mainLight.color * (/*mainLight.distanceAttenuation */ mainLight.shadowAttenuation);
 
 				//Lighting
 				float3 directDiffuse = saturate(dot(lightDir, normalWS.xyz));

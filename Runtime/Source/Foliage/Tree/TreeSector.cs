@@ -97,7 +97,7 @@ namespace Landscape.FoliagePipeline
                 m_TreeElements[i] = treeElement;
             }*/
 
-            //transforms = null;
+            transforms = null;
         }
 
         public void BuildRuntimeData()

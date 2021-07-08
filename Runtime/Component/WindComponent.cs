@@ -11,6 +11,8 @@ namespace Landscape.FoliagePipeline
     private WindZone _sourceWindZone;
     [SerializeField]
     private Texture2D _gustNoise;
+    public Texture2D perlinNoise;
+
     [HideInInspector]
     [SerializeField]
     private int _selectedPreset;
@@ -75,6 +77,8 @@ namespace Landscape.FoliagePipeline
         //this.UpdateDirection(false);
         
       this._windSettings.Apply(this._gustNoise);
+
+      Shader.SetGlobalTexture("g_PerlinNoise", perlinNoise);
     }
 
     void Update()
