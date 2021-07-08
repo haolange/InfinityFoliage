@@ -57,6 +57,7 @@ Shader "Landscape/TreeBrak"
 
 			#pragma multi_compile_instancing
 			#pragma multi_compile _ _SHADOWS_SOFT
+			#pragma multi_compile __ LOD_FADE_CROSSFADE
 			#pragma multi_compile _ _MAIN_LIGHT_SHADOWS
 			#pragma multi_compile _ _MAIN_LIGHT_SHADOWS_CASCADE
 
@@ -97,6 +98,9 @@ Shader "Landscape/TreeBrak"
 			float4 frag(Varyings input) : SV_Target
 			{
 				UNITY_SETUP_INSTANCE_ID(input);
+				#ifdef LOD_FADE_CROSSFADE 
+					LODDitheringTransition(input.vertexCS.xy, unity_LODFade.x);
+				#endif
 
 				float3 worldPos = input.vertexWS.xyz;
 
@@ -119,11 +123,6 @@ Shader "Landscape/TreeBrak"
 				//Lighting
 				float3 directDiffuse = saturate(dot(normalize(_MainLightPosition.xyz), input.normalWS)) * _MainLightColor.rgb * shadowTream * baseColor.rgb;
 				float3 indirectDiffuse = SampleSH(input.normalWS) * baseColor.rgb;
-
-				//CrossFade
-				float crossFade = LODCrossDither(input.vertexCS.xy, unity_LODFade.x);
-				if (crossFade >= 0.5f){ discard; }
-
 				return float4(directDiffuse + indirectDiffuse, 1);
 			}
             ENDHLSL
@@ -186,6 +185,9 @@ Shader "Landscape/TreeBrak"
 
 			float4 frag(Varyings input) : SV_Target
 			{
+				//CrossFade
+				LODDitheringTransition(input.vertexCS.xyz, unity_LODFade.x);
+
 				float3 worldPos = input.vertexWS.xyz;
 
 				//Surface
@@ -207,11 +209,6 @@ Shader "Landscape/TreeBrak"
 				//Lighting
 				float3 directDiffuse = saturate(dot(normalize(_MainLightPosition.xyz), input.normalWS)) * _MainLightColor.rgb * shadowTream * baseColor.rgb;
 				float3 indirectDiffuse = SampleSH(input.normalWS) * baseColor.rgb;
-
-				//CrossFade
-				float crossFade = LODCrossDither(input.vertexCS.xy, unity_LODFade.x);
-				if (crossFade >= 0.5f){ discard; }
-
 				return float4(directDiffuse + indirectDiffuse, 1);
 			}
             ENDHLSL
@@ -228,6 +225,7 @@ Shader "Landscape/TreeBrak"
             #pragma vertex vert
             #pragma fragment frag
 			#pragma multi_compile_instancing
+			#pragma multi_compile __ LOD_FADE_CROSSFADE
 			//#pragma enable_d3d11_debug_symbols
 			
 			struct Attributes
@@ -294,9 +292,9 @@ Shader "Landscape/TreeBrak"
 			float4 frag(Varyings input) : SV_Target
 			{
 				UNITY_SETUP_INSTANCE_ID(input);
-				float crossFade = LODCrossDither(input.vertexCS.xy, unity_LODFade.x);
-
-				if (crossFade >= 0.5f){ discard; }
+				#ifdef LOD_FADE_CROSSFADE 
+					LODDitheringTransition(input.vertexCS.xy, unity_LODFade.x);
+				#endif
 				return 0;
 			}
             ENDHLSL

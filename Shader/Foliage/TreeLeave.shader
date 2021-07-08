@@ -8,6 +8,8 @@ Shader "Landscape/TreeLeave"
         [Header(Normal)]
         [NoScaleOffset]_NomralTexture ("NomralTexture", 2D) = "bump" {}
 
+		[Header(Transparency)]
+        _AlphaThreshold("Alpha Threshold", Range(0.0, 1.0)) = 0.5
 		//[Header(State)]
 		//_ZTest("ZTest", Int) = 4
 		//_ZWrite("ZWrite", Int) = 1
@@ -20,6 +22,11 @@ Shader "Landscape/TreeLeave"
 		#include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/UnityInput.hlsl"
 		#include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Lighting.hlsl"
 		#include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Shadows.hlsl"
+
+		cbuffer UnityPerMaterial 
+		{
+			float _AlphaThreshold;
+		};
 
 		Texture2D _AlbedoTexture, _NomralTexture;
     	SamplerState sampler_AlbedoTexture, sampler_NomralTexture;
@@ -54,6 +61,7 @@ Shader "Landscape/TreeLeave"
 
 			#pragma multi_compile_instancing
 			#pragma multi_compile _ _SHADOWS_SOFT
+			#pragma multi_compile __ LOD_FADE_CROSSFADE
 			#pragma multi_compile _ _MAIN_LIGHT_SHADOWS
 			#pragma multi_compile _ _MAIN_LIGHT_SHADOWS_CASCADE
 			
@@ -93,15 +101,20 @@ Shader "Landscape/TreeLeave"
 			float4 frag(Varyings input) : SV_Target
 			{
 				UNITY_SETUP_INSTANCE_ID(input);
+				#ifdef LOD_FADE_CROSSFADE 
+					LODDitheringTransition(input.vertexCS.xy, unity_LODFade.x);
+				#endif
 
+				//Surface
+				float4 baseColor = _AlbedoTexture.Sample(sampler_AlbedoTexture, input.uv0);
+				clip(baseColor.a - _AlphaThreshold);
+
+				//Geometry Context
 				float3 worldPos = input.vertexWS.xyz;
                 float3 lightDir = normalize(_MainLightPosition.xyz);
                 float3 viewDir = normalize(_WorldSpaceCameraPos.xyz - worldPos);
                 float3 halfDir = normalize(viewDir + lightDir);
 
-				//Surface
-				float4 baseColor = _AlbedoTexture.Sample(sampler_AlbedoTexture, input.uv0);
-				
 				//Shadow
 				float4 shadowCoord = 0;
 				#if defined(MAIN_LIGHT_CALCULATE_SHADOWS)
@@ -115,11 +128,6 @@ Shader "Landscape/TreeLeave"
 				float3 directDiffuse = saturate(dot(normalize(_MainLightPosition.xyz), input.normalWS)) * baseColor.rgb;
 				float3 indirectDiffuse = SampleSH(input.normalWS) * baseColor.rgb;
 				float3 subsurfaceColor = Transmission(baseColor.rgb * float3(0.95, 1, 0), lightDir, viewDir, input.normalWS, halfDir, 1, 0.25) * 2;
-
-				//CrossFade
-				float crossFade = LODCrossDither(input.vertexCS.xy, unity_LODFade.x);
-				if (crossFade >= 0.5f || baseColor.a <= 0.5f) { discard; }
-
 				return float4(indirectDiffuse + (directDiffuse + subsurfaceColor) * lightAttenuated, baseColor.a);
 			}
             ENDHLSL
@@ -178,14 +186,19 @@ Shader "Landscape/TreeLeave"
 
 			float4 frag(Varyings input) : SV_Target
 			{
+				//CrossFade
+				//LODDitheringTransition(input.vertexCS.xyz, unity_LODFade.x);
+
+				//Surface
+				float4 baseColor = _AlbedoTexture.Sample(sampler_AlbedoTexture, input.uv0);
+				clip(baseColor.a - _AlphaThreshold);
+
+				//Geometry Context
 				float3 worldPos = input.vertexWS.xyz;
                 float3 lightDir = normalize(_MainLightPosition.xyz);
                 float3 viewDir = normalize(_WorldSpaceCameraPos.xyz - worldPos);
                 float3 halfDir = normalize(viewDir + lightDir);
 
-				//Surface
-				float4 baseColor = _AlbedoTexture.Sample(sampler_AlbedoTexture, input.uv0);
-				
 				//Shadow
 				float4 shadowCoord = 0;
 				#if defined(MAIN_LIGHT_CALCULATE_SHADOWS)
@@ -199,10 +212,6 @@ Shader "Landscape/TreeLeave"
 				float3 directDiffuse = saturate(dot(normalize(_MainLightPosition.xyz), input.normalWS)) * baseColor.rgb;
 				float3 indirectDiffuse = SampleSH(input.normalWS) * baseColor.rgb;
 				float3 subsurfaceColor = Transmission(baseColor.rgb * float3(0.95, 1, 0), lightDir, viewDir, input.normalWS, halfDir, 1, 0.25) * 2;
-
-				//CrossFade
-				//float crossFade = LODCrossDither(input.vertexCS.xy, unity_LODFade.x);
-				if (baseColor.a <= 0.5f) { discard; }
 
 				return float4(indirectDiffuse + (directDiffuse + subsurfaceColor) * lightAttenuated, baseColor.a);
 			}
@@ -220,6 +229,7 @@ Shader "Landscape/TreeLeave"
             #pragma vertex vert
             #pragma fragment frag
 			#pragma multi_compile_instancing
+			#pragma multi_compile __ LOD_FADE_CROSSFADE
 			//#pragma enable_d3d11_debug_symbols
 			
 			struct Attributes
@@ -286,14 +296,12 @@ Shader "Landscape/TreeLeave"
 			float4 frag(Varyings input) : SV_Target
 			{
 				UNITY_SETUP_INSTANCE_ID(input);
-
+				#ifdef LOD_FADE_CROSSFADE 
+					LODDitheringTransition(input.vertexCS.xy, unity_LODFade.x);
+				#endif
 				//Surface
-				float4 outColor = _AlbedoTexture.Sample(sampler_AlbedoTexture, input.uv0);
-
-				//CrossFade
-				float crossFade = LODCrossDither(input.vertexCS.xy, unity_LODFade.x);
-				if (crossFade >= 0.5f || outColor.a <= 0.5f) { discard; }
-
+				float4 baseColor = _AlbedoTexture.Sample(sampler_AlbedoTexture, input.uv0);
+				clip(baseColor.a - _AlphaThreshold);
 				return 0;
 			}
             ENDHLSL

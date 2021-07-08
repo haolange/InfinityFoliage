@@ -29,7 +29,9 @@ Shader "Landscape/Grass"
         _TurbulenceStrength("Wind Turbulence", Range(0, 2)) = 1
         _RecalculateWindNormals("Recalculate Normals", Range(0,1)) = 0.5
 		_WindFadeness("Fade Out Wind", Vector) = (50, 20, 0, 0)
-
+		
+		[Header(Unuse)]
+		_MainTex ("Base (RGB)", 2D) = "white" {}
 		//[Header(State)]
 		//_ZTest("ZTest", Int) = 4
 		//_ZWrite("ZWrite", Int) = 1
@@ -158,10 +160,17 @@ Shader "Landscape/Grass"
 			{
 				UNITY_SETUP_INSTANCE_ID(input);
 
+				//Geometry Context
 				float3 normalWS = input.normalWS;
 				float3 worldPos = input.vertexWS.xyz;
 				float3 objectPos = float3(UNITY_MATRIX_M[0].w, UNITY_MATRIX_M[1].w, UNITY_MATRIX_M[2].w);
 
+				//Surface
+				float4 baseColor = _AlbedoTexture.Sample(sampler_AlbedoTexture, input.uv0);
+				clip(baseColor.a - _AlphaThreshold);
+				float3 variantColor = lerp(lerp(_BottomTint.rgb, _TopTint.rgb, input.uv0.y), _TintVariation.rgb, input.noise);
+
+				//BXDF Context
                 float3 lightDir = normalize(_MainLightPosition.xyz);
                 float3 viewDir = normalize(_WorldSpaceCameraPos.xyz - worldPos);
                 float3 halfDir = normalize(viewDir + lightDir);
@@ -174,10 +183,6 @@ Shader "Landscape/Grass"
 				Light mainLight = GetMainLight(shadowCoord, worldPos, 1);
 				//float lightShadow = MainLightRealtimeShadow(shadowCoord);
 				float3 attenuatedLightColor = mainLight.color * (mainLight.distanceAttenuation * mainLight.shadowAttenuation);
-				
-				//Surface
-				float4 baseColor = _AlbedoTexture.Sample(sampler_AlbedoTexture, input.uv0);
-				float3 variantColor = lerp(lerp(_BottomTint.rgb, _TopTint.rgb, input.uv0.y), _TintVariation.rgb, input.noise);
 
 				//Lighting
 				float3 directDiffuse = saturate(dot(lightDir, normalWS.xyz));
@@ -194,8 +199,6 @@ Shader "Landscape/Grass"
 
 				//Surface
 				float3 outColor = variantColor * (indirectDiffuse + (directDiffuse + subsurfaceColor) * attenuatedLightColor);
-				
-				clip(baseColor.a - _AlphaThreshold);
 				return float4(outColor, baseColor.a);
 			}
             ENDHLSL
@@ -299,12 +302,18 @@ Shader "Landscape/Grass"
 
 			float4 frag(Varyings input) : SV_Target
 			{
+				//Geometry Context
 				FGrassElement grassElement = _GrassElementBuffer[input.PrimitiveId];
-
 				float3 normalWS = input.normalWS;
 				float3 worldPos = input.vertexWS.xyz;
 				float3 objectPos = float3(grassElement.matrix_World[0].w, grassElement.matrix_World[1].w, grassElement.matrix_World[2].w);
 
+				//Surface
+				float4 baseColor = _AlbedoTexture.Sample(sampler_AlbedoTexture, input.uv0);
+				clip(baseColor.a - _AlphaThreshold);
+				float3 variantColor = lerp(lerp(_BottomTint.rgb, _TopTint.rgb, input.uv0.y), _TintVariation.rgb, input.noise);
+
+				//BXDF Context
                 float3 lightDir = normalize(_MainLightPosition.xyz);
                 float3 viewDir = normalize(_WorldSpaceCameraPos.xyz - worldPos);
                 float3 halfDir = normalize(viewDir + lightDir);
@@ -316,11 +325,7 @@ Shader "Landscape/Grass"
 				#endif
 				Light mainLight = GetMainLight(shadowCoord, worldPos, 1);
 				//float lightShadow = MainLightRealtimeShadow(shadowCoord);
-				float3 attenuatedLightColor = mainLight.color * (/*mainLight.distanceAttenuation */ mainLight.shadowAttenuation);
-				
-				//Surface
-				float4 baseColor = _AlbedoTexture.Sample(sampler_AlbedoTexture, input.uv0);
-				float3 variantColor = lerp(lerp(_BottomTint.rgb, _TopTint.rgb, input.uv0.y), _TintVariation.rgb, input.noise);
+				float3 attenuatedLightColor = mainLight.color * (mainLight.distanceAttenuation * mainLight.shadowAttenuation);
 
 				//Lighting
 				float3 directDiffuse = saturate(dot(lightDir, normalWS.xyz));
@@ -337,8 +342,6 @@ Shader "Landscape/Grass"
 
 				//Surface
 				float3 outColor = variantColor * (indirectDiffuse + (directDiffuse + subsurfaceColor) * attenuatedLightColor);
-				
-				clip(baseColor.a - _AlphaThreshold);
 				return float4(outColor, baseColor.a);
 			}
             ENDHLSL
