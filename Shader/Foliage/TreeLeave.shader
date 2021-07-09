@@ -122,7 +122,7 @@ Shader "Landscape/TreeLeave"
 				#endif
 				Light mainLight = GetMainLight(shadowCoord, worldPos, 1);
 				//float lightShadow = MainLightRealtimeShadow(shadowCoord);
-				float3 lightAttenuated = mainLight.color * (mainLight.distanceAttenuation * mainLight.shadowAttenuation);
+				float3 lightAttenuated = mainLight.color * (/*mainLight.distanceAttenuation */ mainLight.shadowAttenuation);
 
 				//Lighting
 				float3 directDiffuse = saturate(dot(normalize(_MainLightPosition.xyz), input.normalWS)) * baseColor.rgb;
@@ -206,7 +206,7 @@ Shader "Landscape/TreeLeave"
 				#endif
 				Light mainLight = GetMainLight(shadowCoord, worldPos, 1);
 				//float lightShadow = MainLightRealtimeShadow(shadowCoord);
-				float3 lightAttenuated = mainLight.color * (mainLight.distanceAttenuation * mainLight.shadowAttenuation);
+				float3 lightAttenuated = mainLight.color * (/*mainLight.distanceAttenuation */ mainLight.shadowAttenuation);
 
 				//Lighting
 				float3 directDiffuse = saturate(dot(normalize(_MainLightPosition.xyz), input.normalWS)) * baseColor.rgb;

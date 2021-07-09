@@ -113,15 +113,17 @@ Shader "Landscape/TreeBrak"
                     baseColor = lerp(trunkColor, brakColor, brakMask);
                 #endif
 
-				//Shadow
+				//Light&Shadow
 				float4 shadowCoord = 0;
 				#if defined(MAIN_LIGHT_CALCULATE_SHADOWS)
 					shadowCoord = TransformWorldToShadowCoord(worldPos);
 				#endif
-				float shadowTream = MainLightRealtimeShadow(shadowCoord);
+				Light mainLight = GetMainLight(shadowCoord, worldPos, 1);
+				//float lightShadow = MainLightRealtimeShadow(shadowCoord);
+				float3 attenuatedLightColor = mainLight.color * (/*mainLight.distanceAttenuation */ mainLight.shadowAttenuation);
 
 				//Lighting
-				float3 directDiffuse = saturate(dot(normalize(_MainLightPosition.xyz), input.normalWS)) * _MainLightColor.rgb * shadowTream * baseColor.rgb;
+				float3 directDiffuse = saturate(dot(normalize(_MainLightPosition.xyz), input.normalWS)) * attenuatedLightColor * baseColor.rgb;
 				float3 indirectDiffuse = SampleSH(input.normalWS) * baseColor.rgb;
 				return float4(directDiffuse + indirectDiffuse, 1);
 			}
@@ -199,15 +201,17 @@ Shader "Landscape/TreeBrak"
                     baseColor = lerp(trunkColor, brakColor, brakMask);
                 #endif
 
-				//Shadow
+				//Light&Shadow
 				float4 shadowCoord = 0;
 				#if defined(MAIN_LIGHT_CALCULATE_SHADOWS)
 					shadowCoord = TransformWorldToShadowCoord(worldPos);
 				#endif
-				float shadowTream = MainLightRealtimeShadow(shadowCoord);
+				Light mainLight = GetMainLight(shadowCoord, worldPos, 1);
+				//float lightShadow = MainLightRealtimeShadow(shadowCoord);
+				float3 attenuatedLightColor = mainLight.color * (/*mainLight.distanceAttenuation */ mainLight.shadowAttenuation);
 
 				//Lighting
-				float3 directDiffuse = saturate(dot(normalize(_MainLightPosition.xyz), input.normalWS)) * _MainLightColor.rgb * shadowTream * baseColor.rgb;
+				float3 directDiffuse = saturate(dot(normalize(_MainLightPosition.xyz), input.normalWS)) * attenuatedLightColor * baseColor.rgb;
 				float3 indirectDiffuse = SampleSH(input.normalWS) * baseColor.rgb;
 				return float4(directDiffuse + indirectDiffuse, 1);
 			}
