@@ -186,9 +186,6 @@ Shader "Landscape/TreeLeave"
 
 			float4 frag(Varyings input) : SV_Target
 			{
-				//CrossFade
-				//LODDitheringTransition(input.vertexCS.xyz, unity_LODFade.x);
-
 				//Surface
 				float4 baseColor = _AlbedoTexture.Sample(sampler_AlbedoTexture, input.uv0);
 				clip(baseColor.a - _AlphaThreshold);
@@ -213,7 +210,7 @@ Shader "Landscape/TreeLeave"
 				float3 indirectDiffuse = SampleSH(input.normalWS) * baseColor.rgb;
 				float3 subsurfaceColor = Transmission(baseColor.rgb * float3(0.95, 1, 0), lightDir, viewDir, input.normalWS, halfDir, 1, 0.25) * 2;
 
-				return float4(indirectDiffuse + (directDiffuse + subsurfaceColor) * lightAttenuated, baseColor.a);
+				return float4(indirectDiffuse + (directDiffuse + subsurfaceColor) * lightAttenuated, 1);
 			}
             ENDHLSL
         }

@@ -187,9 +187,7 @@ Shader "Landscape/TreeBrak"
 
 			float4 frag(Varyings input) : SV_Target
 			{
-				//CrossFade
-				LODDitheringTransition(input.vertexCS.xyz, unity_LODFade.x);
-
+				//Geometry Context
 				float3 worldPos = input.vertexWS.xyz;
 
 				//Surface
