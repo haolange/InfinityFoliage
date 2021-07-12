@@ -118,7 +118,7 @@ namespace Landscape.FoliagePipeline
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public void SetupGPUData()
+        public void UploadGPUData()
         {
             if (m_GrassElements.IsCreated)
             {

@@ -154,7 +154,7 @@ namespace Landscape.FoliagePipeline
                 for (int j = 0; j < grassSectors.Length; ++j)
                 {
                     FGrassSector grassSector = grassSectors[j];
-                    grassSector.sections[m_Count].SetupGPUData();
+                    grassSector.sections[m_Count].UploadGPUData();
                 }
 
                 --limit;

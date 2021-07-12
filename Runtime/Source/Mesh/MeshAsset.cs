@@ -12,14 +12,14 @@ namespace Landscape.FoliagePipeline
         public float screenSize;
         public int[] materialSlot;
 
-        public bool Equals(FMeshLODInfo Target)
+        public bool Equals(FMeshLODInfo target)
         {
-            return screenSize.Equals(Target.screenSize) && materialSlot.Equals(Target.materialSlot);
+            return screenSize.Equals(target.screenSize) && materialSlot.Equals(target.materialSlot);
         }
 
-        public override bool Equals(object obj)
+        public override bool Equals(object target)
         {
-            return Equals((FMeshLODInfo)obj);
+            return Equals((FMeshLODInfo)target);
         }
 
         public override int GetHashCode()
@@ -59,14 +59,14 @@ namespace Landscape.FoliagePipeline
             }
         }
 
-        public bool Equals(FMesh Target)
+        public bool Equals(FMesh target)
         {
-            return IsCreated.Equals(Target.IsCreated) && meshes.Equals(Target.meshes) && lODInfos.Equals(Target.lODInfos) && materials.Equals(Target.materials);
+            return IsCreated.Equals(target.IsCreated) && meshes.Equals(target.meshes) && lODInfos.Equals(target.lODInfos) && materials.Equals(target.materials);
         }
 
-        public override bool Equals(object obj)
+        public override bool Equals(object target)
         {
-            return Equals((FMesh)obj);
+            return Equals((FMesh)target);
         }
 
         public override int GetHashCode()
