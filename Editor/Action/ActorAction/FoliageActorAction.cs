@@ -1,3 +1,4 @@
+using System;
 using Unity.Jobs;
 using UnityEditor;
 using UnityEngine;
@@ -87,7 +88,7 @@ namespace Landscape.Editor.FoliagePipeline
         [MenuItem("GameObject/EntityAction/Landscape/UpdateTerrainTree", false, 10)]
         public static void UpdateTerrainTree(MenuCommand menuCommand)
         {
-            var tasksHandle = new List<GCHandle>(32);
+            var tasksPtr = new List<long>(32);
             var jobsHandle = new List<JobHandle>(32);
             var selectObjects = Selection.gameObjects;
 
@@ -117,12 +118,13 @@ namespace Landscape.Editor.FoliagePipeline
                             updateTreeTask.treeTransfroms = treeSector.transforms;
                             updateTreeTask.terrainPosition = selectObject.transform.position;
                         }
-                        var taskHandle = GCHandle.Alloc(updateTreeTask);
-                        tasksHandle.Add(taskHandle);
+                        GCHandle taskHandle = GCHandle.Alloc(updateTreeTask);
+                        long taskPtr = ((IntPtr)taskHandle).ToInt64();
+                        tasksPtr.Add(taskPtr);
 
                         var updateTreeJob = new FUpdateFoliageJob();
                         {
-                            updateTreeJob.taskHandle = taskHandle;
+                            updateTreeJob.taskPtr = taskPtr;
                         }
                         jobsHandle.Add(updateTreeJob.Schedule());
                     }
@@ -134,7 +136,7 @@ namespace Landscape.Editor.FoliagePipeline
             for (var j = 0; j < jobsHandle.Count; ++j)
             {
                 jobsHandle[j].Complete();
-                tasksHandle[j].Free();
+                GCHandle.FromIntPtr( (IntPtr)tasksPtr[j] ).Free();
             }
         }
         #endregion //Tree
@@ -217,8 +219,8 @@ namespace Landscape.Editor.FoliagePipeline
         [MenuItem("GameObject/EntityAction/Landscape/UpdateTerrainGrass", false, 12)]
         public static void UpdateTerrainGrass(MenuCommand menuCommand)
         {
+            var tasksPtr = new List<long>(32);
             var jobsHandle = new List<JobHandle>(32);
-            var tasksHandle = new List<GCHandle>(32);
             GameObject[] selectObjects = Selection.gameObjects;
 
             foreach (GameObject selectObject in selectObjects)
@@ -265,12 +267,13 @@ namespace Landscape.Editor.FoliagePipeline
                             updategrassTask.dscDensity = grassSection.densityMap;
                             //updategrassTask.dscHeight = grassSection.heightmap;
                         }
-                        var taskHandle = GCHandle.Alloc(updategrassTask);
-                        tasksHandle.Add(taskHandle);
+                        GCHandle taskHandle = GCHandle.Alloc(updategrassTask);
+                        long taskPtr = ((IntPtr)taskHandle).ToInt64();
+                        tasksPtr.Add(taskPtr);
 
                         var updateGrassJob = new FUpdateFoliageJob();
                         {
-                            updateGrassJob.taskHandle = taskHandle;
+                            updateGrassJob.taskPtr = taskPtr;
                         }
                         //updateGrassJob.Execute();
                         jobsHandle.Add(updateGrassJob.Schedule());
@@ -280,10 +283,10 @@ namespace Landscape.Editor.FoliagePipeline
                 EditorUtility.SetDirty(selectObject);
             }
 
-            for (var j = 0; j < tasksHandle.Count; ++j)
+            for (var j = 0; j < tasksPtr.Count; ++j)
             {
                 jobsHandle[j].Complete();
-                tasksHandle[j].Free();
+                GCHandle.FromIntPtr( (IntPtr)tasksPtr[j] ).Free();
             }
 
             foreach (GameObject selectObject in selectObjects)

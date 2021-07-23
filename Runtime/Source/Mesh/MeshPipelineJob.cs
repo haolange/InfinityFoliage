@@ -1,3 +1,4 @@
+using System;
 using Unity.Jobs;
 using Unity.Burst;
 using UnityEngine;
@@ -74,11 +75,12 @@ namespace Landscape.FoliagePipeline
 
     public struct FUpdateFoliageJob : IJob
     {
-        public GCHandle taskHandle;
+        public long taskPtr;
 
         public void Execute()
         {
-            ITask task = (ITask)taskHandle.Target;
+            GCHandle handle = GCHandle.FromIntPtr((IntPtr)taskPtr);
+            ITask task = (ITask)handle.Target;
             task.Execute();
         }
     }
