@@ -66,7 +66,7 @@ namespace Landscape.FoliagePipeline
             
             boundSector.BuildNativeCollection();
             m_PropertyBlock = new MaterialPropertyBlock();
-            m_PropertyBlock.SetInt(GrassShaderID.terrainSize, shaderProperty.terrainSize + 1);
+            m_PropertyBlock.SetInt(GrassShaderID.terrainSize, shaderProperty.terrainSize);
             m_PropertyBlock.SetTexture(GrassShaderID.terrainHeightmap, shaderProperty.heightmapTexture);
             m_PropertyBlock.SetVector(GrassShaderID.terrainPivotScaleY, shaderProperty.terrainPivotScaleY);
 
@@ -153,7 +153,7 @@ namespace Landscape.FoliagePipeline
                 for (int i = 0; i < grassSectors.Length; ++i)
                 {
                     FGrassSector grassSector = grassSectors[i];
-                    taskHandles.Add(grassSector.sections[m_Count].BuildInstance(SectionSize, grassSector.grass.GetHashCode() / 1000000, TerrainScaleY, terrain.detailObjectDensity, boundSection.pivotPosition, grassSector.widthScale));
+                    taskHandles.Add(grassSector.sections[m_Count].BuildInstance(SectionSize, UnityEngine.Random.Range(1, 16), TerrainScaleY, terrain.detailObjectDensity, boundSection.pivotPosition, grassSector.widthScale));
                 }
                 JobHandle.CompleteAll(taskHandles);
 

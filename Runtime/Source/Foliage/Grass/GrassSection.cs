@@ -65,14 +65,15 @@ namespace Landscape.FoliagePipeline
         {
             if(instanceCount == 0) { return; }
 
-            m_GrassBuffer = new ComputeBuffer(instanceCount, Marshal.SizeOf(typeof(FGrassElement)));
-
             //m_heightmap = new NativeArray<float>(heightmap.Length, Allocator.Persistent);
             m_DensityMap = new NativeArray<byte>(densityMap.Length, Allocator.Persistent);
 
-            NativeArray<byte>.Copy(densityMap, m_DensityMap);
             //NativeArray<float>.Copy(heightmap, m_heightmap);
+            NativeArray<byte>.Copy(densityMap, m_DensityMap);
+            //heightmap = null;
             densityMap = null;
+
+            m_GrassBuffer = new ComputeBuffer(instanceCount, Marshal.SizeOf(typeof(FGrassElement)));
         }
 
         public void Release()
@@ -89,7 +90,7 @@ namespace Landscape.FoliagePipeline
         {
             if (instanceCount == 0 || densityScale == 0) { return default; }
 
-            m_GrassElements = new NativeList<FGrassElement>(m_DensityMap.Length, Allocator.TempJob);
+            m_GrassElements = new NativeList<FGrassElement>(instanceCount, Allocator.TempJob);
             var grassScatterJob = new FGrassScatterJob();
             {
                 grassScatterJob.split = split;
@@ -110,7 +111,8 @@ namespace Landscape.FoliagePipeline
         {
             if (m_GrassElements.IsCreated)
             {
-                m_GrassBuffer.SetData<FGrassElement>(m_GrassElements, 0, 0, m_GrassElements.Length);
+                instanceCount = m_GrassElements.Length;
+                m_GrassBuffer.SetData<FGrassElement>(m_GrassElements, 0, 0, instanceCount);
 
                 m_DensityMap.Dispose();
                 m_GrassElements.Dispose();

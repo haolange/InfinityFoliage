@@ -28,7 +28,6 @@ namespace Landscape.FoliagePipeline
         public TreePrototype[] treePrototypes;
         public List<FTransform> treeTransfroms;
 
-
         public void Execute()
         {
             FTransform transform = new FTransform();
@@ -56,7 +55,6 @@ namespace Landscape.FoliagePipeline
         public float[,] srcHeight;
         //public float[] dscHeight;
         public FGrassSection grassSection;
-
 
         public void Execute()
         {
@@ -118,34 +116,29 @@ namespace Landscape.FoliagePipeline
 
         public void Execute()
         {
-            int density;
-            //float height;
-            float3 scale;
-            float3 position;
-            float3 newPosition;
-            float4x4 matrix_World;
-            FGrassElement grassElement = default;
+            FGrassElement grassElement;
 
             for (int i = 0; i < densityMap.Length; ++i)
             {
                 //height = heightMap[i];
-                density = (int)((float)densityMap[i] * densityScale);
-                position = sectionPivot + new float3(i % split, 0 /*height * heightScale*/, i / split);
+                int density = (int)((float)densityMap[i] / densityScale);
+                if(density == 0) { continue; }
 
+                float3 position = sectionPivot + new float3(i % split, 0 /*height * heightScale*/, i / split);
                 for (int j = 0; j < density; ++j)
                 {
-                    float multiplier = (j + 1) * math.abs(uniqueValue);
-                    float randomRotate = randomFloat(((position.x + 0.5f) * multiplier) + (position.z + 0.5f));
-                    float2 randomPoint = randomFloat2(new float2(position.x + 0.5f, (position.z + 0.5f) * multiplier));
-                    newPosition = position + new float3(randomPoint.x, 0, randomPoint.y);
+                    float multiplier = (j + 1) * uniqueValue;
+                    float2 randomPoint = randomFloat2(new float2((position.x + 0.5f) * multiplier, (position.z + 0.5f) * multiplier));
+                    float3 newPosition = position + new float3(randomPoint.x, 0, randomPoint.y);
+
+                    float randomRotate = randomFloat(newPosition.x - newPosition.y * multiplier);
 
                     float randomScale = randomFloat((newPosition.x + newPosition.z) * multiplier);
                     float yScale = widthScale.z + ((widthScale.w - widthScale.z) * randomScale);
                     float xzScale = widthScale.x + ((widthScale.y - widthScale.x) * randomScale);
-                    scale = new float3(xzScale, yScale, xzScale);
-                    matrix_World = float4x4.TRS(newPosition, quaternion.AxisAngle(new float3(0, 1, 0), math.radians(randomRotate * 360)), scale);
+                    float3 scale = new float3(xzScale, yScale, xzScale);
 
-                    grassElement.matrix_World = matrix_World;
+                    grassElement.matrix_World = float4x4.TRS(newPosition, quaternion.AxisAngle(new float3(0, 1, 0), math.radians(randomRotate * 360)), scale);
                     grassElements.Add(grassElement);
                 }
             }
