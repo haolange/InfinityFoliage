@@ -1,8 +1,6 @@
 using System;
-using Unity.Jobs;
 using UnityEngine;
 using Unity.Mathematics;
-using Unity.Collections;
 using UnityEngine.Rendering;
 using System.Runtime.CompilerServices;
 
@@ -22,7 +20,7 @@ namespace Landscape.FoliagePipeline
             this.sections = new FGrassSection[length];
         }
 
-        public void Init(FBoundSector boundSector, TerrainData terrainData, in FGrassShaderProperty shaderProperty)
+        public void Init(FBoundSector boundSector, TerrainData terrainData)
         {
             this.boundSector = boundSector;
             DetailPrototype detailPrototype = terrainData.detailPrototypes[grassIndex];
@@ -31,7 +29,7 @@ namespace Landscape.FoliagePipeline
             foreach (FGrassSection section in sections)
             {
                 if (section.instanceCount == 0) { continue; }
-                section.Init(grass.meshes[0], grass.materials[0], shaderProperty);
+                section.Init();
             }
         }
 
@@ -41,28 +39,6 @@ namespace Landscape.FoliagePipeline
             {
                 if (section.instanceCount == 0) { continue; }
                 section.Release();
-            }
-        }
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public void BuildInstance(in int split, in float uniqueValue, in float heightScale, in float densityScale)
-        {
-            foreach (FGrassSection section in sections)
-            {
-                if (section.instanceCount == 0) { continue; }
-
-                FBoundSection boundSection = boundSector.nativeSections[section.boundIndex];
-                section.BuildInstance(split, uniqueValue, heightScale, densityScale, boundSection.pivotPosition, widthScale);
-            }
-        }
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public void DispatchDraw(CommandBuffer cmdBuffer, in int passIndex)
-        {
-            foreach (FGrassSection section in sections)
-            {
-                if (boundSector.visibleMap[section.boundIndex] == 0) { continue; }
-                section.DispatchDraw(cmdBuffer, passIndex);
             }
         }
     }

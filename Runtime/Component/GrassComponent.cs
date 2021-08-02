@@ -48,6 +48,7 @@ namespace Landscape.FoliagePipeline
         public FGrassSector[] grassSectors;
 
         private int m_Count;
+        private MaterialPropertyBlock m_PropertyBlock;
 
         protected override void OnRegister()
         {
@@ -60,13 +61,18 @@ namespace Landscape.FoliagePipeline
 
             FGrassShaderProperty shaderProperty;
             shaderProperty.terrainSize = SectorSize;
-            shaderProperty.terrainPivotScaleY = new float4(transform.position, TerrainScaleY);
             shaderProperty.heightmapTexture = terrainData.heightmapTexture;
+            shaderProperty.terrainPivotScaleY = new float4(transform.position, TerrainScaleY);
             
             boundSector.BuildNativeCollection();
+            m_PropertyBlock = new MaterialPropertyBlock();
+            m_PropertyBlock.SetInt(GrassShaderID.terrainSize, shaderProperty.terrainSize + 1);
+            m_PropertyBlock.SetTexture(GrassShaderID.terrainHeightmap, shaderProperty.heightmapTexture);
+            m_PropertyBlock.SetVector(GrassShaderID.terrainPivotScaleY, shaderProperty.terrainPivotScaleY);
+
             foreach(FGrassSector grassSector in grassSectors)
             {
-                grassSector.Init(boundSector, terrainData, shaderProperty);
+                grassSector.Init(boundSector, terrainData);
             }
         }
 
@@ -173,7 +179,8 @@ namespace Landscape.FoliagePipeline
                 for (int j = 0; j < grassSectors.Length; ++j)
                 {
                     FGrassSector grassSector = grassSectors[j];
-                    grassSector.sections[i].DispatchDraw(cmdBuffer, passIndex);
+                    FGrassSection grassSection = grassSector.sections[i];
+                    grassSection.DispatchDraw(cmdBuffer, grassSector.grass.meshes[0], grassSector.grass.materials[0], m_PropertyBlock, passIndex);
                 }
             }
         }

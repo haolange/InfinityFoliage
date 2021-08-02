@@ -281,13 +281,13 @@ Shader "Landscape/Grass"
 				float3 objectPos = float3(grassElement.matrix_World[0].w, grassElement.matrix_World[1].w, grassElement.matrix_World[2].w);
 
 				float3 position = objectPos - _TerrainPivotScaleY.xyz;
-				float4 leftBottomH = _TerrainHeightmap.SampleLevel(Global_bilinear_clamp_sampler, position.xz * invSize, 0, 0);
+				float4 leftBottomH = _TerrainHeightmap.SampleLevel(Global_point_clamp_sampler, position.xz * invSize, 0, 0);
 				objectPos.y += UnpackHeightmap(leftBottomH) * (_TerrainPivotScaleY.w * 2);
 
-				float4 leftTopH = _TerrainHeightmap.SampleLevel(Global_bilinear_clamp_sampler, (float2(1, 0) + position.xz) * invSize, 0, 0);
-				float4 rightTopH = _TerrainHeightmap.SampleLevel(Global_bilinear_clamp_sampler, (float2(1, 1) + position.xz) * invSize, 0, 0);
-				float4 rightBottomH = _TerrainHeightmap.SampleLevel(Global_bilinear_clamp_sampler, (float2(0, 1) + position.xz) * invSize, 0, 0);
-				float4 sampledHeight = SampleHeight(floor(objectPos.xz * invSize) + 0.5, leftBottomH, leftTopH, rightBottomH, rightTopH);
+				float4 leftTopH = _TerrainHeightmap.SampleLevel(Global_point_clamp_sampler, (float2(1, 0) + position.xz) * invSize, 0, 0);
+				float4 rightTopH = _TerrainHeightmap.SampleLevel(Global_point_clamp_sampler, (float2(1, 1) + position.xz) * invSize, 0, 0);
+				float4 rightBottomH = _TerrainHeightmap.SampleLevel(Global_point_clamp_sampler, (float2(0, 1) + position.xz) * invSize, 0, 0);
+				float4 sampledHeight = SampleHeight(frac(objectPos.xz * invSize) + 0.5, leftBottomH, leftTopH, rightBottomH, rightTopH);
 				output.vertexWS.y += UnpackHeightmap(sampledHeight) * (_TerrainPivotScaleY.w * 2);
 
 				float windFade;
