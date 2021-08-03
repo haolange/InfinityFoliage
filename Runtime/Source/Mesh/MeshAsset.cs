@@ -179,8 +179,8 @@ namespace Landscape.FoliagePipeline
 
                 for (int m = 0; m < renderer.sharedMaterials.Length; ++m)
                 {
-                    ref int MaterialSlot = ref lODInfo.materialSlot[m];
-                    MaterialSlot = materials.IndexOf(renderer.sharedMaterials[m]);
+                    ref int materialSlot = ref lODInfo.materialSlot[m];
+                    materialSlot = materials.IndexOf(renderer.sharedMaterials[m]);
                 }
             }
 
