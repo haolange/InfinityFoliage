@@ -150,7 +150,7 @@ Shader "Landscape/Grass"
 				output.noise.x = PerlinNoise(objectPos.xz, _ColorVariation);
 				output.noise.y *= 1.0 - saturate((distance(objectPos, _WorldSpaceCameraPos) - _DarkFadeness.x) / _DarkFadeness.y);
 
-				/*FWindInput windInput;
+				FWindInput windInput;
                 windInput.fade = windFade;
                 windInput.flutter = 1;
                 windInput.phaseOffset = 0;
@@ -160,7 +160,7 @@ Shader "Landscape/Grass"
                 windInput.direction = GetWindDirection();
                 windInput.mask = input.uv0.y * saturate(input.vertexOS.y / _PivotOffset) * GetWindVariation(objectPos);
 				Wind(windInput, worldPos, output.normalWS);
-				worldPos = ApplyScaleFade(worldPos, objectPos, scaleFade);*/
+				worldPos = ApplyScaleFade(worldPos, objectPos, scaleFade);
 
 				output.uv0 = input.uv0;
 				output.uv1 = input.uv1;
@@ -218,7 +218,7 @@ Shader "Landscape/Grass"
 
 				//Surface
 				float3 outColor = variantColor * (indirectDiffuse + (directDiffuse + subsurfaceColor) * attenuatedLightColor);
-				return float4(input.uv1.xyz, baseColor.a);
+				return float4(outColor, baseColor.a);
 			}
             ENDHLSL
         }
