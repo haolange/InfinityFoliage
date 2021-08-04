@@ -128,7 +128,7 @@ namespace Landscape.FoliagePipeline
                 for (int j = 0; j < density; ++j)
                 {
                     float multiplier = (j + 1) * uniqueValue;
-                    float2 randomPoint = randomFloat2(new float2((position.x + 0.5f) * multiplier, (position.z + 0.5f) * multiplier));
+                    float2 randomPoint = randomFloat2(new float2(position.x * multiplier, position.z * multiplier));
                     float3 newPosition = position + new float3(randomPoint.x, 0, randomPoint.y);
 
                     float randomRotate = randomFloat(newPosition.x - newPosition.y * multiplier);

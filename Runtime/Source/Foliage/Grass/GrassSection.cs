@@ -34,19 +34,21 @@ namespace Landscape.FoliagePipeline
         }
     }
 
-    public struct FGrassShaderProperty 
+    internal struct FGrassShaderProperty 
     {
         public int terrainSize;
         public float4 terrainPivotScaleY;
         public RenderTexture heightmapTexture;
+        public RenderTexture normalmapTexture;
     }
 
     internal static class GrassShaderID
     {
         internal static int terrainSize = Shader.PropertyToID("_TerrainSize");
-        internal static int terrainPivotScaleY = Shader.PropertyToID("_TerrainPivotScaleY");
-        internal static int elementBuffer = Shader.PropertyToID("_GrassElementBuffer");
         internal static int terrainHeightmap = Shader.PropertyToID("_TerrainHeightmap");
+        internal static int terrainNormalmap = Shader.PropertyToID("_TerrainNormalmap");
+        internal static int terrainPivotScaleY = Shader.PropertyToID("_TerrainPivotScaleY");
+        internal static int grassElementBuffer = Shader.PropertyToID("_GrassElementBuffer");
     }
 
     [Serializable]
@@ -124,7 +126,7 @@ namespace Landscape.FoliagePipeline
         {
             if (instanceCount <= 0) { return; }
 
-            propertyBlock.SetBuffer(GrassShaderID.elementBuffer, m_GrassBuffer);
+            propertyBlock.SetBuffer(GrassShaderID.grassElementBuffer, m_GrassBuffer);
             cmdBuffer.DrawMeshInstancedProcedural(mesh, 0, material, passIndex, instanceCount, propertyBlock);
         }
     }

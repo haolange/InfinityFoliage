@@ -61,6 +61,7 @@ namespace Landscape.FoliagePipeline
 
             FGrassShaderProperty shaderProperty;
             shaderProperty.terrainSize = SectorSize;
+            shaderProperty.normalmapTexture = terrain.normalmapTexture;
             shaderProperty.heightmapTexture = terrainData.heightmapTexture;
             shaderProperty.terrainPivotScaleY = new float4(transform.position, TerrainScaleY);
             
@@ -68,6 +69,7 @@ namespace Landscape.FoliagePipeline
             m_PropertyBlock = new MaterialPropertyBlock();
             m_PropertyBlock.SetInt(GrassShaderID.terrainSize, shaderProperty.terrainSize);
             m_PropertyBlock.SetTexture(GrassShaderID.terrainHeightmap, shaderProperty.heightmapTexture);
+            m_PropertyBlock.SetTexture(GrassShaderID.terrainNormalmap, shaderProperty.normalmapTexture);
             m_PropertyBlock.SetVector(GrassShaderID.terrainPivotScaleY, shaderProperty.terrainPivotScaleY);
 
             foreach(FGrassSector grassSector in grassSectors)

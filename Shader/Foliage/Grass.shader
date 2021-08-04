@@ -29,6 +29,7 @@ Shader "Landscape/Grass"
         _PivotOffset("Mesh Height Offset", Float) = 0.5
 
 		[Header(Wind)]
+		[Toggle (_PivotFromUV1)] PivotFromUV1 ("PivotFromUV1", Range(0, 1)) = 0
 		_WindStrength("Wind Strength", Range(0, 2)) = 1
         _WindVariation("Wind Variation", Range(0, 1)) = 0.3
         _TurbulenceStrength("Wind Turbulence", Range(0, 2)) = 1
@@ -62,8 +63,8 @@ Shader "Landscape/Grass"
 		int _TerrainSize;
 		float2 _WindFade;
 		float4 _TerrainPivotScaleY;
-		Texture2D _AlbedoTexture, _NomralTexture, _TerrainHeightmap;
-    	SamplerState sampler_AlbedoTexture, sampler_NomralTexture, sampler_TerrainHeightmap;
+		Texture2D _AlbedoTexture, _NomralTexture, _TerrainHeightmap, _TerrainNormalmap;
+    	SamplerState sampler_AlbedoTexture, sampler_NomralTexture;
 
 		#include "Packages/com.unity.render-pipelines.core/ShaderLibrary/Common.hlsl"
 		#include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Input.hlsl"
@@ -77,6 +78,7 @@ Shader "Landscape/Grass"
 		#include "Include/Transmission.hlsl"
 		#include "Include/ColorVariation.hlsl"
 		#include "Include/ProceduralInstance.hlsl"
+		#include "Packages/com.infinity.render-foliage/Shader/Foliage/Include/Foliage.hlsl"
 	ENDHLSL
 
     SubShader
@@ -99,6 +101,7 @@ Shader "Landscape/Grass"
 			#pragma instancing_options procedural:SetupNatureRenderer
 
 			#pragma shader_feature _ColorMap
+			#pragma shader_feature _PivotFromUV1
 
 			#pragma multi_compile _ _SHADOWS_SOFT
 			#pragma multi_compile _ _MAIN_LIGHT_SHADOWS
@@ -109,6 +112,7 @@ Shader "Landscape/Grass"
 			struct Attributes
 			{
 				float2 uv0 : TEXCOORD0;
+				float4 uv1 : TEXCOORD2;
 				float4 color : COLOR;
 				float3 normalOS : NORMAL;
 				float4 vertexOS : POSITION;
@@ -117,9 +121,9 @@ Shader "Landscape/Grass"
 
 			struct Varyings
 			{
-				float noise : TEXCOORD1;
-				float noiseDetail : TEXCOORD2;
 				float2 uv0 : TEXCOORD0;
+				float4 uv1 : TEXCOORD1;
+				float2 noise : TEXCOORD2;
 				float4 color : COLOR;
 				float3 normalWS : NORMAL;
 				float4 vertexWS : TEXCOORD3;
@@ -133,21 +137,20 @@ Shader "Landscape/Grass"
 				UNITY_SETUP_INSTANCE_ID(input);
 				UNITY_TRANSFER_INSTANCE_ID(input, output);
 
-				output.uv0 = input.uv0;
-				output.color = input.color;
-				output.vertexWS = mul(UNITY_MATRIX_M, input.vertexOS);
-				output.normalWS = normalize(mul((float3x3)UNITY_MATRIX_M, input.normalOS));
-				output.normalWS = lerp(float3(0, 1, 0), output.normalWS, _VertexNormalStrength);
+				float3 worldPos = mul(UNITY_MATRIX_M, input.vertexOS).xyz;
 				float3 objectPos = float3(UNITY_MATRIX_M[0].w, UNITY_MATRIX_M[1].w, UNITY_MATRIX_M[2].w);
+				#if _PivotFromUV1
+                    objectPos = input.uv1.xyz;
+                #endif
 
 				float windFade;
                 float scaleFade;
                 PerVertexFade(objectPos, windFade, scaleFade);
-				output.noise = PerlinNoise(objectPos.xz, _ColorVariation);
-				output.noiseDetail = PerlinNoise(objectPos.xz, _DarkVariation);
-				output.noiseDetail *= 1.0 - saturate((distance(objectPos, _WorldSpaceCameraPos) - _DarkFadeness.x) / _DarkFadeness.y);
+				output.noise.y = PerlinNoise(objectPos.xz, _DarkVariation);
+				output.noise.x = PerlinNoise(objectPos.xz, _ColorVariation);
+				output.noise.y *= 1.0 - saturate((distance(objectPos, _WorldSpaceCameraPos) - _DarkFadeness.x) / _DarkFadeness.y);
 
-				FWindInput windInput;
+				/*FWindInput windInput;
                 windInput.fade = windFade;
                 windInput.flutter = 1;
                 windInput.phaseOffset = 0;
@@ -156,10 +159,16 @@ Shader "Landscape/Grass"
                 windInput.normalWS = output.normalWS;
                 windInput.direction = GetWindDirection();
                 windInput.mask = input.uv0.y * saturate(input.vertexOS.y / _PivotOffset) * GetWindVariation(objectPos);
-				Wind(windInput, output.vertexWS.xyz, output.normalWS);
-				output.vertexWS.xyz = ApplyScaleFade(output.vertexWS.xyz, objectPos, scaleFade);
+				Wind(windInput, worldPos, output.normalWS);
+				worldPos = ApplyScaleFade(worldPos, objectPos, scaleFade);*/
 
-				output.vertexCS = mul(UNITY_MATRIX_VP, float4(output.vertexWS.xyz, 1));
+				output.uv0 = input.uv0;
+				output.uv1 = input.uv1;
+				output.color = input.color;
+				output.vertexWS = float4(worldPos, 1);
+				output.vertexCS = mul(UNITY_MATRIX_VP, output.vertexWS);
+				output.normalWS = TransformObjectToWorldNormal(input.normalOS);
+				output.normalWS = lerp(float3(0, 1, 0), output.normalWS, _VertexNormalStrength);
 				return output;
 			}
 
@@ -177,8 +186,8 @@ Shader "Landscape/Grass"
 				clip(baseColor.a);
 				//clip(baseColor.a - _AlphaThreshold);
 
-				float3 variantColor = lerp(lerp(_BottomTint.rgb, _TopTint.rgb, input.uv0.y), _TintVariation.rgb, input.noise);
-				variantColor = lerp(variantColor, _DarkTint.rgb, input.noiseDetail);
+				float3 variantColor = lerp(lerp(_BottomTint.rgb, _TopTint.rgb, input.uv0.y), _TintVariation.rgb, input.noise.x);
+				variantColor = lerp(variantColor, _DarkTint.rgb, input.noise.y);
 
 				//BXDF Context
                 float3 lightDir = normalize(_MainLightPosition.xyz);
@@ -205,11 +214,11 @@ Shader "Landscape/Grass"
                     indirectDiffuse *= baseColor.rgb;
                 #endif
 
-				float3 subsurfaceColor = Transmission(baseColor.rgb * float3(0.8, 1, 0), lightDir, viewDir, normalWS, halfDir, 1, 0.25) * 2;
+				float3 subsurfaceColor = Transmission(baseColor.rgb, lightDir, viewDir, normalWS, halfDir, 1, 0.32) * 2;
 
 				//Surface
 				float3 outColor = variantColor * (indirectDiffuse + (directDiffuse + subsurfaceColor) * attenuatedLightColor);
-				return float4(outColor, baseColor.a);
+				return float4(input.uv1.xyz, baseColor.a);
 			}
             ENDHLSL
         }
@@ -227,17 +236,17 @@ Shader "Landscape/Grass"
 			//#pragma enable_d3d11_debug_symbols
 
 			#pragma shader_feature _ColorMap
+			#pragma shader_feature _PivotFromUV1
 
 			#pragma multi_compile _ _SHADOWS_SOFT
 			#pragma multi_compile _ _MAIN_LIGHT_SHADOWS
 			#pragma multi_compile _ _MAIN_LIGHT_SHADOWS_CASCADE
 
-			#include "Packages/com.infinity.render-foliage/Shader/Foliage/Include/Foliage.hlsl"
-
 			struct Attributes
 			{
 				uint InstanceId : SV_InstanceID;
 				float2 uv0 : TEXCOORD0;
+				float4 uv1 : TEXCOORD1;
 				float4 color : COLOR;
 				float3 normalOS : NORMAL;
 				float4 vertexOS : POSITION;
@@ -246,9 +255,9 @@ Shader "Landscape/Grass"
 			struct Varyings
 			{
 				uint PrimitiveId  : SV_InstanceID;
-				float noise : TEXCOORD1;
-				float noiseDetail : TEXCOORD2;
 				float2 uv0 : TEXCOORD0;
+				float4 uv1 : TEXCOORD1;
+				float2 noise : TEXCOORD2;
 				float4 color : COLOR;
 				float3 normalWS : NORMAL;
 				float4 vertexWS : TEXCOORD3;
@@ -271,13 +280,11 @@ Shader "Landscape/Grass"
 				output.PrimitiveId = input.InstanceId;
 				FGrassElement grassElement = _GrassElementBuffer[input.InstanceId];
 
-				output.uv0 = input.uv0;
-				output.color = input.color;
-				output.normalWS = normalize(mul(input.normalOS, (float3x3)unity_WorldToObject));
-				output.normalWS = lerp(float3(0, 1, 0), output.normalWS, _VertexNormalStrength);
-
-				float3 worldPos = mul(grassElement.matrix_World, input.vertexOS);
+				float3 worldPos = mul(grassElement.matrix_World, input.vertexOS).xyz;
 				float3 objectPos = float3(grassElement.matrix_World[0].w, grassElement.matrix_World[1].w, grassElement.matrix_World[2].w);
+				#if _PivotFromUV1
+                    objectPos += input.uv1.xyz;
+                #endif
 
 				/*float invSize = rcp(_TerrainSize);
 				float2 sampleUV = (objectPos.xz - _TerrainPivotScaleY.xz) * invSize;
@@ -291,6 +298,7 @@ Shader "Landscape/Grass"
 				float2 sampleUV = (objectPos.xz - _TerrainPivotScaleY.xz) * rcp(_TerrainSize);
 				float4 sampledHeight = _TerrainHeightmap.SampleLevel(Global_bilinear_clamp_sampler, sampleUV, 0, 0);
 				float height = UnpackHeightmap(sampledHeight) * (_TerrainPivotScaleY.w * 2);
+				float3 normal = _TerrainNormalmap.SampleLevel(Global_bilinear_clamp_sampler, sampleUV, 0, 0) * 2 - 1;
 
 				worldPos.y += height;
 				objectPos.y += height;
@@ -298,9 +306,9 @@ Shader "Landscape/Grass"
 				float windFade;
                 float scaleFade;
                 PerVertexFade(objectPos, windFade, scaleFade);
-				output.noise = PerlinNoise(objectPos.xz, _ColorVariation);
-				output.noiseDetail = PerlinNoise(objectPos.xz, _DarkVariation);
-				output.noiseDetail *= 1.0 - saturate((distance(objectPos, _WorldSpaceCameraPos) - _DarkFadeness.x) / _DarkFadeness.y);
+				output.noise.y = PerlinNoise(objectPos.xz, _DarkVariation);
+				output.noise.x = PerlinNoise(objectPos.xz, _ColorVariation);
+				output.noise.y *= 1.0 - saturate((distance(objectPos, _WorldSpaceCameraPos) - _DarkFadeness.x) / _DarkFadeness.y);
 
 				FWindInput windInput;
                 windInput.fade = windFade;
@@ -314,8 +322,13 @@ Shader "Landscape/Grass"
 				Wind(windInput, worldPos, output.normalWS);
 				worldPos = ApplyScaleFade(worldPos, objectPos, scaleFade);
 
+				output.uv0 = input.uv0;
+				output.uv1 = input.uv1;
+				output.color = input.color;
 				output.vertexWS = float4(worldPos, 1);
 				output.vertexCS = mul(unity_MatrixVP, output.vertexWS);
+				output.normalWS = normalize(mul(input.normalOS, (float3x3)unity_WorldToObject));
+				output.normalWS = lerp(normal, output.normalWS, _VertexNormalStrength);
 				return output;
 			}
 
@@ -332,8 +345,8 @@ Shader "Landscape/Grass"
 				clip(baseColor.a);
 				//clip(baseColor.a - _AlphaThreshold);
 
-				float3 variantColor = lerp(lerp(_BottomTint.rgb, _TopTint.rgb, input.uv0.y), _TintVariation.rgb, input.noise);
-				variantColor = lerp(variantColor, _DarkTint.rgb, input.noiseDetail);
+				float3 variantColor = lerp(lerp(_BottomTint.rgb, _TopTint.rgb, input.uv0.y), _TintVariation.rgb, input.noise.x);
+				variantColor = lerp(variantColor, _DarkTint.rgb, input.noise.y);
 
 				//BXDF Context
                 float3 lightDir = normalize(_MainLightPosition.xyz);
@@ -360,7 +373,7 @@ Shader "Landscape/Grass"
                     indirectDiffuse *= baseColor.rgb;
                 #endif
 
-				float3 subsurfaceColor = Transmission(baseColor.rgb * float3(0.8, 1, 0), lightDir, viewDir, normalWS, halfDir, 1, 0.25) * 2;
+				float3 subsurfaceColor = Transmission(baseColor.rgb, lightDir, viewDir, normalWS, halfDir, 1, 0.32) * 2;
 
 				//Surface
 				float3 outColor = variantColor * (indirectDiffuse + (directDiffuse + subsurfaceColor) * attenuatedLightColor);
@@ -380,6 +393,7 @@ Shader "Landscape/Grass"
             #pragma vertex vert
             #pragma fragment frag
 			#pragma multi_compile_instancing
+			#pragma shader_feature _PivotFromUV1
 			//#pragma enable_d3d11_debug_symbols
 			#pragma instancing_options procedural:SetupNatureRenderer
 
@@ -388,6 +402,7 @@ Shader "Landscape/Grass"
 			struct Attributes
 			{
 				float2 uv0 : TEXCOORD0;
+				float4 uv1 : TEXCOORD1;
 				float4 color : COLOR;
 				float3 normalOS : NORMAL;
 				float4 vertexOS : POSITION;
@@ -397,7 +412,7 @@ Shader "Landscape/Grass"
 			struct Varyings
 			{
 				float2 uv0 : TEXCOORD0;
-				float noise : TEXCOORD1;
+				float4 uv1 : TEXCOORD1;
 				float4 color : COLOR;
 				float3 normalWS : NORMAL;
 				float4 vertexWS : TEXCOORD2;
@@ -423,15 +438,18 @@ Shader "Landscape/Grass"
 				UNITY_TRANSFER_INSTANCE_ID(input, output);
 
 				output.uv0 = input.uv0;
+				output.uv1 = input.uv1;
 				output.color = input.color;
 				output.normalWS = normalize(mul((float3x3)UNITY_MATRIX_M, input.normalOS));
 				output.vertexWS = mul(UNITY_MATRIX_M, input.vertexOS);
 				float3 objectPos = float3(UNITY_MATRIX_M[0].w, UNITY_MATRIX_M[1].w, UNITY_MATRIX_M[2].w);
+				#if _PivotFromUV1
+                    objectPos += input.uv1.xyz;
+                #endif
 
 				float windFade;
                 float scaleFade;
                 PerVertexFade(objectPos, windFade, scaleFade);
-				output.noise = PerlinNoise(objectPos.xz, _ColorVariation);
 
 				FWindInput windInput;
                 windInput.fade = windFade;
@@ -455,7 +473,7 @@ Shader "Landscape/Grass"
 				UNITY_SETUP_INSTANCE_ID(input);
 
 				float alpha = _AlbedoTexture.Sample(sampler_AlbedoTexture, input.uv0).a;
-				clip(alpha);
+				clip(alpha - 0.33);
 				//clip(alpha - _AlphaThreshold);
 				return 0;
 			}
