@@ -411,7 +411,7 @@ void Wind(FWindInput input, inout float3 positionWS, inout float3 normalWS)
     #endif
 
     // Compute wind.
-    float3 wind = ComputeWind( input, positionWS );
+    float3 wind = ComputeWind(input, positionWS);
 
     // Apply wind to vertex.
     float3 outputWS = ApplyWind(positionWS, input.objectPivot, wind, input.mask, input.fade);
@@ -419,7 +419,7 @@ void Wind(FWindInput input, inout float3 positionWS, inout float3 normalWS)
     // Recalculate normals for grass
     #if defined(_TYPE_GRASS)
         float3 delta = outputWS - positionWS;
-        normalWS = lerp(normalWS, normalWS + normalize( delta + float3(0, 0.1, 0) ), length(delta) * _RecalculateWindNormals * input.fade );
+        normalWS = lerp(normalWS, normalWS + normalize( delta + float3(0, 0.1, 0) ), length(delta) * _RecalculateWindNormals * input.fade);
     #endif
 
     positionWS = outputWS;

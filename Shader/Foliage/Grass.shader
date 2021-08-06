@@ -112,7 +112,7 @@ Shader "Landscape/Grass"
 			struct Attributes
 			{
 				float2 uv0 : TEXCOORD0;
-				float4 uv1 : TEXCOORD2;
+				float2 uv1 : TEXCOORD2;
 				float4 color : COLOR;
 				float3 normalOS : NORMAL;
 				float4 vertexOS : POSITION;
@@ -122,7 +122,7 @@ Shader "Landscape/Grass"
 			struct Varyings
 			{
 				float2 uv0 : TEXCOORD0;
-				float4 uv1 : TEXCOORD1;
+				float2 uv1 : TEXCOORD1;
 				float2 noise : TEXCOORD2;
 				float4 color : COLOR;
 				float3 normalWS : NORMAL;
@@ -140,7 +140,7 @@ Shader "Landscape/Grass"
 				float3 worldPos = mul(UNITY_MATRIX_M, input.vertexOS).xyz;
 				float3 objectPos = float3(UNITY_MATRIX_M[0].w, UNITY_MATRIX_M[1].w, UNITY_MATRIX_M[2].w);
 				#if _PivotFromUV1
-                    objectPos = input.uv1.xyz;
+                    objectPos.xz += input.uv1;
                 #endif
 
 				float windFade;
@@ -180,6 +180,9 @@ Shader "Landscape/Grass"
 				float3 normalWS = input.normalWS;
 				float3 worldPos = input.vertexWS.xyz;
 				float3 objectPos = float3(UNITY_MATRIX_M[0].w, UNITY_MATRIX_M[1].w, UNITY_MATRIX_M[2].w);
+				#if _PivotFromUV1
+                    objectPos.xz += input.uv1;
+                #endif
 
 				//Surface
 				float4 baseColor = _AlbedoTexture.Sample(sampler_AlbedoTexture, input.uv0);
@@ -282,9 +285,6 @@ Shader "Landscape/Grass"
 
 				float3 worldPos = mul(grassElement.matrix_World, input.vertexOS).xyz;
 				float3 objectPos = float3(grassElement.matrix_World[0].w, grassElement.matrix_World[1].w, grassElement.matrix_World[2].w);
-				#if _PivotFromUV1
-                    objectPos += input.uv1.xyz;
-                #endif
 
 				/*float invSize = rcp(_TerrainSize);
 				float2 sampleUV = (objectPos.xz - _TerrainPivotScaleY.xz) * invSize;
@@ -402,7 +402,7 @@ Shader "Landscape/Grass"
 			struct Attributes
 			{
 				float2 uv0 : TEXCOORD0;
-				float4 uv1 : TEXCOORD1;
+				float4 uv1 : TEXCOORD2;
 				float4 color : COLOR;
 				float3 normalOS : NORMAL;
 				float4 vertexOS : POSITION;
@@ -431,6 +431,20 @@ Shader "Landscape/Grass"
 				return positionWS;
 			}
 
+            float4 UnityWorldToClipPos(float3 positionWS, float3 normalWS)
+            {
+				float3 vertexWS_Bias = ApplyShadowBias(-0.05, -0, positionWS, normalWS, normalize(_MainLightPosition.xyz));
+				float4 positionCS = mul(UNITY_MATRIX_VP, float4(vertexWS_Bias, 1));
+
+				#if UNITY_REVERSED_Z
+					positionCS.z = min(positionCS.z, positionCS.w * UNITY_NEAR_CLIP_VALUE);
+				#else
+					positionCS.z = max(positionCS.z, positionCS.w * UNITY_NEAR_CLIP_VALUE);
+				#endif
+
+				return positionCS;
+            }
+
 			Varyings vert(Attributes input)
 			{
 				Varyings output = (Varyings)0;
@@ -444,7 +458,7 @@ Shader "Landscape/Grass"
 				output.vertexWS = mul(UNITY_MATRIX_M, input.vertexOS);
 				float3 objectPos = float3(UNITY_MATRIX_M[0].w, UNITY_MATRIX_M[1].w, UNITY_MATRIX_M[2].w);
 				#if _PivotFromUV1
-                    objectPos += input.uv1.xyz;
+                    objectPos.xz += input.uv1;
                 #endif
 
 				float windFade;
@@ -462,9 +476,7 @@ Shader "Landscape/Grass"
                 windInput.mask = input.uv0.y * saturate(input.vertexOS.y / _PivotOffset) * GetWindVariation(objectPos);
 				Wind(windInput, output.vertexWS.xyz, output.normalWS);
 				output.vertexWS.xyz = ApplyScaleFade(output.vertexWS.xyz, objectPos, scaleFade);
-	
-				float3 vertexWS_Bias = ApplyShadowBias(-0.05, -0.125, output.vertexWS.xyz, output.normalWS, normalize(_MainLightPosition.xyz));
-				output.vertexCS = mul(UNITY_MATRIX_VP, float4(vertexWS_Bias, 1));
+				output.vertexCS = UnityWorldToClipPos(output.vertexWS.xyz, output.normalWS);
 				return output;
 			}
 
