@@ -2,11 +2,10 @@ using Unity.Jobs;
 using UnityEditor;
 using UnityEngine;
 using Unity.Mathematics;
-using Landscape.FoliagePipeline;
 using System.Collections.Generic;
 using System.Runtime.InteropServices;
 
-namespace Landscape.Editor.FoliagePipeline
+namespace Landscape.FoliagePipeline.Editor
 {
     [CustomEditor(typeof(MeshAsset))]
     public class MeshAssetEditor : UnityEditor.Editor

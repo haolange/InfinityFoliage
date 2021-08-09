@@ -1,9 +1,8 @@
 using UnityEditor;
 using UnityEngine;
-using Landscape.FoliagePipeline;
 using UnityEditor.ProjectWindowCallback;
 
-namespace Landscape.Editor.FoliagePipeline
+namespace Landscape.FoliagePipeline.Editor
 {
     public class FoliageAssetAction
     {

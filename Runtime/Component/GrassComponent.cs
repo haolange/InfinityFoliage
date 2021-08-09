@@ -47,30 +47,24 @@ namespace Landscape.FoliagePipeline
         [HideInInspector]
         public FGrassSector[] grassSectors;
 
-        private int m_Count;
+        private int m_Counter;
         private MaterialPropertyBlock m_PropertyBlock;
 
         protected override void OnRegister()
         {
-            m_Count = 0;
+            m_Counter = 0;
             terrain = GetComponent<Terrain>();
             foliageType = EFoliageType.Grass;
             terrainData = terrain.terrainData;
             drawDistance = terrain.detailObjectDistance;
             terrain.detailObjectDistance = 0;
 
-            FGrassShaderProperty shaderProperty;
-            shaderProperty.terrainSize = SectorSize;
-            shaderProperty.normalmapTexture = terrain.normalmapTexture;
-            shaderProperty.heightmapTexture = terrainData.heightmapTexture;
-            shaderProperty.terrainPivotScaleY = new float4(transform.position, TerrainScaleY);
-            
             boundSector.BuildNativeCollection();
             m_PropertyBlock = new MaterialPropertyBlock();
-            m_PropertyBlock.SetInt(GrassShaderID.terrainSize, shaderProperty.terrainSize);
-            m_PropertyBlock.SetTexture(GrassShaderID.terrainHeightmap, shaderProperty.heightmapTexture);
-            m_PropertyBlock.SetTexture(GrassShaderID.terrainNormalmap, shaderProperty.normalmapTexture);
-            m_PropertyBlock.SetVector(GrassShaderID.terrainPivotScaleY, shaderProperty.terrainPivotScaleY);
+            m_PropertyBlock.SetInt(GrassShaderID.TerrainSize, SectorSize);
+            m_PropertyBlock.SetTexture(GrassShaderID.TerrainNormalmap, terrain.normalmapTexture);
+            m_PropertyBlock.SetTexture(GrassShaderID.TerrainHeightmap, terrainData.heightmapTexture);
+            m_PropertyBlock.SetVector(GrassShaderID.TerrainPivotScaleY, new float4(transform.position, TerrainScaleY));
 
             foreach(FGrassSector grassSector in grassSectors)
             {
@@ -116,7 +110,7 @@ namespace Landscape.FoliagePipeline
             TerrainTexture HeightTexture = new TerrainTexture(SectorSize);
             HeightTexture.TerrainDataToHeightmap(terrainData);
 
-            boundSector = new FBoundSector(SectorSize, numSection, SectionSize, transform.position, terrainData.bounds);
+            boundSector = new FBoundSector(numSection, SectorSize, SectionSize, transform.position, terrainData.bounds);
             boundSector.BuildBounds(SectorSize, SectionSize, TerrainScaleY, transform.position, HeightTexture.HeightMap);
 
             HeightTexture.Release();
@@ -145,28 +139,28 @@ namespace Landscape.FoliagePipeline
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public override void DispatchSetup(in float3 viewOrigin, in float4x4 matrixProj, in NativeList<JobHandle> taskHandles)
         {
-            if(m_Count == boundSector.nativeSections.Length) { return; }
+            if(m_Counter == boundSector.m_Sections.Length) { return; }
 
             int limit = 16;
-            while (limit > 0 && m_Count < boundSector.nativeSections.Length)
+            while (limit > 0 && m_Counter < boundSector.m_Sections.Length)
             {
-                FBoundSection boundSection = boundSector.nativeSections[m_Count];
+                FBoundSection boundSection = boundSector.m_Sections[m_Counter];
 
                 for (int i = 0; i < grassSectors.Length; ++i)
                 {
                     FGrassSector grassSector = grassSectors[i];
-                    taskHandles.Add(grassSector.sections[m_Count].BuildInstance(SectionSize, UnityEngine.Random.Range(1, 16), TerrainScaleY, terrain.detailObjectDensity, boundSection.pivotPosition, grassSector.widthScale));
+                    taskHandles.Add(grassSector.sections[m_Counter].BuildInstance(SectionSize, UnityEngine.Random.Range(1, 16), TerrainScaleY, terrain.detailObjectDensity, boundSection.pivotPosition, grassSector.widthScale));
                 }
                 JobHandle.CompleteAll(taskHandles);
 
                 for (int j = 0; j < grassSectors.Length; ++j)
                 {
                     FGrassSector grassSector = grassSectors[j];
-                    grassSector.sections[m_Count].UploadGPUData();
+                    grassSector.sections[m_Counter].UploadGPUData();
                 }
 
                 --limit;
-                ++m_Count;
+                ++m_Counter;
                 taskHandles.Clear();
             }
         }
@@ -174,7 +168,7 @@ namespace Landscape.FoliagePipeline
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public override void DispatchDraw(CommandBuffer cmdBuffer, in int passIndex)
         {
-            for(int i = 0; i < boundSector.nativeSections.Length; ++i)
+            for(int i = 0; i < boundSector.m_Sections.Length; ++i)
             {
                 if (boundSector.visibleMap[i] == 0) { continue; }
 

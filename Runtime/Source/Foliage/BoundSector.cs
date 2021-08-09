@@ -15,28 +15,28 @@ namespace Landscape.FoliagePipeline
         public FBound bound;
         public FBoundSection[] sections;
         public NativeArray<byte> visibleMap;
-        public NativeArray<FBoundSection> nativeSections;
+        public NativeArray<FBoundSection> m_Sections;
 
-        public FBoundSector(in int sectorSize, in int numSection, in int sectionSize, in float3 sectorPivotPosition, in FAABB sectorBound)
+        public FBoundSector(in int numSection, in int sectorSize, in int sectionSize, in float3 sectorPivotPosition, in FAABB sectorBound, in bool needSections = true)
         {
             int sectorSize_Half = sectorSize / 2;
             int sectionSize_Half = sectionSize / 2;
-
             bound = new FBound(new float3(sectorPivotPosition.x + sectorSize_Half, sectorPivotPosition.y + (sectorBound.size.y / 2), sectorPivotPosition.z + sectorSize_Half), sectorBound.size * 0.5f);
+            
+            if(!needSections) { return; }
             sections = new FBoundSection[numSection * numSection];
-
             for (int x = 0; x < numSection; ++x)
             {
                 for (int y = 0; y < numSection; ++y)
                 {
-                    int SectionIndex = (x * numSection) + y;
-                    float3 SectionPivotPosition = sectorPivotPosition + new float3(sectionSize * x, 0, sectionSize * y);
-                    float3 SectionCenterPosition = SectionPivotPosition + new float3(sectionSize_Half, 0, sectionSize_Half);
+                    int sectionIndex = (x * numSection) + y;
+                    float3 sectionPivotPosition = sectorPivotPosition + new float3(sectionSize * x, 0, sectionSize * y);
+                    float3 sectionCenterPosition = sectionPivotPosition + new float3(sectionSize_Half, 0, sectionSize_Half);
 
-                    sections[SectionIndex] = new FBoundSection();
-                    sections[SectionIndex].pivotPosition = SectionPivotPosition;
-                    sections[SectionIndex].centerPosition = SectionCenterPosition;
-                    sections[SectionIndex].boundBox = new FAABB(SectionCenterPosition, new float3(sectionSize, 1, sectionSize));
+                    sections[sectionIndex] = new FBoundSection();
+                    sections[sectionIndex].pivotPosition = sectionPivotPosition;
+                    sections[sectionIndex].centerPosition = sectionCenterPosition;
+                    sections[sectionIndex].boundBox = new FAABB(sectionCenterPosition, new float3(sectionSize, 1, sectionSize));
                 }
             }
         }
@@ -44,16 +44,15 @@ namespace Landscape.FoliagePipeline
         public void BuildNativeCollection()
         {
             visibleMap = new NativeArray<byte>(sections.Length, Allocator.Persistent);
-            nativeSections = new NativeArray<FBoundSection>(sections.Length, Allocator.Persistent);
-            
-            NativeArray<FBoundSection>.Copy(sections, nativeSections);
+            m_Sections = new NativeArray<FBoundSection>(sections.Length, Allocator.Persistent);
+            NativeArray<FBoundSection>.Copy(sections, m_Sections);
             sections = null;
         }
 
         public void ReleaseNativeCollection()
         {
             visibleMap.Dispose();
-            nativeSections.Dispose();
+            m_Sections.Dispose();
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -65,9 +64,9 @@ namespace Landscape.FoliagePipeline
                 grassCullingJob.viewOrigin = viewOrigin;
                 grassCullingJob.visibleMap = visibleMap;
                 grassCullingJob.cullDistance = drawDistance + (drawDistance / 2);
-                grassCullingJob.sectionBounds = (FBoundSection*)nativeSections.GetUnsafePtr();
+                grassCullingJob.sectionBounds = (FBoundSection*)m_Sections.GetUnsafePtr();
             }
-            return grassCullingJob.Schedule(nativeSections.Length, 32);
+            return grassCullingJob.Schedule(m_Sections.Length, 32);
         }
 
 #if UNITY_EDITOR
@@ -75,44 +74,44 @@ namespace Landscape.FoliagePipeline
         {
             Geometry.DrawBound(bound, Color.white);
 
-            for (int i = 0; i < nativeSections.Length; ++i)
+            for (int i = 0; i < m_Sections.Length; ++i)
             {
-                Geometry.DrawBound(nativeSections[i].boundBox, visibleMap[i] == 1 ? Color.green : Color.red);
+                Geometry.DrawBound(m_Sections[i].boundBox, visibleMap[i] == 1 ? Color.green : Color.red);
             }
         }
 
         public void BuildBounds(in int sectorSize, in int sectionSize, in float scaleY, in float3 terrianPosition, Texture2D heightmap)
         {
-            int SectorSize_Half = sectorSize / 2;
+            int sectorSizeHalf = sectorSize / 2;
 
             for (int i = 0; i < sections.Length; ++i)
             {
-                ref FBoundSection Section = ref sections[i];
-                float2 PositionScale = new float2(terrianPosition.x, terrianPosition.z) + new float2(SectorSize_Half, SectorSize_Half);
-                float2 RectUV = new float2((Section.pivotPosition.x - PositionScale.x) + SectorSize_Half, (Section.pivotPosition.z - PositionScale.y) + SectorSize_Half);
+                ref FBoundSection section = ref sections[i];
+                float2 positionScale = new float2(terrianPosition.x, terrianPosition.z) + new float2(sectorSizeHalf, sectorSizeHalf);
+                float2 rectUV = new float2((section.pivotPosition.x - positionScale.x) + sectorSizeHalf, (section.pivotPosition.z - positionScale.y) + sectorSizeHalf);
 
-                int ReverseScale = sectorSize - sectionSize;
-                Color[] HeightValues = heightmap.GetPixels(Mathf.FloorToInt(RectUV.x), ReverseScale - Mathf.FloorToInt(RectUV.y), Mathf.FloorToInt(sectionSize), Mathf.FloorToInt(sectionSize), 0);
+                int reverseScale = sectorSize - sectionSize;
+                Color[] heightValues = heightmap.GetPixels(Mathf.FloorToInt(rectUV.x), reverseScale - Mathf.FloorToInt(rectUV.y), Mathf.FloorToInt(sectionSize), Mathf.FloorToInt(sectionSize), 0);
 
-                float MinHeight = HeightValues[0].r;
-                float MaxHeight = HeightValues[0].r;
-                for (int j = 0; j < HeightValues.Length; ++j)
+                float minHeight = heightValues[0].r;
+                float maxHeight = heightValues[0].r;
+                for (int j = 0; j < heightValues.Length; ++j)
                 {
-                    if (MinHeight < HeightValues[j].r)
+                    if (minHeight < heightValues[j].r)
                     {
-                        MinHeight = HeightValues[j].r;
+                        minHeight = heightValues[j].r;
                     }
 
-                    if (MaxHeight > HeightValues[j].r)
+                    if (maxHeight > heightValues[j].r)
                     {
-                        MaxHeight = HeightValues[j].r;
+                        maxHeight = heightValues[j].r;
                     }
                 }
 
-                float PosY = ((Section.centerPosition.y + MinHeight * scaleY) + (Section.centerPosition.y + MaxHeight * scaleY)) * 0.5f;
-                float SizeY = ((Section.centerPosition.y + MinHeight * scaleY) - (Section.centerPosition.y + MaxHeight * scaleY));
-                float3 NewBoundCenter = new float3(Section.centerPosition.x, PosY, Section.centerPosition.z);
-                Section.boundBox = new FAABB(NewBoundCenter, new float3(sectionSize, SizeY, sectionSize));
+                float posY = ((section.centerPosition.y + minHeight * scaleY) + (section.centerPosition.y + maxHeight * scaleY)) * 0.5f;
+                float sizeY = ((section.centerPosition.y + minHeight * scaleY) - (section.centerPosition.y + maxHeight * scaleY));
+                float3 newBoundCenter = new float3(section.centerPosition.x, posY, section.centerPosition.z);
+                section.boundBox = new FAABB(newBoundCenter, new float3(sectionSize, sizeY, sectionSize));
             }
         }
 #endif

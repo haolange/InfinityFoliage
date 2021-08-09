@@ -1,7 +1,6 @@
 using UnityEditor;
-using Landscape.FoliagePipeline;
 
-namespace Landscape.Editor.FoliagePipeline
+namespace Landscape.FoliagePipeline.Editor
 {
     [CanEditMultipleObjects]
     [CustomEditor(typeof(TreeComponent))]

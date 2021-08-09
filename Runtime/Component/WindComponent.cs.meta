@@ -4,9 +4,9 @@ MonoImporter:
   externalObjects: {}
   serializedVersion: 2
   defaultReferences:
-  - _sourceWindZone: {instanceID: 0}
-  - _gustNoise: {fileID: 2800000, guid: b80caabb7da49cb4aae7ed68b37a48b5, type: 3}
-  - perlinNoise: {fileID: 2800000, guid: 35ce94de330fece47a005f8381cd0341, type: 3}
+  - m_sourceWindZone: {instanceID: 0}
+  - m_gustNoise: {fileID: 2800000, guid: b80caabb7da49cb4aae7ed68b37a48b5, type: 3}
+  - m_perlinNoise: {fileID: 2800000, guid: 35ce94de330fece47a005f8381cd0341, type: 3}
   executionOrder: 0
   icon: {instanceID: 0}
   userData: 

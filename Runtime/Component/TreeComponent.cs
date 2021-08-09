@@ -50,10 +50,9 @@ namespace Landscape.FoliagePipeline
         public void OnSave()
         {
             terrain = GetComponent<Terrain>();
-            terrainData = GetComponent<TerrainCollider>().terrainData;
-
+            terrainData = terrain.terrainData;
             int sectorSize = terrainData.heightmapResolution - 1;
-            boundSector = new FBoundSector(sectorSize, 0, 0, transform.position, terrainData.bounds);
+            boundSector = new FBoundSector(0, sectorSize, 0, transform.position, terrainData.bounds, false);
         }
 
         private void DrawBounds(in bool color = false)
