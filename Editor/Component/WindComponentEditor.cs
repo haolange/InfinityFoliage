@@ -134,14 +134,14 @@ namespace Landscape.FoliagePipeline.Editor
 
     private void FindSerializedProperties()
     {
-      this._preset = this.serializedObject.FindProperty("_selectedPreset");
-      this._sourceWindZone = this.serializedObject.FindProperty("_sourceWindZone");
-      this._windSettings = this.serializedObject.FindProperty("_windSettings");
+      this._preset = this.serializedObject.FindProperty("m_selectedPreset");
+      this._sourceWindZone = this.serializedObject.FindProperty("m_sourceWindZone");
+      this._windSettings = this.serializedObject.FindProperty("windSettings");
       this._gustDirection = this._windSettings.FindPropertyRelative("GustDirection");
       this._windStrength = this._windSettings.FindPropertyRelative("WindStrength");
       this._windSpeed = this._windSettings.FindPropertyRelative("WindSpeed");
       this._turbulence = this._windSettings.FindPropertyRelative("Turbulence");
-      this._gustNoise = this.serializedObject.FindProperty("_gustNoise");
+      this._gustNoise = this.serializedObject.FindProperty("m_gustNoise");
     }
 
     private void ValidateNoise()
