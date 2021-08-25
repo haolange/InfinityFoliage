@@ -327,7 +327,7 @@ Shader "Landscape/Grass"
 				output.color = input.color;
 				output.vertexWS = float4(worldPos, 1);
 				output.vertexCS = mul(unity_MatrixVP, output.vertexWS);
-				output.normalWS = normalize(mul(input.normalOS, (float3x3)unity_WorldToObject));
+				output.normalWS = normalize(mul((float3x3)grassElement.matrix_World, input.normalOS));
 				output.normalWS = lerp(normal, output.normalWS, _VertexNormalStrength);
 				return output;
 			}
