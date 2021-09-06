@@ -298,7 +298,7 @@ Shader "Landscape/Grass"
 				float2 sampleUV = (objectPos.xz - _TerrainPivotScaleY.xz) * rcp(_TerrainSize);
 				float4 sampledHeight = _TerrainHeightmap.SampleLevel(Global_bilinear_clamp_sampler, sampleUV, 0, 0);
 				float height = UnpackHeightmap(sampledHeight) * (_TerrainPivotScaleY.w * 2);
-				float3 normal = _TerrainNormalmap.SampleLevel(Global_bilinear_clamp_sampler, sampleUV, 0, 0) * 2 - 1;
+				float3 normal = _TerrainNormalmap.SampleLevel(Global_bilinear_clamp_sampler, sampleUV, 0, 0).xyz * 2 - 1;
 
 				worldPos.y += height;
 				objectPos.y += height;
