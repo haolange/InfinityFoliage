@@ -9,7 +9,7 @@ namespace Landscape.FoliagePipeline
     {
         public FMesh grass;
         public int grassIndex;
-        public float4 WidthScale
+        public float4 widthScale
         {
             get
             {

@@ -8,7 +8,6 @@ namespace Landscape.FoliagePipeline.Editor
     {
         TreeComponent treeTarget { get { return target as TreeComponent; } }
 
-
         void OnEnable()
         {
             UnityEditor.SceneManagement.EditorSceneManager.sceneSaving += PreSave;
@@ -22,9 +21,7 @@ namespace Landscape.FoliagePipeline.Editor
         public override void OnInspectorGUI()
         {
             base.OnInspectorGUI();
-
             serializedObject.Update();
-
             serializedObject.ApplyModifiedProperties();
         }
 
@@ -37,7 +34,6 @@ namespace Landscape.FoliagePipeline.Editor
         {
             if (treeTarget.gameObject.activeSelf == false) { return; }
             if (treeTarget.enabled == false) { return; }
-
             treeTarget.OnSave();
         }
     }

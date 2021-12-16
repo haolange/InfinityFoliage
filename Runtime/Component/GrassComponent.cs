@@ -19,21 +19,21 @@ namespace Landscape.FoliagePipeline
         public bool showBounds = false;
 #endif
 
-        public int SectorSize
+        internal int sectorSize
         {
             get
             {
                 return terrainData.heightmapResolution - 1;
             }
         }
-        public int SectionSize
+        public int sectionSize
         {
             get
             {
-                return SectorSize / numSection;
+                return sectorSize / numSection;
             }
         }
-        public float TerrainScaleY
+        internal float terrainScaleY
         {
             get
             {
@@ -60,10 +60,10 @@ namespace Landscape.FoliagePipeline
 
             boundSector.BuildNativeCollection();
             m_PropertyBlock = new MaterialPropertyBlock();
-            m_PropertyBlock.SetInt(GrassShaderID.TerrainSize, SectorSize);
+            m_PropertyBlock.SetInt(GrassShaderID.TerrainSize, sectorSize);
             m_PropertyBlock.SetTexture(GrassShaderID.TerrainNormalmap, terrain.normalmapTexture);
             m_PropertyBlock.SetTexture(GrassShaderID.TerrainHeightmap, terrainData.heightmapTexture);
-            m_PropertyBlock.SetVector(GrassShaderID.TerrainPivotScaleY, new float4(transform.position, TerrainScaleY));
+            m_PropertyBlock.SetVector(GrassShaderID.TerrainPivotScaleY, new float4(transform.position, terrainScaleY));
 
             foreach(FGrassSector grassSector in grassSectors)
             {
@@ -91,11 +91,11 @@ namespace Landscape.FoliagePipeline
             terrain = GetComponent<Terrain>();
             terrainData = GetComponent<TerrainCollider>().terrainData;
 
-            TerrainTexture HeightTexture = new TerrainTexture(SectorSize);
+            TerrainTexture HeightTexture = new TerrainTexture(sectorSize);
             HeightTexture.TerrainDataToHeightmap(terrainData);
 
-            boundSector = new FBoundSector(numSection, SectorSize, SectionSize, transform.position, terrainData.bounds);
-            boundSector.BuildBounds(SectorSize, SectionSize, TerrainScaleY, transform.position, HeightTexture.HeightMap);
+            boundSector = new FBoundSector(numSection, sectorSize, sectionSize, transform.position, terrainData.bounds);
+            boundSector.BuildBounds(sectorSize, sectionSize, terrainScaleY, transform.position, HeightTexture.HeightMap);
 
             HeightTexture.Release();
         }
@@ -133,7 +133,7 @@ namespace Landscape.FoliagePipeline
                 for (int i = 0; i < grassSectors.Length; ++i)
                 {
                     FGrassSector grassSector = grassSectors[i];
-                    taskHandles.Add(grassSector.sections[m_Counter].BuildInstance(SectionSize, UnityEngine.Random.Range(1, 16), TerrainScaleY, terrain.detailObjectDensity, boundSection.pivotPosition, grassSector.WidthScale));
+                    taskHandles.Add(grassSector.sections[m_Counter].BuildInstance(sectionSize, UnityEngine.Random.Range(1, 16), terrainScaleY, terrain.detailObjectDensity, boundSection.pivotPosition, grassSector.widthScale));
                 }
                 JobHandle.CompleteAll(taskHandles);
 

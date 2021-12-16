@@ -30,6 +30,8 @@ namespace Landscape.FoliagePipeline.Editor
                     treeComponent = SelectObject.AddComponent<TreeComponent>();
                 }
 
+                treeComponent.OnSave();
+
                 TerrainData terrainData = UTerrain.terrainData;
                 treeComponent.treeSectors = new FTreeSector[terrainData.treePrototypes.Length];
 
@@ -82,6 +84,8 @@ namespace Landscape.FoliagePipeline.Editor
 
                 EditorUtility.SetDirty(treeComponent);
             }
+
+            UpdateTerrainTree(menuCommand);
         }
 
         [MenuItem("GameObject/EntityAction/Landscape/UpdateTerrainTree", false, 10)]
@@ -154,15 +158,16 @@ namespace Landscape.FoliagePipeline.Editor
                     continue; 
                 }
 
+                TerrainData terrainData = terrain.terrainData;
                 GrassComponent grassComponent = selectObject.GetComponent<GrassComponent>();
                 if (grassComponent == null)
                 {
                     grassComponent = selectObject.AddComponent<GrassComponent>();
                 }
 
+                grassComponent.numSection = (terrainData.heightmapResolution - 1) / 32;
                 grassComponent.OnSave();
 
-                TerrainData terrainData = terrain.terrainData;
                 grassComponent.grassSectors = new FGrassSector[terrainData.detailPrototypes.Length];
 
                 for (int index = 0; index < terrainData.detailPrototypes.Length; ++index)
@@ -211,6 +216,8 @@ namespace Landscape.FoliagePipeline.Editor
 
                 EditorUtility.SetDirty(selectObject);
             }
+
+            UpdateTerrainGrass(menuCommand);
         }
 
         [MenuItem("GameObject/EntityAction/Landscape/UpdateTerrainGrass", false, 12)]
@@ -247,17 +254,17 @@ namespace Landscape.FoliagePipeline.Editor
                         FGrassSection grassSection = grassSector.sections[i];
                         FBoundSection boundSection = boundSector.sections[grassSection.boundIndex];
 
-                        grassSection.densityMap = new byte[grassComponent.SectionSize * grassComponent.SectionSize];
+                        grassSection.densityMap = new byte[grassComponent.sectionSize * grassComponent.sectionSize];
                         //grassSection.heightmap = new float[grassComponent.SectionSize * grassComponent.SectionSize];
 
                         int2 sampleUV = (int2)boundSection.pivotPosition.xz - new int2((int)selectObject.transform.position.x, (int)selectObject.transform.position.z);
-                        int[,] densityMap = terrainData.GetDetailLayer(sampleUV.x, sampleUV.y, grassComponent.SectionSize, grassComponent.SectionSize, grassIndex);
-                        float[,] heightMap = terrainData.GetHeights(sampleUV.x, sampleUV.y, grassComponent.SectionSize, grassComponent.SectionSize);
+                        int[,] densityMap = terrainData.GetDetailLayer(sampleUV.x, sampleUV.y, grassComponent.sectionSize, grassComponent.sectionSize, grassIndex);
+                        float[,] heightMap = terrainData.GetHeights(sampleUV.x, sampleUV.y, grassComponent.sectionSize, grassComponent.sectionSize);
 
                         //Build Density and Height and Normal
                         var updategrassTask = new FUpdateGrassTask();
                         {
-                            updategrassTask.length = grassComponent.SectionSize;
+                            updategrassTask.length = grassComponent.sectionSize;
                             updategrassTask.srcHeight = heightMap;
                             updategrassTask.srcDensity = densityMap;
                             updategrassTask.grassSection = grassSection;
