@@ -40,14 +40,13 @@ namespace Landscape.FoliagePipeline
                 return terrainData.size.y;
             }
         }
-        [HideInInspector]
-        public float drawDistance;
-        [HideInInspector]
-        public float lastNumSection;
+
         [HideInInspector]
         public FGrassSector[] grassSectors;
 
         private int m_Counter;
+        private float m_DrawDistance;
+        private float m_LastNumSection;
         private MaterialPropertyBlock m_PropertyBlock;
 
         protected override void OnRegister()
@@ -56,7 +55,7 @@ namespace Landscape.FoliagePipeline
             terrain = GetComponent<Terrain>();
             foliageType = EFoliageType.Grass;
             terrainData = terrain.terrainData;
-            drawDistance = terrain.detailObjectDistance;
+            m_DrawDistance = terrain.detailObjectDistance;
             terrain.detailObjectDistance = 0;
 
             boundSector.BuildNativeCollection();
@@ -68,29 +67,14 @@ namespace Landscape.FoliagePipeline
 
             foreach(FGrassSector grassSector in grassSectors)
             {
-                grassSector.Init(boundSector, terrainData);
+                grassSector.Init(terrainData);
             }
-        }
-
-        protected override void OnTransformChange()
-        {
-
-        }
-
-        protected override void EventPlay()
-        {
-
-        }
-
-        protected override void EventTick()
-        {
-
         }
 
         protected override void UnRegister()
         {
             boundSector.ReleaseNativeCollection();
-            terrain.detailObjectDistance = drawDistance;
+            terrain.detailObjectDistance = m_DrawDistance;
 
             foreach (FGrassSector grassSector in grassSectors)
             {
@@ -101,8 +85,8 @@ namespace Landscape.FoliagePipeline
 #if UNITY_EDITOR
         public void OnSave()
         {
-            if(lastNumSection == numSection) { return; }
-            lastNumSection = numSection;
+            if(m_LastNumSection == numSection) { return; }
+            m_LastNumSection = numSection;
 
             terrain = GetComponent<Terrain>();
             terrainData = GetComponent<TerrainCollider>().terrainData;
@@ -133,7 +117,7 @@ namespace Landscape.FoliagePipeline
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public override void InitView(in float3 viewOrigin, in float4x4 matrixProj, FPlane* planes, in NativeList<JobHandle> taskHandles)
         {
-            taskHandles.Add(boundSector.InitView(drawDistance, new float4(viewOrigin, 1), planes));
+            taskHandles.Add(boundSector.InitView(m_DrawDistance, new float4(viewOrigin, 1), planes));
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -149,7 +133,7 @@ namespace Landscape.FoliagePipeline
                 for (int i = 0; i < grassSectors.Length; ++i)
                 {
                     FGrassSector grassSector = grassSectors[i];
-                    taskHandles.Add(grassSector.sections[m_Counter].BuildInstance(SectionSize, UnityEngine.Random.Range(1, 16), TerrainScaleY, terrain.detailObjectDensity, boundSection.pivotPosition, grassSector.widthScale));
+                    taskHandles.Add(grassSector.sections[m_Counter].BuildInstance(SectionSize, UnityEngine.Random.Range(1, 16), TerrainScaleY, terrain.detailObjectDensity, boundSection.pivotPosition, grassSector.WidthScale));
                 }
                 JobHandle.CompleteAll(taskHandles);
 

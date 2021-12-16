@@ -16,9 +16,9 @@ namespace Landscape.FoliagePipeline
         public bool showBounds = false;
 #endif
         [HideInInspector]
-        public float drawDistance;
-        [HideInInspector]
         public FTreeSector[] treeSectors;
+
+        private float drawDistance;
         private MaterialPropertyBlock m_PropertyBlock;
 
         protected override void OnRegister()
