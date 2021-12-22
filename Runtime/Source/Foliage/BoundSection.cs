@@ -11,7 +11,6 @@ namespace Landscape.FoliagePipeline
         public float3 pivotPosition;
         public float3 centerPosition;
 
-
         public bool Equals(FBoundSection Target)
         {
             return boundBox.Equals(Target.boundBox) && pivotPosition.Equals(Target.pivotPosition) && centerPosition.Equals(Target.centerPosition);

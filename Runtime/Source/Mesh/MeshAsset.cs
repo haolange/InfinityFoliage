@@ -34,7 +34,7 @@ namespace Landscape.FoliagePipeline
     [Serializable]
     public struct FMesh : IEquatable<FMesh>
     {
-        public bool IsCreated;
+        private bool IsCreated;
         public float numLOD;
         public Bounds boundBox;
         public int[] numSections;

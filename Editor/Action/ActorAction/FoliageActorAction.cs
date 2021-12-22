@@ -242,8 +242,8 @@ namespace Landscape.FoliagePipeline.Editor
                 {
                     grassComponent = selectObject.AddComponent<GrassComponent>();
                 }
-                FBoundSector boundSector = grassComponent.boundSector;
 
+                FBoundSector boundSector = grassComponent.boundSector;
                 for (int index = 0; index < grassComponent.grassSectors.Length; ++index)
                 {
                     FGrassSector grassSector = grassComponent.grassSectors[index];
@@ -309,7 +309,6 @@ namespace Landscape.FoliagePipeline.Editor
                     grassComponent = selectObject.AddComponent<GrassComponent>();
                 }
                 
-                FBoundSector boundSector = grassComponent.boundSector;
                 for (int index = 0; index < grassComponent.grassSectors.Length; ++index)
                 {
                     FGrassSector grassSector = grassComponent.grassSectors[index];

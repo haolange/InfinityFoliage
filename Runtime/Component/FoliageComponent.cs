@@ -51,16 +51,13 @@ namespace Landscape.FoliagePipeline
         internal MTransfrom currTransform;
         internal MTransfrom prevTransform;
 
-        [HideInInspector]
-        public Terrain terrain;
-        [HideInInspector]
-        public TerrainData terrainData;
+        protected Terrain terrain;
+        protected TerrainData terrainData;
         [HideInInspector]
         public FBoundSector boundSector;
 
-        public static List<FoliageComponent> FoliageComponents = new List<FoliageComponent>(128);
+        internal static List<FoliageComponent> FoliageComponents = new List<FoliageComponent>(128);
 
-    
         void OnEnable()
         {
             FoliageComponents.Add(this);
