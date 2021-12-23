@@ -135,7 +135,7 @@ namespace Landscape.FoliagePipeline
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public unsafe void InitView(in float cullDistance, in float3 viewOrigin, in float4x4 matrixProj, FPlane* planes, in NativeList<JobHandle> taskHandles)
+        public unsafe void InitView(in float cullDistance, in float3 viewOrigin, in float4x4 matrixProj, in FPlane* planes, in NativeList<JobHandle> taskHandles)
         {
             var treeCullingJob = new FTreeCullingJob();
             {

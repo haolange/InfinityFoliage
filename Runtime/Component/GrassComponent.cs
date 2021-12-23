@@ -82,7 +82,7 @@ namespace Landscape.FoliagePipeline
             }
         }
 
-#if UNITY_EDITOR
+        #if UNITY_EDITOR
         public void OnSave()
         {
             if(m_LastNumSection == numSection) { return; }
@@ -104,18 +104,33 @@ namespace Landscape.FoliagePipeline
         {
             if (showBounds == false || Application.isPlaying == false || this.enabled == false || this.gameObject.activeSelf == false) return;
 
-            boundSector.DrawBound();
+            Geometry.DrawBound(boundSector.bound, Color.white);
+
+            for (int i = 0; i < boundSector.m_Sections.Length; ++i)
+            {
+                int count = -1;
+                for (int j = 0; j < grassSectors.Length; ++j)
+                {
+                    FGrassSector grassSector = grassSectors[j];
+                    FGrassSection grassSection = grassSector.sections[i];
+                    count += grassSection.instanceCount;
+                }
+
+                if(count > 0)
+                {
+                    Geometry.DrawBound(boundSector.m_Sections[i].boundBox, boundSector.visibleMap[i] == 1 ? Color.green : Color.red);
+                }
+            }
         }
 
         protected virtual void OnDrawGizmosSelected()
         {
             DrawBounds();
         }
-#endif
+        #endif
 
-        #region Grass 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public override void InitView(in float3 viewOrigin, in float4x4 matrixProj, FPlane* planes, in NativeList<JobHandle> taskHandles)
+        public override void InitView(in float3 viewOrigin, in float4x4 matrixProj, in FPlane* planes, in NativeList<JobHandle> taskHandles)
         {
             taskHandles.Add(boundSector.InitView(m_DrawDistance, new float4(viewOrigin, 1), planes));
         }
@@ -164,6 +179,5 @@ namespace Landscape.FoliagePipeline
                 }
             }
         }
-        #endregion //Grass
     }
 }

@@ -19,20 +19,20 @@ namespace Landscape.FoliagePipeline
         Grass = 1
     }
 
-    internal struct MTransfrom : IEquatable<MTransfrom>
+    internal struct FTransfrom : IEquatable<FTransfrom>
     {
         public Vector3 position;
         public Quaternion rotation;
         public Vector3 scale;
 
-        public bool Equals(MTransfrom target)
+        public bool Equals(FTransfrom target)
         {
             return position != target.position || rotation != target.rotation || scale != target.scale;
         }
 
         public override bool Equals(object target)
         {
-            return Equals((MTransfrom)target);
+            return Equals((FTransfrom)target);
         }
 
         public override int GetHashCode()
@@ -48,11 +48,15 @@ namespace Landscape.FoliagePipeline
     public abstract unsafe class FoliageComponent : MonoBehaviour
     {
         internal EFoliageType foliageType;
-        internal MTransfrom currTransform;
-        internal MTransfrom prevTransform;
+        internal FTransfrom currTransform;
+        internal FTransfrom prevTransform;
 
-        protected Terrain terrain;
-        protected TerrainData terrainData;
+        [NonSerialized]
+        [HideInInspector]
+        public Terrain terrain;
+        [NonSerialized]
+        [HideInInspector]
+        public TerrainData terrainData;
         [HideInInspector]
         public FBoundSector boundSector;
 
@@ -62,17 +66,17 @@ namespace Landscape.FoliagePipeline
         {
             FoliageComponents.Add(this);
             OnRegister();
-            EventPlay();
+            //EventPlay();
         }
 
-        void EventUpdate()
+        /*void EventUpdate()
         {
             if (TransfromStateDirty())
             {
                 OnTransformChange();
             }
             EventTick();
-        }
+        }*/
 
         void OnDisable()
         {
@@ -80,7 +84,7 @@ namespace Landscape.FoliagePipeline
             FoliageComponents.Remove(this);
         }
 
-        private bool TransfromStateDirty()
+        /*private bool TransfromStateDirty()
         {
             currTransform.position = transform.position;
             currTransform.rotation = transform.rotation;
@@ -93,14 +97,12 @@ namespace Landscape.FoliagePipeline
             }
 
             return false;
-        }
+        }*/
 
-        protected virtual void OnRegister()
-        {
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        protected abstract void OnRegister();
 
-        }
-
-        protected virtual void EventPlay()
+        /*protected virtual void EventPlay()
         {
 
         }
@@ -113,18 +115,16 @@ namespace Landscape.FoliagePipeline
         protected virtual void OnTransformChange()
         {
 
-        }
-
-        protected virtual void UnRegister()
-        {
-
-        }
+        }*/
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public abstract void InitView(in float3 viewOrigin, in float4x4 matrixProj, FPlane* planes, in NativeList<JobHandle> taskHandles);
+        protected abstract void UnRegister();
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public abstract void DispatchSetup(in float3 viewOrigin, in float4x4 matrixProj,in NativeList<JobHandle> taskHandles);
+        public abstract void InitView(in float3 viewOrigin, in float4x4 matrixProj, in FPlane* planes, in NativeList<JobHandle> taskHandles);
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public abstract void DispatchSetup(in float3 viewOrigin, in float4x4 matrixProj, in NativeList<JobHandle> taskHandles);
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public abstract void DispatchDraw(CommandBuffer cmdBuffer, in int passIndex);

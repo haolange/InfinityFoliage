@@ -17,22 +17,22 @@ namespace Landscape.FoliagePipeline.Editor
             GameObject[] SelectObjects = Selection.gameObjects;
             foreach (GameObject SelectObject in SelectObjects)
             {
-                Terrain UTerrain = SelectObject.GetComponent<Terrain>();
-                if (!UTerrain)
+                Terrain terrain = SelectObject.GetComponent<Terrain>();
+                if (!terrain)
                 {
                     Debug.LogWarning("select GameObject doesn't have terrain component");
                     continue;
                 }
 
+                TerrainData terrainData = terrain.terrainData;
                 TreeComponent treeComponent = SelectObject.GetComponent<TreeComponent>();
                 if (treeComponent == null)
                 {
                     treeComponent = SelectObject.AddComponent<TreeComponent>();
                 }
-
+                treeComponent.terrain = terrain;
+                treeComponent.terrainData = terrainData;
                 treeComponent.OnSave();
-
-                TerrainData terrainData = UTerrain.terrainData;
                 treeComponent.treeSectors = new FTreeSector[terrainData.treePrototypes.Length];
 
                 for (int index = 0; index < terrainData.treePrototypes.Length; ++index)
@@ -98,9 +98,16 @@ namespace Landscape.FoliagePipeline.Editor
             foreach (var selectObject in selectObjects)
             {
                 var terrain = selectObject.GetComponent<Terrain>();
-                var terrainData = terrain.terrainData;
+                if (!terrain)
+                {
+                    Debug.LogWarning(selectObject.name + " doesn't have terrain component");
+                    continue;
+                }
 
+                var terrainData = terrain.terrainData;
                 var treeComponent = selectObject.GetComponent<TreeComponent>();
+                treeComponent.terrain = terrain;
+                treeComponent.terrainData = terrainData;
 
                 if (treeComponent.treeSectors.Length != 0)
                 {
@@ -164,7 +171,8 @@ namespace Landscape.FoliagePipeline.Editor
                 {
                     grassComponent = selectObject.AddComponent<GrassComponent>();
                 }
-
+                grassComponent.terrain = terrain;
+                grassComponent.terrainData = terrainData;
                 grassComponent.numSection = (terrainData.heightmapResolution - 1) / 32;
                 grassComponent.OnSave();
 
@@ -230,18 +238,16 @@ namespace Landscape.FoliagePipeline.Editor
             foreach (GameObject selectObject in selectObjects)
             {
                 Terrain terrain = selectObject.GetComponent<Terrain>();
-                TerrainData terrainData = terrain.terrainData;
                 if (!terrain)
                 {
                     Debug.LogWarning(selectObject.name + " doesn't have terrain component");
                     continue;
                 }
 
+                TerrainData terrainData = terrain.terrainData;
                 GrassComponent grassComponent = selectObject.GetComponent<GrassComponent>();
-                if (grassComponent == null)
-                {
-                    grassComponent = selectObject.AddComponent<GrassComponent>();
-                }
+                grassComponent.terrain = terrain;
+                grassComponent.terrainData = terrainData;
 
                 FBoundSector boundSector = grassComponent.boundSector;
                 for (int index = 0; index < grassComponent.grassSectors.Length; ++index)

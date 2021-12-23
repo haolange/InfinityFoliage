@@ -56,7 +56,7 @@ namespace Landscape.FoliagePipeline
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public unsafe JobHandle InitView(in float drawDistance, in float4 viewOrigin, FPlane* planes)
+        public unsafe JobHandle InitView(in float drawDistance, in float4 viewOrigin, in FPlane* planes)
         {
             var grassCullingJob = new FGrassCullingJob();
             {
@@ -70,16 +70,6 @@ namespace Landscape.FoliagePipeline
         }
 
 #if UNITY_EDITOR
-        public void DrawBound()
-        {
-            Geometry.DrawBound(bound, Color.white);
-
-            for (int i = 0; i < m_Sections.Length; ++i)
-            {
-                Geometry.DrawBound(m_Sections[i].boundBox, visibleMap[i] == 1 ? Color.green : Color.red);
-            }
-        }
-
         public void BuildBounds(in int sectorSize, in int sectionSize, in float scaleY, in float3 terrianPosition, Texture2D heightmap)
         {
             int sectorSizeHalf = sectorSize / 2;

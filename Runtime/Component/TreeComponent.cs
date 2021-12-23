@@ -46,7 +46,7 @@ namespace Landscape.FoliagePipeline
             }
         }
 
-#if UNITY_EDITOR
+        #if UNITY_EDITOR
         public void OnSave()
         {
             terrain = GetComponent<Terrain>();
@@ -69,11 +69,10 @@ namespace Landscape.FoliagePipeline
         {
             DrawBounds(true);
         }
-#endif
+        #endif
 
-        #region Tree
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public override void InitView(in float3 viewOrigin, in float4x4 matrixProj, FPlane* planes, in NativeList<JobHandle> taskHandles)
+        public override void InitView(in float3 viewOrigin, in float4x4 matrixProj, in FPlane* planes, in NativeList<JobHandle> taskHandles)
         {
             foreach (var treeSector in treeSectors)
             {
@@ -98,6 +97,5 @@ namespace Landscape.FoliagePipeline
                 treeSector.DispatchDraw(cmdBuffer, passIndex, m_PropertyBlock);
             }
         }
-        #endregion //Tree
     }
 }
