@@ -250,7 +250,6 @@ namespace Landscape.FoliagePipeline
         }
     }
 
-
     [BurstCompile]
     public unsafe struct FTreeScatterJob : IJobParallelFor
     {

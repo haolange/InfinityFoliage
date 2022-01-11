@@ -21,7 +21,7 @@ namespace Landscape.FoliagePipeline
         private float drawDistance;
         private MaterialPropertyBlock m_PropertyBlock;
 
-        protected override void OnRegister()
+        protected override void OnRegiste()
         {
             terrain = GetComponent<Terrain>();
             foliageType = EFoliageType.Tree;
@@ -37,7 +37,7 @@ namespace Landscape.FoliagePipeline
             }
         }
 
-        protected override void UnRegister()
+        protected override void UnRegiste()
         {
             terrain.treeDistance = drawDistance;
             foreach (var treeSector in treeSectors)

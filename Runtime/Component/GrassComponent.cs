@@ -49,7 +49,7 @@ namespace Landscape.FoliagePipeline
         private float m_LastNumSection;
         private MaterialPropertyBlock m_PropertyBlock;
 
-        protected override void OnRegister()
+        protected override void OnRegiste()
         {
             m_Counter = 0;
             terrain = GetComponent<Terrain>();
@@ -71,7 +71,7 @@ namespace Landscape.FoliagePipeline
             }
         }
 
-        protected override void UnRegister()
+        protected override void UnRegiste()
         {
             boundSector.ReleaseNativeCollection();
             terrain.detailObjectDistance = m_DrawDistance;

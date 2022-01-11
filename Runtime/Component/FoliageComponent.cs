@@ -65,7 +65,7 @@ namespace Landscape.FoliagePipeline
         void OnEnable()
         {
             FoliageComponents.Add(this);
-            OnRegister();
+            OnRegiste();
             //EventPlay();
         }
 
@@ -80,7 +80,7 @@ namespace Landscape.FoliagePipeline
 
         void OnDisable()
         {
-            UnRegister();
+            UnRegiste();
             FoliageComponents.Remove(this);
         }
 
@@ -100,7 +100,7 @@ namespace Landscape.FoliagePipeline
         }*/
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        protected abstract void OnRegister();
+        protected abstract void OnRegiste();
 
         /*protected virtual void EventPlay()
         {
@@ -118,7 +118,7 @@ namespace Landscape.FoliagePipeline
         }*/
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        protected abstract void UnRegister();
+        protected abstract void UnRegiste();
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public abstract void InitView(in float3 viewOrigin, in float4x4 matrixProj, in FPlane* planes, in NativeList<JobHandle> taskHandles);

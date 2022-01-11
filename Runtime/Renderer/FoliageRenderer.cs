@@ -26,6 +26,10 @@ namespace Landscape.FoliagePipeline
             renderContext.ExecuteCommandBuffer(cmdBuffer);
 
             var planes = new NativeArray<FPlane>(6, Allocator.TempJob);
+            var taskHandles = new NativeList<JobHandle>(256, Allocator.Temp);
+            var sectorsBound = new NativeArray<FBound>(FoliageComponent.FoliageComponents.Count, Allocator.TempJob);
+            var boundsVisible = new NativeArray<byte>(FoliageComponent.FoliageComponents.Count, Allocator.TempJob);
+
             renderingData.cameraData.camera.TryGetCullingParameters(false, out var cullingParams);
             for (var i = 0; i < 6; ++i)
             {
@@ -37,10 +41,6 @@ namespace Landscape.FoliagePipeline
             var matrixProj = Geometry.GetProjectionMatrix(renderingData.cameraData.camera.fieldOfView, renderingData.cameraData.camera.pixelWidth, renderingData.cameraData.camera.pixelHeight, renderingData.cameraData.camera.nearClipPlane, renderingData.cameraData.camera.farClipPlane);
 
             #region InitViewBound
-            NativeList<JobHandle> taskHandles = new NativeList<JobHandle>(256, Allocator.Temp);
-            NativeArray<byte> boundsVisible = new NativeArray<byte>(FoliageComponent.FoliageComponents.Count, Allocator.TempJob);
-            NativeArray<FBound> sectorsBound = new NativeArray<FBound>(FoliageComponent.FoliageComponents.Count, Allocator.TempJob);
-
             for (int i = 0; i < sectorsBound.Length; ++i)
             {
                 sectorsBound[i] = FoliageComponent.FoliageComponents[i].boundSector.bound;
@@ -117,7 +117,6 @@ namespace Landscape.FoliagePipeline
     public class FoliageRenderer : ScriptableRendererFeature
     {
         private FoliagePass m_foliagePass;
-
 
         public override void Create()
         {
