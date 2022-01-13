@@ -70,7 +70,7 @@ namespace Landscape.FoliagePipeline
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public JobHandle BuildInstance(in int split, in float uniqueValue, in float heightScale, in float densityScale, in float3 sectionPivot, in float4 widthScale)
+        public JobHandle BuildInstance(in int split, in float uniqueValue, in float heightScale, in float densityScale, in float2 sectionPivot, in float4 widthScale)
         {
             if (instanceCount == 0 || densityScale == 0) { return default; }
 
@@ -82,7 +82,7 @@ namespace Landscape.FoliagePipeline
                 grassScatterJob.uniqueValue = uniqueValue;
                 grassScatterJob.densityMap = m_DensityMap;
                 grassScatterJob.densityScale = densityScale;
-                grassScatterJob.sectionPivot = sectionPivot;
+                grassScatterJob.sectionPivot = new float3(sectionPivot.x, 0, sectionPivot.y);
                 grassScatterJob.grassElements = m_ElementList;
             }
             return grassScatterJob.Schedule();

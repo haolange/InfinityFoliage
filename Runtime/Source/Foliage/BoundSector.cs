@@ -34,7 +34,7 @@ namespace Landscape.FoliagePipeline
                     float3 sectionCenterPosition = sectionPivotPosition + new float3(sectionSize_Half, 0, sectionSize_Half);
 
                     sections[sectionIndex] = new FBoundSection();
-                    sections[sectionIndex].pivotPosition = sectionPivotPosition;
+                    sections[sectionIndex].pivotPosition = sectionPivotPosition.xz;
                     sections[sectionIndex].boundBox = new FAABB(sectionCenterPosition, new float3(sectionSize, 1, sectionSize));
                 }
             }
@@ -77,7 +77,7 @@ namespace Landscape.FoliagePipeline
             {
                 ref FBoundSection section = ref sections[i];
                 float2 positionScale = new float2(terrianPosition.x, terrianPosition.z) + new float2(sectorSizeHalf, sectorSizeHalf);
-                float2 rectUV = new float2((section.pivotPosition.x - positionScale.x) + sectorSizeHalf, (section.pivotPosition.z - positionScale.y) + sectorSizeHalf);
+                float2 rectUV = new float2((section.pivotPosition.x - positionScale.x) + sectorSizeHalf, (section.pivotPosition.y - positionScale.y) + sectorSizeHalf);
 
                 int reverseScale = sectorSize - sectionSize;
                 Color[] heightValues = heightmap.GetPixels(Mathf.FloorToInt(rectUV.x), reverseScale - Mathf.FloorToInt(rectUV.y), Mathf.FloorToInt(sectionSize), Mathf.FloorToInt(sectionSize), 0);
@@ -98,7 +98,7 @@ namespace Landscape.FoliagePipeline
                 }
 
                 int halfSectionSize = sectionSize / 2;
-                float3 centerPosition = section.pivotPosition + new float3(halfSectionSize, 0, halfSectionSize);
+                float3 centerPosition = new float3(section.pivotPosition.x, 0, section.pivotPosition.y) + new float3(halfSectionSize, 0, halfSectionSize);
                 float posY = ((centerPosition.y + minHeight * scaleY) + (centerPosition.y + maxHeight * scaleY)) * 0.5f;
                 float sizeY = ((centerPosition.y + minHeight * scaleY) - (centerPosition.y + maxHeight * scaleY));
                 float3 newBoundCenter = new float3(centerPosition.x, posY, centerPosition.z);

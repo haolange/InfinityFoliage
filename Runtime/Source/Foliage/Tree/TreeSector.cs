@@ -206,21 +206,21 @@ namespace Landscape.FoliagePipeline
 
             for (var i = 0; i < m_TreeElements.Length; ++i)
             {
-                var treeBatch = m_TreeElements[i];
-                ref var color = ref Geometry.LODColors[treeBatch.meshIndex];
+                var treeElement = m_TreeElements[i];
+                ref var color = ref Geometry.LODColors[treeElement.meshIndex];
                 if (m_ViewElements[i] == 0)
                 {
                     continue;
                 }
 
-                Geometry.DrawBound(treeBatch.boundBox, lodColorState ? color : Color.blue);
+                Geometry.DrawBound(treeElement.boundBox, lodColorState ? color : Color.blue);
 
                 if (showSphere)
                 {
                     UnityEditor.Handles.color = lodColorState ? color : Color.yellow;
-                    UnityEditor.Handles.DrawWireDisc(treeBatch.boundSphere.center, Vector3.up, treeBatch.boundSphere.radius);
-                    UnityEditor.Handles.DrawWireDisc(treeBatch.boundSphere.center, Vector3.back, treeBatch.boundSphere.radius);
-                    UnityEditor.Handles.DrawWireDisc(treeBatch.boundSphere.center, Vector3.right, treeBatch.boundSphere.radius);
+                    UnityEditor.Handles.DrawWireDisc(treeElement.boundSphere.center, Vector3.up, treeElement.boundSphere.radius);
+                    UnityEditor.Handles.DrawWireDisc(treeElement.boundSphere.center, Vector3.back, treeElement.boundSphere.radius);
+                    UnityEditor.Handles.DrawWireDisc(treeElement.boundSphere.center, Vector3.right, treeElement.boundSphere.radius);
                 }
             }
         }

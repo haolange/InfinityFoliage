@@ -263,7 +263,7 @@ namespace Landscape.FoliagePipeline.Editor
                         grassSection.densityMap = new byte[grassComponent.sectionSize * grassComponent.sectionSize];
                         //grassSection.heightmap = new float[grassComponent.SectionSize * grassComponent.SectionSize];
 
-                        int2 sampleUV = (int2)boundSection.pivotPosition.xz - new int2((int)selectObject.transform.position.x, (int)selectObject.transform.position.z);
+                        int2 sampleUV = (int2)boundSection.pivotPosition - new int2((int)selectObject.transform.position.x, (int)selectObject.transform.position.z);
                         int[,] densityMap = terrainData.GetDetailLayer(sampleUV.x, sampleUV.y, grassComponent.sectionSize, grassComponent.sectionSize, grassIndex);
                         float[,] heightMap = terrainData.GetHeights(sampleUV.x, sampleUV.y, grassComponent.sectionSize, grassComponent.sectionSize);
 
