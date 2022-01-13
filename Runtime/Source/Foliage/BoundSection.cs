@@ -9,11 +9,10 @@ namespace Landscape.FoliagePipeline
     {
         public FBound boundBox;
         public float3 pivotPosition;
-        public float3 centerPosition;
 
         public bool Equals(FBoundSection Target)
         {
-            return boundBox.Equals(Target.boundBox) && pivotPosition.Equals(Target.pivotPosition) && centerPosition.Equals(Target.centerPosition);
+            return boundBox.Equals(Target.boundBox) && pivotPosition.Equals(Target.pivotPosition);
         }
 
         public override bool Equals(object obj)
@@ -23,7 +22,7 @@ namespace Landscape.FoliagePipeline
 
         public override int GetHashCode()
         {
-            return boundBox.GetHashCode() + pivotPosition.GetHashCode() + centerPosition.GetHashCode();
+            return new int2(boundBox.GetHashCode(), pivotPosition.GetHashCode()).GetHashCode();
         }
     }
 }

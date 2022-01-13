@@ -162,7 +162,6 @@ namespace InfinityTech.Core.Geometry
         public float3 center;
         public float3 extents;
 
-
         public FBound(float3 Center, float3 Extents)
         {
             center = Center;

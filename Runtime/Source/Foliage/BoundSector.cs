@@ -35,7 +35,6 @@ namespace Landscape.FoliagePipeline
 
                     sections[sectionIndex] = new FBoundSection();
                     sections[sectionIndex].pivotPosition = sectionPivotPosition;
-                    sections[sectionIndex].centerPosition = sectionCenterPosition;
                     sections[sectionIndex].boundBox = new FAABB(sectionCenterPosition, new float3(sectionSize, 1, sectionSize));
                 }
             }
@@ -98,9 +97,11 @@ namespace Landscape.FoliagePipeline
                     }
                 }
 
-                float posY = ((section.centerPosition.y + minHeight * scaleY) + (section.centerPosition.y + maxHeight * scaleY)) * 0.5f;
-                float sizeY = ((section.centerPosition.y + minHeight * scaleY) - (section.centerPosition.y + maxHeight * scaleY));
-                float3 newBoundCenter = new float3(section.centerPosition.x, posY, section.centerPosition.z);
+                int halfSectionSize = sectionSize / 2;
+                float3 centerPosition = section.pivotPosition + new float3(halfSectionSize, 0, halfSectionSize);
+                float posY = ((centerPosition.y + minHeight * scaleY) + (centerPosition.y + maxHeight * scaleY)) * 0.5f;
+                float sizeY = ((centerPosition.y + minHeight * scaleY) - (centerPosition.y + maxHeight * scaleY));
+                float3 newBoundCenter = new float3(centerPosition.x, posY, centerPosition.z);
                 section.boundBox = new FAABB(newBoundCenter, new float3(sectionSize, sizeY, sectionSize));
             }
         }
