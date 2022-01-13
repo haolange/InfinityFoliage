@@ -155,7 +155,7 @@ namespace Landscape.FoliagePipeline
         public FPlane* planes;
 
         [NativeDisableUnsafePtrRestriction]
-        public FBound* sectorBounds;
+        public FAABB* sectorBounds;
 
         [WriteOnly]
         public NativeArray<byte> visibleMap;
@@ -166,7 +166,7 @@ namespace Landscape.FoliagePipeline
             {
                 int visible = 1;
                 float2 distRadius = new float2(0, 0);
-                ref FBound sectorBound = ref sectorBounds[index];
+                ref FAABB sectorBound = ref sectorBounds[index];
 
                 for (int PlaneIndex = 0; PlaneIndex < 6; ++PlaneIndex)
                 {
@@ -189,7 +189,7 @@ namespace Landscape.FoliagePipeline
         public FPlane* planes;
 
         [NativeDisableUnsafePtrRestriction]
-        public FBound* sectorBounds;
+        public FAABB* sectorBounds;
 
         [WriteOnly]
         public NativeArray<byte> visibleMap;
@@ -198,7 +198,7 @@ namespace Landscape.FoliagePipeline
         {
             int visible = 1;
             float2 distRadius = new float2(0, 0);
-            ref FBound sectorBound = ref sectorBounds[index];
+            ref FAABB sectorBound = ref sectorBounds[index];
 
             for (int PlaneIndex = 0; PlaneIndex < 6; ++PlaneIndex)
             {

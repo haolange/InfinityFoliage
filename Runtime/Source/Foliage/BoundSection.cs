@@ -7,7 +7,7 @@ namespace Landscape.FoliagePipeline
     [Serializable]
     public struct FBoundSection : IEquatable<FBoundSection>
     {
-        public FBound boundBox;
+        public FAABB boundBox;
         public float3 pivotPosition;
 
         public bool Equals(FBoundSection Target)

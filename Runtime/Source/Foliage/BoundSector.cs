@@ -12,7 +12,7 @@ namespace Landscape.FoliagePipeline
     [Serializable]
     public class FBoundSector
     {
-        public FBound bound;
+        public FAABB bound;
         public FBoundSection[] sections;
         public NativeArray<byte> visibleMap;
         public NativeArray<FBoundSection> m_Sections;
@@ -21,7 +21,7 @@ namespace Landscape.FoliagePipeline
         {
             int sectorSize_Half = sectorSize / 2;
             int sectionSize_Half = sectionSize / 2;
-            bound = new FBound(new float3(sectorPivotPosition.x + sectorSize_Half, sectorPivotPosition.y + (sectorBound.size.y / 2), sectorPivotPosition.z + sectorSize_Half), sectorBound.size * 0.5f);
+            bound = new FAABB(new float3(sectorPivotPosition.x + sectorSize_Half, sectorPivotPosition.y + (sectorBound.size.y / 2), sectorPivotPosition.z + sectorSize_Half), sectorBound.size);
             
             if(!needSections) { return; }
             sections = new FBoundSection[numSection * numSection];

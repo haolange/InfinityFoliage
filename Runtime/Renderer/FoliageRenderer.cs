@@ -27,7 +27,7 @@ namespace Landscape.FoliagePipeline
 
             var planes = new NativeArray<FPlane>(6, Allocator.TempJob);
             var taskHandles = new NativeList<JobHandle>(256, Allocator.Temp);
-            var sectorsBound = new NativeArray<FBound>(FoliageComponent.FoliageComponents.Count, Allocator.TempJob);
+            var sectorsBound = new NativeArray<FAABB>(FoliageComponent.FoliageComponents.Count, Allocator.TempJob);
             var boundsVisible = new NativeArray<byte>(FoliageComponent.FoliageComponents.Count, Allocator.TempJob);
 
             renderingData.cameraData.camera.TryGetCullingParameters(false, out var cullingParams);
@@ -52,13 +52,13 @@ namespace Landscape.FoliagePipeline
                 sectorCullingJob.planes = planesPtr;
                 sectorCullingJob.length = sectorsBound.Length;
                 sectorCullingJob.visibleMap = boundsVisible;
-                sectorCullingJob.sectorBounds = (FBound*)sectorsBound.GetUnsafePtr();
+                sectorCullingJob.sectorBounds = (FAABB*)sectorsBound.GetUnsafePtr();
                 sectorCullingJob.Run();
             } else {
                 FBoundCullingParallelJob sectorCullingJob;
                 sectorCullingJob.planes = planesPtr;
                 sectorCullingJob.visibleMap = boundsVisible;
-                sectorCullingJob.sectorBounds = (FBound*)sectorsBound.GetUnsafePtr();
+                sectorCullingJob.sectorBounds = (FAABB*)sectorsBound.GetUnsafePtr();
                 sectorCullingJob.Schedule(sectorsBound.Length, 8).Complete();
             }
             #endregion //InitViewBound

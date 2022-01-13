@@ -5,6 +5,7 @@ using UnityEditor;
 #endif
 using UnityEngine;
 using Unity.Mathematics;
+using System.Runtime.CompilerServices;
 
 namespace InfinityTech.Core.Geometry
 {
@@ -112,7 +113,9 @@ namespace InfinityTech.Core.Geometry
     [Serializable]
     public struct FAABB : IEquatable<FAABB>
     {
+        [SerializeField]
         private float3 m_Center;
+        [SerializeField]
         private float3 m_Extents;
 
         public float3 center { get { return m_Center; } set { m_Center = value; } }
@@ -120,7 +123,6 @@ namespace InfinityTech.Core.Geometry
         public float3 extents { get { return m_Extents; } set { m_Extents = value; } }
         public float3 min { get { return center - extents; } set { SetMinMax(value, max); } }
         public float3 max { get { return center + extents; } set { SetMinMax(min, value); } }
-
 
         public FAABB(float3 center, float3 size)
         {
@@ -145,7 +147,7 @@ namespace InfinityTech.Core.Geometry
             return center.GetHashCode() ^ (extents.GetHashCode() << 2);
         }
 
-        public void SetMinMax(float3 min, float3 max)
+        public void SetMinMax(in float3 min, in float3 max)
         {
             extents = (max - min) * 0.5F;
             center = min + extents;
@@ -154,41 +156,6 @@ namespace InfinityTech.Core.Geometry
         public static implicit operator Bounds(FAABB AABB) { return new Bounds(AABB.center, AABB.size); }
 
         public static implicit operator FAABB(Bounds Bound) { return new FAABB(Bound.center, Bound.size); }
-    }
-
-    [Serializable]
-    public struct FBound : IEquatable<FBound>
-    {
-        public float3 center;
-        public float3 extents;
-
-        public FBound(float3 Center, float3 Extents)
-        {
-            center = Center;
-            extents = Extents;
-        }
-
-        public override bool Equals(object other)
-        {
-            if (!(other is FBound)) return false;
-
-            return Equals((FBound)other);
-        }
-
-        public bool Equals(FBound other)
-        {
-            return center.Equals(other.center) && extents.Equals(other.extents);
-        }
-
-        public override int GetHashCode()
-        {
-            return center.GetHashCode() ^ (extents.GetHashCode() << 2);
-        }
-
-        public static implicit operator FBound(FAABB Bound) { return new FBound(Bound.center, Bound.extents); }
-        public static implicit operator FBound(Bounds Bound) { return new FBound(Bound.center, Bound.extents); }
-        public static implicit operator FAABB(FBound Bound) { return new FAABB(Bound.center, Bound.extents * 2); }
-        public static implicit operator Bounds(FBound Bound) { return new Bounds(Bound.center, Bound.extents * 2); }
     }
 
     [Serializable]
@@ -372,25 +339,22 @@ namespace InfinityTech.Core.Geometry
 
     public static class Geometry
     {
-        public static float CaculateBoundRadius(Bounds BoundBox)
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static float CaculateBoundRadius(in FAABB bound)
         {
-            float3 Extents = BoundBox.extents;
-            return math.max(math.max(math.abs(Extents.x), math.abs(Extents.y)), math.abs(Extents.z));
+            return math.max(math.max(math.abs(bound.extents.x), math.abs(bound.extents.y)), math.abs(bound.extents.z));
         }
 
-        public static Bounds CaculateWorldBound(Bounds LocalBound, Matrix4x4 Matrix)
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static FAABB CaculateWorldBound(in FAABB bound, in Matrix4x4 matrix)
         {
-            float4 Center = Matrix * new float4(LocalBound.center.x, LocalBound.center.y, LocalBound.center.z, 1);
-            float4 Extents = math.abs(Matrix.GetColumn(0) * LocalBound.extents.x) + math.abs(Matrix.GetColumn(1) * LocalBound.extents.y) + math.abs(Matrix.GetColumn(2) * LocalBound.extents.z);
-
-            Bounds WorldBound = LocalBound;
-            WorldBound.center = Center.xyz;
-            WorldBound.extents = Extents.xyz;
-
-            return WorldBound;
+            float4 center = matrix * new float4(bound.center.x, bound.center.y, bound.center.z, 1);
+            float4 extents = math.abs(matrix.GetColumn(0) * bound.extents.x) + math.abs(matrix.GetColumn(1) * bound.extents.y) + math.abs(matrix.GetColumn(2) * bound.extents.z);
+            return new FAABB(center.xyz, extents.xyz * 2);
         }
 
-        public static bool IntersectAABBFrustum(FAABB bound, FPlane[] plane)
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static bool IntersectAABBFrustum(in FAABB bound, FPlane[] plane)
         {
             for (int i = 0; i < 6; ++i)
             {
@@ -400,7 +364,8 @@ namespace InfinityTech.Core.Geometry
                 float dist = math.dot(normal, bound.center) + distance;
                 float radius = math.dot(bound.extents, math.abs(normal));
 
-                if (dist + radius< 0) {
+                if (dist + radius < 0)
+                {
                     return false;
                 }
             }
@@ -408,47 +373,53 @@ namespace InfinityTech.Core.Geometry
             return true;
         }
 
-        public static float Squared(in float A)
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static float Squared(in float a)
         {
-            return A * A;
+            return a * a;
         }
 
-        public static float DistSquared(in float3 V1, in float3 V2)
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static float DistSquared(in float3 v1, in float3 v2)
         {
-            return Squared(V2.x - V1.x) + Squared(V2.y - V1.y) + Squared(V2.z - V1.z);
+            return Squared(v2.x - v1.x) + Squared(v2.y - v1.y) + Squared(v2.z - v1.z);
         }
 
-        public static float LogX(in float Base, in float Value)
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static float LogX(in float refValue, in float value)
         {
-            return math.log(Value) / math.log(Base);
+            return math.log(value) / math.log(refValue);
         }
 
-        public static float4x4 GetProjectionMatrix(in float HalfFOV, in float Width, in float Height, in float MinZ, in float MaxZ)
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static float4x4 GetProjectionMatrix(in float halfFOV, in float width, in float height, in float minZ, in float maxZ)
         {
-            float4 column0 = new float4(1.0f / math.tan(HalfFOV), 0.0f, 0.0f, 0.0f);
-            float4 column1 = new float4(0.0f, Width / math.tan(HalfFOV) / Height, 0.0f, 0.0f);
-            float4 column2 = new float4(0.0f, 0.0f, MinZ == MaxZ ? 1.0f : MaxZ / (MaxZ - MinZ), 1.0f);
-            float4 column3 = new float4(0.0f, 0.0f, -MinZ * (MinZ == MaxZ ? 1.0f : MaxZ / (MaxZ - MinZ)), 0.0f);
+            float4 column0 = new float4(1.0f / math.tan(halfFOV), 0.0f, 0.0f, 0.0f);
+            float4 column1 = new float4(0.0f, width / math.tan(halfFOV) / height, 0.0f, 0.0f);
+            float4 column2 = new float4(0.0f, 0.0f, minZ == maxZ ? 1.0f : maxZ / (maxZ - minZ), 1.0f);
+            float4 column3 = new float4(0.0f, 0.0f, -minZ * (minZ == maxZ ? 1.0f : maxZ / (maxZ - minZ)), 0.0f);
 
             return new float4x4(column0, column1, column2, column3);
         }
 
-        public static float ComputeBoundsScreenRadiusSquared(in float SphereRadius, in float3 BoundsOrigin, in float3 ViewOrigin, in Matrix4x4 ProjMatrix)
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static float ComputeBoundsScreenRadiusSquared(in float sphereRadius, in float3 boundOrigin, in float3 viewOrigin, in Matrix4x4 projMatrix)
         {
-            float DistSqr = DistSquared(BoundsOrigin, ViewOrigin) * ProjMatrix.m23;
+            float DistSqr = DistSquared(boundOrigin, viewOrigin) * projMatrix.m23;
 
-            float ScreenMultiple = math.max(0.5f * ProjMatrix.m00, 0.5f * ProjMatrix.m11);
-            ScreenMultiple *= SphereRadius;
+            float ScreenMultiple = math.max(0.5f * projMatrix.m00, 0.5f * projMatrix.m11);
+            ScreenMultiple *= sphereRadius;
 
             return (ScreenMultiple * ScreenMultiple) / math.max(1, DistSqr);
         }
 
-        public static float ComputeBoundsScreenRadiusSquared(in float SphereRadius, in float3 BoundsOrigin, in float3 ViewOrigin, in float4x4 ProjMatrix)
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static float ComputeBoundsScreenRadiusSquared(in float sphereRadius, in float3 boundOrigin, in float3 viewOrigin, in float4x4 projMatrix)
         {
-            float DistSqr = DistSquared(BoundsOrigin, ViewOrigin) * ProjMatrix.c2.z;
+            float DistSqr = DistSquared(boundOrigin, viewOrigin) * projMatrix.c2.z;
 
-            float ScreenMultiple = math.max(0.5f * ProjMatrix.c0.x, 0.5f * ProjMatrix.c1.y);
-            ScreenMultiple *= SphereRadius;
+            float ScreenMultiple = math.max(0.5f * projMatrix.c0.x, 0.5f * projMatrix.c1.y);
+            ScreenMultiple *= sphereRadius;
 
             return (ScreenMultiple * ScreenMultiple) / math.max(1, DistSqr);
         }

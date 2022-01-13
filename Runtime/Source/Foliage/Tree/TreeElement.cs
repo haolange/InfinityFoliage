@@ -7,7 +7,7 @@ namespace Landscape.FoliagePipeline
     public struct FTreeElement : IEquatable<FTreeElement>
     {
         public int meshIndex;
-        public FBound boundBox;
+        public FAABB boundBox;
         public FSphere boundSphere;
         public float4x4 matrix_World;
 
