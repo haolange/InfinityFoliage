@@ -187,7 +187,7 @@ Shader "Landscape/Grass"
 				//Surface
 				float4 baseColor = _AlbedoTexture.Sample(sampler_AlbedoTexture, input.uv0);
 				//clip(baseColor.a);
-				//clip(baseColor.a - _AlphaThreshold);
+				clip(baseColor.a - _AlphaThreshold);
 
 				float3 variantColor = lerp(lerp(_BottomTint.rgb, _TopTint.rgb, input.uv0.y), _TintVariation.rgb, input.noise.x);
 				variantColor = lerp(variantColor, _DarkTint.rgb, input.noise.y);
@@ -221,7 +221,7 @@ Shader "Landscape/Grass"
 
 				//Surface
 				float3 outColor = variantColor * (indirectDiffuse + (directDiffuse + subsurfaceColor) * attenuatedLightColor);
-				return float4(outColor, baseColor.a - _AlphaThreshold);
+				return float4(outColor, baseColor.a);
 			}
             ENDHLSL
         }
@@ -343,7 +343,7 @@ Shader "Landscape/Grass"
 				//Surface
 				float4 baseColor = _AlbedoTexture.Sample(sampler_AlbedoTexture, input.uv0);
 				//clip(baseColor.a);
-				//clip(baseColor.a - _AlphaThreshold);
+				clip(baseColor.a - _AlphaThreshold);
 
 				float3 variantColor = lerp(lerp(_BottomTint.rgb, _TopTint.rgb, input.uv0.y), _TintVariation.rgb, input.noise.x);
 				variantColor = lerp(variantColor, _DarkTint.rgb, input.noise.y);
@@ -377,7 +377,7 @@ Shader "Landscape/Grass"
 
 				//Surface
 				float3 outColor = variantColor * (indirectDiffuse + (directDiffuse + subsurfaceColor) * attenuatedLightColor);
-				return float4(outColor, baseColor.a - _AlphaThreshold);
+				return float4(outColor, baseColor.a);
 			}
             ENDHLSL
         }
@@ -485,8 +485,8 @@ Shader "Landscape/Grass"
 				UNITY_SETUP_INSTANCE_ID(input);
 
 				float alpha = _AlbedoTexture.Sample(sampler_AlbedoTexture, input.uv0).a;
-				clip(alpha - 0.33);
-				//clip(alpha - _AlphaThreshold);
+				//clip(alpha - 0.33);
+				clip(alpha - _AlphaThreshold);
 				return 0;
 			}
             ENDHLSL

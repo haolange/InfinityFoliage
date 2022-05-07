@@ -108,7 +108,7 @@ Shader "Landscape/TreeLeave"
 				//Surface
 				float4 baseColor = _AlbedoTexture.Sample(sampler_AlbedoTexture, input.uv0);
 				//clip(baseColor.a);
-				//clip(baseColor.a - _AlphaThreshold);
+				clip(baseColor.a - _AlphaThreshold);
 
 				//Geometry Context
 				float3 worldPos = input.vertexWS.xyz;
@@ -129,7 +129,7 @@ Shader "Landscape/TreeLeave"
 				float3 directDiffuse = saturate(dot(normalize(_MainLightPosition.xyz), input.normalWS)) * baseColor.rgb;
 				float3 indirectDiffuse = SampleSH(input.normalWS) * baseColor.rgb;
 				float3 subsurfaceColor = Transmission(baseColor.rgb * float3(0.95, 1, 0), lightDir, viewDir, input.normalWS, halfDir, 1, 0.25) * 2;
-				return float4(indirectDiffuse + (directDiffuse + subsurfaceColor) * lightAttenuated, baseColor.a - _AlphaThreshold);
+				return float4(indirectDiffuse + (directDiffuse + subsurfaceColor) * lightAttenuated, baseColor.a);
 			}
             ENDHLSL
         }
@@ -190,7 +190,7 @@ Shader "Landscape/TreeLeave"
 				//Surface
 				float4 baseColor = _AlbedoTexture.Sample(sampler_AlbedoTexture, input.uv0);
 				//clip(baseColor.a);
-				//clip(baseColor.a - _AlphaThreshold);
+				clip(baseColor.a - _AlphaThreshold);
 
 				//Geometry Context
 				float3 worldPos = input.vertexWS.xyz;
@@ -212,7 +212,7 @@ Shader "Landscape/TreeLeave"
 				float3 indirectDiffuse = SampleSH(input.normalWS) * baseColor.rgb;
 				float3 subsurfaceColor = Transmission(baseColor.rgb * float3(0.95, 1, 0), lightDir, viewDir, input.normalWS, halfDir, 1, 0.25) * 2;
 
-				return float4(indirectDiffuse + (directDiffuse + subsurfaceColor) * lightAttenuated, baseColor.a - _AlphaThreshold);
+				return float4(indirectDiffuse + (directDiffuse + subsurfaceColor) * lightAttenuated, baseColor.a);
 			}
             ENDHLSL
         }
@@ -298,8 +298,8 @@ Shader "Landscape/TreeLeave"
 
 				//Surface
 				float4 baseColor = _AlbedoTexture.Sample(sampler_AlbedoTexture, input.uv0);
-				clip(baseColor.a - 0.33);
-				//clip(baseColor.a - _AlphaThreshold);
+				//clip(baseColor.a - 0.33);
+				clip(baseColor.a - _AlphaThreshold);
 				
 				#ifdef LOD_FADE_CROSSFADE 
 					LODDitheringTransition(input.vertexCS.xy, unity_LODFade.x);
