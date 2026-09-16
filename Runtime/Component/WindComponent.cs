@@ -6,7 +6,7 @@ namespace Landscape.FoliagePipeline
   public class WindComponent : MonoBehaviour
   {
     [SerializeField]
-    private FWindSettings windSettings = FWindSettings.Calm;
+    private WindSettings windSettings = WindSettings.Calm;
     [SerializeField]
     private WindZone m_sourceWindZone;
     [SerializeField]
@@ -25,7 +25,7 @@ namespace Landscape.FoliagePipeline
 
     public static WindComponent Instance { get; private set; }
 
-    public FWindSettings Settings
+    public WindSettings Settings
     {
       get => windSettings;
       set
@@ -102,7 +102,7 @@ namespace Landscape.FoliagePipeline
       this.CopyFromWindZone();
     }
 
-    private void CopyFromWindZone() => this.Settings = FWindSettings.FromWindZone(m_sourceWindZone);
+    private void CopyFromWindZone() => this.Settings = WindSettings.FromWindZone(m_sourceWindZone);
 
     private bool WindZoneHasChanged() => m_cachedRotation != m_sourceWindZone.transform.rotation || (double)m_cachedWindMain != (double) m_sourceWindZone.windMain || ((double)m_cachedWindPulseFrequency != (double) this.m_sourceWindZone.windPulseFrequency || (double)m_cachedWindTurbulence != (double) this.m_sourceWindZone.windTurbulence);
 
@@ -126,7 +126,7 @@ namespace Landscape.FoliagePipeline
       if ((Object)m_sourceWindZone != (Object) null || useCache && transform.rotation == m_cachedRotation)
         return;
       m_cachedRotation = transform.rotation;
-      windSettings.WindDirection = FWindSettings.RotationToDirection(transform.rotation);
+      windSettings.WindDirection = WindSettings.RotationToDirection(transform.rotation);
       windSettings.Apply();
     }
   }

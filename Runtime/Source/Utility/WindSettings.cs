@@ -5,7 +5,7 @@ using UnityEngine.Serialization;
 namespace Landscape.FoliagePipeline
 {
   [Serializable]
-  public struct FWindSettings
+  public struct WindSettings
   {
     [FormerlySerializedAs("GustDirection")]
     public Vector2 WindDirection;
@@ -19,7 +19,7 @@ namespace Landscape.FoliagePipeline
     [Range(0.0f, 1f)]
     public float Turbulence;
 
-    public static FWindSettings Calm => new FWindSettings()
+    public static WindSettings Calm => new WindSettings()
     {
       WindDirection = new Vector2(0.7f, 0.3f),
       WindStrength = 0.05f,
@@ -27,7 +27,7 @@ namespace Landscape.FoliagePipeline
       WindSpeed = 0.5f
     };
 
-    public static FWindSettings Breeze => new FWindSettings()
+    public static WindSettings Breeze => new WindSettings()
     {
       WindDirection = new Vector2(0.7f, 0.3f),
       WindStrength = 0.2f,
@@ -35,7 +35,7 @@ namespace Landscape.FoliagePipeline
       WindSpeed = 0.5f
     };
 
-    public static FWindSettings StrongBreeze => new FWindSettings()
+    public static WindSettings StrongBreeze => new WindSettings()
     {
       WindDirection = new Vector2(0.7f, 0.3f),
       WindStrength = 0.5f,
@@ -43,7 +43,7 @@ namespace Landscape.FoliagePipeline
       WindSpeed = 0.75f
     };
 
-    public static FWindSettings Storm => new FWindSettings()
+    public static WindSettings Storm => new WindSettings()
     {
       WindDirection = new Vector2(0.7f, 0.3f),
       WindStrength = 1f,
@@ -51,12 +51,12 @@ namespace Landscape.FoliagePipeline
       WindSpeed = 1f
     };
 
-    public static FWindSettings FromWindZone(WindZone windZone) => new FWindSettings()
+    public static WindSettings FromWindZone(WindZone windZone) => new WindSettings()
     {
       WindStrength = windZone.windMain * 0.2f,
       WindSpeed = windZone.windPulseFrequency,
       Turbulence = windZone.windTurbulence * 0.2f,
-      WindDirection = FWindSettings.RotationToDirection(windZone.transform.rotation)
+      WindDirection = WindSettings.RotationToDirection(windZone.transform.rotation)
     };
 
     public static Vector2 RotationToDirection(Quaternion quaternion)
@@ -65,7 +65,7 @@ namespace Landscape.FoliagePipeline
       return new Vector2(Mathf.Sin(y * ((float) Math.PI / 180f)), Mathf.Cos(y * ((float) Math.PI / 180f))).normalized;
     }
 
-    public FWindSettings(in FWindSettings other)
+    public WindSettings(in WindSettings other)
     {
       this.WindDirection = other.WindDirection;
       this.WindStrength = other.WindStrength;
@@ -73,7 +73,7 @@ namespace Landscape.FoliagePipeline
       this.Turbulence = other.Turbulence;
     }
 
-    public FWindSettings(
+    public WindSettings(
       Vector2 gustDirection,
       float windStrength,
       float windSpeed,

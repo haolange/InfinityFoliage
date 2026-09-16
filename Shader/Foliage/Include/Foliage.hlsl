@@ -6,22 +6,21 @@
 
 SamplerState sampler_MainTex, Global_point_clamp_sampler, Global_bilinear_clamp_sampler, Global_trilinear_clamp_sampler, Global_point_repeat_sampler, Global_bilinear_repeat_sampler, Global_trilinear_repeat_sampler;
 
-struct FTreeElement
+struct TreeElement
 {
-     int meshIndex;
-     FBound boundBox;
-     FSphere boundSphere;
      float4x4 matrix_World;
 };
 
 StructuredBuffer<uint> _TreeIndexBuffer;
-StructuredBuffer<FTreeElement> _TreeElementBuffer;
+StructuredBuffer<TreeElement> _TreeElementBuffer;
+float _LODFactor;
+float _LodFadeEnable;
 
-
-struct FGrassElement
+struct GrassElement
 {
      float4x4 matrix_World;
 };
-StructuredBuffer<FGrassElement> _GrassElementBuffer;
+int _InstanceOffset;
+StructuredBuffer<GrassElement> _GrassElementBuffer;
 
 #endif

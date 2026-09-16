@@ -182,7 +182,7 @@ Shader "Landscape/Grass"
 				output.noise.x = PerlinNoise(objectPos.xz, _ColorVariation);
 				output.noise.y *= 1.0 - saturate((distance(objectPos, _WorldSpaceCameraPos) - _DarkFadeness.x) / _DarkFadeness.y);
 
-				FWindInput windInput;
+				WindInput windInput;
                 windInput.fade = windFade;
                 windInput.flutter = 1;
                 windInput.phaseOffset = 0;
@@ -313,7 +313,7 @@ Shader "Landscape/Grass"
 			{
 				Varyings output = (Varyings)0;
 				output.PrimitiveId = input.InstanceId;
-				FGrassElement grassElement = _GrassElementBuffer[input.InstanceId];
+				GrassElement grassElement = _GrassElementBuffer[input.InstanceId + _InstanceOffset];
 
 				float3 worldPos = mul(grassElement.matrix_World, input.vertexOS).xyz;
 				float3 objectPos = float3(grassElement.matrix_World[0].w, grassElement.matrix_World[1].w, grassElement.matrix_World[2].w);
@@ -342,7 +342,7 @@ Shader "Landscape/Grass"
 				output.noise.x = PerlinNoise(objectPos.xz, _ColorVariation);
 				output.noise.y *= 1.0 - saturate((distance(objectPos, _WorldSpaceCameraPos) - _DarkFadeness.x) / _DarkFadeness.y);
 
-				FWindInput windInput;
+				WindInput windInput;
                 windInput.fade = windFade;
                 windInput.flutter = 1;
                 windInput.phaseOffset = 0;
@@ -367,7 +367,7 @@ Shader "Landscape/Grass"
 			float4 frag(Varyings input) : SV_Target
 			{
 				//Geometry Context
-				FGrassElement grassElement = _GrassElementBuffer[input.PrimitiveId];
+				GrassElement grassElement = _GrassElementBuffer[input.PrimitiveId + _InstanceOffset];
 				float3 normalWS = input.normalWS;
 				float3 worldPos = input.vertexWS.xyz;
 				float3 objectPos = float3(grassElement.matrix_World[0].w, grassElement.matrix_World[1].w, grassElement.matrix_World[2].w);
@@ -497,7 +497,7 @@ Shader "Landscape/Grass"
                 float scaleFade;
                 PerVertexFade(objectPos, windFade, scaleFade);
 
-				FWindInput windInput;
+				WindInput windInput;
                 windInput.fade = windFade;
                 windInput.flutter = 1;
                 windInput.phaseOffset = 0;

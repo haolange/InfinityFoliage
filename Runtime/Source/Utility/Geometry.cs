@@ -7,81 +7,31 @@ using UnityEngine;
 using Unity.Mathematics;
 using System.Runtime.CompilerServices;
 
-namespace InfinityTech.Core.Geometry
+namespace Landscape.FoliagePipeline
 {
-    /*[Serializable]
-    public struct FPlane : IEquatable<FPlane>
-    {
-        private float m_Distance;
-        private float3 m_Normal;
-
-        public float distance { get { return m_Distance; } set { m_Distance = value; } }
-        public float3 normal { get { return m_Normal; } set { m_Normal = value; } }
-
-
-        public FPlane(float3 inNormal, float3 inPoint)
-        {
-            m_Normal = math.normalize(inNormal);
-            m_Distance = -math.dot(m_Normal, inPoint);
-        }
-
-        public FPlane(float3 inNormal, float d)
-        {
-            m_Normal = math.normalize(inNormal);
-            m_Distance = d;
-        }
-
-        public FPlane(float3 a, float3 b, float3 c)
-        {
-            m_Normal = math.normalize(math.cross(b - a, c - a));
-            m_Distance = -math.dot(m_Normal, a);
-        }
-
-        public override bool Equals(object other)
-        {
-            if (!(other is FPlane)) return false;
-
-            return Equals((FPlane)other);
-        }
-
-        public bool Equals(FPlane other)
-        {
-            return distance.Equals(other.distance) && m_Normal.Equals(other.m_Normal);
-        }
-
-        public override int GetHashCode()
-        {
-            return distance.GetHashCode() ^ (m_Normal.GetHashCode() << 2);
-        }
-
-        public static implicit operator Plane(FPlane plane) { return new Plane(plane.normal, plane.distance); }
-
-        public static implicit operator FPlane(Plane plane) { return new FPlane(plane.normal, plane.distance); }
-    }*/
-
     [Serializable]
-    public struct FPlane : IEquatable<FPlane>
+    public struct FrustumPlane : IEquatable<FrustumPlane>
     {
         private float4 m_NormalDist;
 
         public float4 normalDist { get { return m_NormalDist; } set { m_NormalDist = value; } }
 
 
-        public FPlane(float3 inNormal, float3 inPoint)
+        public FrustumPlane(float3 inNormal, float3 inPoint)
         {
             m_NormalDist = new float4(1, 1, 1, 1);
             m_NormalDist.xyz = math.normalize(inNormal);
             m_NormalDist.w = -math.dot(m_NormalDist.xyz, inPoint);
         }
 
-        public FPlane(float3 inNormal, float d)
+        public FrustumPlane(float3 inNormal, float d)
         {
             m_NormalDist = new float4(1, 1, 1, 1);
             m_NormalDist.xyz = math.normalize(inNormal);
             m_NormalDist.w = d;
         }
 
-        public FPlane(float3 a, float3 b, float3 c)
+        public FrustumPlane(float3 a, float3 b, float3 c)
         {
             m_NormalDist = new float4(1, 1, 1, 1);
             m_NormalDist.xyz = math.normalize(math.cross(b - a, c - a));
@@ -90,12 +40,12 @@ namespace InfinityTech.Core.Geometry
 
         public override bool Equals(object other)
         {
-            if (!(other is FPlane)) return false;
+            if (!(other is FrustumPlane)) return false;
 
-            return Equals((FPlane)other);
+            return Equals((FrustumPlane)other);
         }
 
-        public bool Equals(FPlane other)
+        public bool Equals(FrustumPlane other)
         {
             return normalDist.Equals(other.normalDist);
         }
@@ -105,13 +55,13 @@ namespace InfinityTech.Core.Geometry
             return m_NormalDist.GetHashCode();
         }
 
-        public static implicit operator Plane(FPlane plane) { return new Plane(plane.normalDist.xyz, plane.normalDist.w); }
+        public static implicit operator Plane(FrustumPlane plane) { return new Plane(plane.normalDist.xyz, plane.normalDist.w); }
 
-        public static implicit operator FPlane(Plane plane) { return new FPlane(plane.normal, plane.distance); }
+        public static implicit operator FrustumPlane(Plane plane) { return new FrustumPlane(plane.normal, plane.distance); }
     }
 
     [Serializable]
-    public struct FAABB : IEquatable<FAABB>
+    public struct Aabb : IEquatable<Aabb>
     {
         [SerializeField]
         private float3 m_Center;
@@ -124,7 +74,7 @@ namespace InfinityTech.Core.Geometry
         public float3 min { get { return center - extents; } set { SetMinMax(value, max); } }
         public float3 max { get { return center + extents; } set { SetMinMax(min, value); } }
 
-        public FAABB(float3 center, float3 size)
+        public Aabb(float3 center, float3 size)
         {
             m_Center = center;
             m_Extents = size * 0.5F;
@@ -132,12 +82,12 @@ namespace InfinityTech.Core.Geometry
 
         public override bool Equals(object other)
         {
-            if (!(other is FAABB)) return false;
+            if (!(other is Aabb)) return false;
 
-            return Equals((FAABB)other);
+            return Equals((Aabb)other);
         }
 
-        public bool Equals(FAABB other)
+        public bool Equals(Aabb other)
         {
             return center.Equals(other.center) && extents.Equals(other.extents);
         }
@@ -153,13 +103,18 @@ namespace InfinityTech.Core.Geometry
             center = min + extents;
         }
 
-        public static implicit operator Bounds(FAABB AABB) { return new Bounds(AABB.center, AABB.size); }
+        public void Encapsulate(in Aabb other)
+        {
+            SetMinMax(math.min(min, other.min), math.max(max, other.max));
+        }
 
-        public static implicit operator FAABB(Bounds Bound) { return new FAABB(Bound.center, Bound.size); }
+        public static implicit operator Bounds(Aabb AABB) { return new Bounds(AABB.center, AABB.size); }
+
+        public static implicit operator Aabb(Bounds Bound) { return new Aabb(Bound.center, Bound.size); }
     }
 
     [Serializable]
-    public struct FSphere : IEquatable<FSphere>
+    public struct BoundSphere : IEquatable<BoundSphere>
     {
         private float m_Radius;
         private float3 m_Center;
@@ -168,7 +123,7 @@ namespace InfinityTech.Core.Geometry
         public float3 center { get { return m_Center; } set { m_Center = value; } }
 
 
-        public FSphere(float radius, float3 center)
+        public BoundSphere(float radius, float3 center)
         {
             m_Radius = radius;
             m_Center = center;
@@ -176,12 +131,12 @@ namespace InfinityTech.Core.Geometry
 
         public override bool Equals(object other)
         {
-            if (!(other is FSphere)) return false;
+            if (!(other is BoundSphere)) return false;
 
-            return Equals((FSphere)other);
+            return Equals((BoundSphere)other);
         }
 
-        public bool Equals(FSphere other)
+        public bool Equals(BoundSphere other)
         {
             return radius.Equals(other.radius) && center.Equals(other.center);
         }
@@ -340,21 +295,26 @@ namespace InfinityTech.Core.Geometry
     public static class Geometry
     {
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static float CaculateBoundRadius(in FAABB bound)
+        public static float CaculateBoundRadius(in Aabb bound)
         {
             return math.max(math.max(math.abs(bound.extents.x), math.abs(bound.extents.y)), math.abs(bound.extents.z));
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static FAABB CaculateWorldBound(in FAABB bound, in Matrix4x4 matrix)
+        public static Aabb CaculateWorldBound(in Aabb bound, in Matrix4x4 matrix)
         {
             float4 center = matrix * new float4(bound.center.x, bound.center.y, bound.center.z, 1);
             float4 extents = math.abs(matrix.GetColumn(0) * bound.extents.x) + math.abs(matrix.GetColumn(1) * bound.extents.y) + math.abs(matrix.GetColumn(2) * bound.extents.z);
-            return new FAABB(center.xyz, extents.xyz * 2);
+            return new Aabb(center.xyz, extents.xyz * 2);
+        }
+
+        public static Aabb CaculateWorldBound(in Aabb bound, in float4x4 matrix)
+        {
+            return CaculateWorldBound(bound, (Matrix4x4)matrix);
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static bool IntersectAABBFrustum(in FAABB bound, FPlane[] plane)
+        public static bool IntersectAABBFrustum(in Aabb bound, FrustumPlane[] plane)
         {
             for (int i = 0; i < 6; ++i)
             {

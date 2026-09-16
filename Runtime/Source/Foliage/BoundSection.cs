@@ -1,23 +1,22 @@
 using System;
 using Unity.Mathematics;
-using InfinityTech.Core.Geometry;
 
 namespace Landscape.FoliagePipeline
 {
     [Serializable]
-    public struct FBoundSection : IEquatable<FBoundSection>
+    public struct BoundSection : IEquatable<BoundSection>
     {
-        public FAABB boundBox;
+        public Aabb boundBox;
         public float2 pivotPosition;
 
-        public bool Equals(FBoundSection Target)
+        public bool Equals(BoundSection target)
         {
-            return boundBox.Equals(Target.boundBox) && pivotPosition.Equals(Target.pivotPosition);
+            return boundBox.Equals(target.boundBox) && pivotPosition.Equals(target.pivotPosition);
         }
 
         public override bool Equals(object obj)
         {
-            return Equals((FBoundSection)obj);
+            return Equals((BoundSection)obj);
         }
 
         public override int GetHashCode()

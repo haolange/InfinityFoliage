@@ -3,7 +3,6 @@ using UnityEngine;
 using Unity.Mathematics;
 using Unity.Collections;
 using UnityEngine.Rendering;
-using InfinityTech.Core.Geometry;
 using System.Runtime.CompilerServices;
 
 namespace Landscape.FoliagePipeline
@@ -11,15 +10,29 @@ namespace Landscape.FoliagePipeline
     [AddComponentMenu("HG/Foliage/Tree Component")]
     public unsafe class TreeComponent : FoliageComponent
     {
+        [Header("Setting")]
+        public int numSection = 16;
+        [Range(0.05f, 2f)]
+        public float fadeDuration = 0.5f;
+
 #if UNITY_EDITOR
         [Header("Debug")]
         public bool showBounds = false;
 #endif
         [HideInInspector]
-        public FTreeSector[] treeSectors;
+        public TreeSector[] treeSectors;
 
         private float drawDistance;
         private MaterialPropertyBlock m_PropertyBlock;
+        private FrustumPlane* m_Planes;
+
+        internal int sectorSize
+        {
+            get
+            {
+                return terrainData.heightmapResolution - 1;
+            }
+        }
 
         protected override void OnRegiste()
         {
@@ -30,69 +43,135 @@ namespace Landscape.FoliagePipeline
             terrain.treeDistance = 0;
             m_PropertyBlock = new MaterialPropertyBlock();
 
-            foreach (var treeSector in treeSectors)
+            Aabb terrainBound = terrainData.bounds;
+            float3 terrainPosition = transform.position;
+            if (treeSectors != null)
             {
-                treeSector.Initialize();
-                treeSector.BuildRuntimeData();
+                foreach (TreeSector treeSector in treeSectors)
+                {
+                    treeSector.Initialize(numSection, sectorSize, terrainPosition, terrainBound);
+                    treeSector.BuildRuntimeData();
+                }
             }
+            EncapsulateComponentBound();
         }
 
         protected override void UnRegiste()
         {
             terrain.treeDistance = drawDistance;
-            foreach (var treeSector in treeSectors)
+            if (treeSectors == null) { return; }
+            foreach (TreeSector treeSector in treeSectors)
             {
                 treeSector.Release();
             }
         }
 
-        #if UNITY_EDITOR
+#if UNITY_EDITOR
         public void OnSave()
         {
+            if (Application.isPlaying) { return; }
             terrain = GetComponent<Terrain>();
             terrainData = terrain.terrainData;
-            int sectorSize = terrainData.heightmapResolution - 1;
-            boundSector = new FBoundSector(0, sectorSize, 0, transform.position, terrainData.bounds, false);
+            int size = terrainData.heightmapResolution - 1;
+            boundSector = new BoundSector(0, size, 0, transform.position, terrainData.bounds, false);
+            if (treeSectors == null) { return; }
+            int expected = numSection * numSection;
+            for (int i = 0; i < treeSectors.Length; ++i)
+            {
+                if (treeSectors[i] == null) { continue; }
+                if (treeSectors[i].boundSector != null && treeSectors[i].boundSector.sections != null && treeSectors[i].boundSector.sections.Length == expected)
+                {
+                    continue;
+                }
+                treeSectors[i].RebuildSpatialGrid(numSection, size, transform.position, terrainData.bounds);
+            }
+        }
+
+        public void BakeAfterTransforms()
+        {
+            if (treeSectors == null) { return; }
+            terrain = GetComponent<Terrain>();
+            terrainData = terrain.terrainData;
+            int size = terrainData.heightmapResolution - 1;
+            Aabb terrainBound = terrainData.bounds;
+            for (int i = 0; i < treeSectors.Length; ++i)
+            {
+                treeSectors[i].BakeCells(numSection, size, transform.position, terrainBound);
+            }
+            EncapsulateComponentBound();
         }
 
         private void DrawBounds(in bool color = false)
         {
             if (showBounds == false || Application.isPlaying == false || this.enabled == false || this.gameObject.activeSelf == false) return;
-
-            foreach (var treeSector in treeSectors)
+            foreach (TreeSector treeSector in treeSectors)
             {
                 treeSector.DrawBounds(color);
             }
         }
 
-        protected  virtual  void OnDrawGizmosSelected()
+        protected virtual void OnDrawGizmosSelected()
         {
             DrawBounds(true);
         }
-        #endif
+#endif
+
+        public void EncapsulateComponentBound()
+        {
+            if (terrainData == null) { return; }
+            if (boundSector == null)
+            {
+                int size = terrainData.heightmapResolution - 1;
+                boundSector = new BoundSector(0, size, 0, transform.position, terrainData.bounds, false);
+            }
+            Aabb bound = boundSector.bound;
+            if (treeSectors == null) { return; }
+            for (int i = 0; i < treeSectors.Length; ++i)
+            {
+                TreeSector sector = treeSectors[i];
+                if (sector == null || !sector.hasPackedBound) { continue; }
+                bound.Encapsulate(sector.packedBound);
+            }
+            boundSector.bound = bound;
+        }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public override void InitView(in float3 viewOrigin, in float4x4 matrixProj, in FPlane* planes, in NativeList<JobHandle> taskHandles)
+        public override void InitView(in float3 viewOrigin, in float4x4 matrixProj, in FrustumPlane* planes, in NativeList<JobHandle> taskHandles)
         {
-            foreach (var treeSector in treeSectors)
+            m_Planes = planes;
+            if (treeSectors == null) { return; }
+            foreach (TreeSector treeSector in treeSectors)
             {
                 treeSector.InitView(drawDistance, viewOrigin, matrixProj, planes, taskHandles);
             }
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public override void DispatchSetup(in float3 viewOrigin, in float4x4 matrixProj, in NativeList<JobHandle> taskHandles)
+        public override void DispatchSetup(Camera camera, in float3 viewOrigin, in float4x4 matrixProj, in NativeList<JobHandle> taskHandles)
         {
-            foreach (var treeSector in treeSectors)
+            if (treeSectors == null) { return; }
+            foreach (TreeSector treeSector in treeSectors)
             {
-                treeSector.DispatchSetup(viewOrigin, matrixProj, taskHandles);
+                treeSector.DispatchSetup(camera, drawDistance, viewOrigin, matrixProj, m_Planes, taskHandles);
+            }
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public override void FlushPendingUploads()
+        {
+            if (treeSectors == null) { return; }
+            float dt = Time.deltaTime;
+            foreach (TreeSector treeSector in treeSectors)
+            {
+                treeSector.FlushPendingUploads(fadeDuration, dt);
             }
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public override void DispatchDraw(CommandBuffer cmdBuffer, in int passIndex)
         {
-            foreach (var treeSector in treeSectors)
+            if (treeSectors == null) { return; }
+            foreach (TreeSector treeSector in treeSectors)
             {
                 treeSector.DispatchDraw(cmdBuffer, passIndex, m_PropertyBlock);
             }

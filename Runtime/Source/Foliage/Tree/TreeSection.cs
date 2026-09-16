@@ -4,13 +4,13 @@ using Unity.Mathematics;
 namespace Landscape.FoliagePipeline
 {
     [Serializable]
-    public struct FTransform
+    public struct InstanceTransform
     {
         public float3 position;
         public float3 rotation;
         public float3 scale;
 
-        public FTransform(float3 position, float3 rotation, float3 scale)
+        public InstanceTransform(float3 position, float3 rotation, float3 scale)
         {
             this.scale = scale;
             this.rotation = rotation;
@@ -18,33 +18,13 @@ namespace Landscape.FoliagePipeline
         }
     }
 
-    public struct FTreeSection : IComparable<FTreeSection>, IEquatable<FTreeSection>
+    [Serializable]
+    public struct TreeCell
     {
-        public int elementIndex;
-
-        public FTreeSection(in int elementIndex)
-        {
-            this.elementIndex = elementIndex;
-        }
-
-        public bool Equals(FTreeSection target)
-        {
-            return elementIndex.Equals(target.elementIndex);
-        }
-
-        public override bool Equals(object target)
-        {
-            return Equals((FTreeSection)target);
-        }
-
-        public int CompareTo(FTreeSection target)
-        {
-            return elementIndex.CompareTo(target.elementIndex);
-        }
-
-        public override int GetHashCode()
-        {
-            return elementIndex.GetHashCode();
-        }
+        public int boundIndex;
+        [UnityEngine.HideInInspector]
+        public int offset;
+        [UnityEngine.HideInInspector]
+        public int count;
     }
 }

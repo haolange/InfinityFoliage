@@ -64,7 +64,7 @@ float3 RotateAroundAxisFast( float3 center, float3 original, float3 direction )
     return original + direction;
 }
 
-struct FWindInput
+struct WindInput
 {
     // Global
     float speed;
@@ -320,7 +320,7 @@ float3 CombineWind(
 }
 
 
-float3 ComputeWind(FWindInput input, float3 positionWS)
+float3 ComputeWind(WindInput input, float3 positionWS)
 {
     #if defined(_TYPE_GRASS) || defined(_TYPE_PLANT)
         input.phaseOffset += dot( input.direction, (positionWS - input.objectPivot) );
@@ -401,7 +401,7 @@ float3 ApplyWind(
     #endif
 }
 
-void Wind(FWindInput input, inout float3 positionWS, inout float3 normalWS)
+void Wind(WindInput input, inout float3 positionWS, inout float3 normalWS)
 {
     // Adjust the pivot for grass to use the XZ position of the vertex.
     // This is a decent workaround to get a per-grass-blade pivot until

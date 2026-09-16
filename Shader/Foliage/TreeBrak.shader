@@ -207,7 +207,7 @@ Shader "Landscape/TreeBrak"
 			{
 				Varyings output = (Varyings)0;
 				output.PrimitiveId  = _TreeIndexBuffer[input.InstanceId];
-				FTreeElement treeElement = _TreeElementBuffer[output.PrimitiveId];
+				TreeElement treeElement = _TreeElementBuffer[output.PrimitiveId];
 
 				output.uv0 = input.uv0;
 				output.uv1 = input.uv1;
@@ -219,6 +219,11 @@ Shader "Landscape/TreeBrak"
 
 			float4 frag(Varyings input) : SV_Target
 			{
+				if (_LodFadeEnable > 0.5)
+				{
+					LODDitheringTransition(input.vertexCS.xy, _LODFactor);
+				}
+
 				//Geometry Context
 				float3 worldPos = input.vertexWS.xyz;
 

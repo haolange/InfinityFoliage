@@ -1,53 +1,52 @@
 ﻿using System;
-using UnityEditor;
 using UnityEngine;
 using Unity.Mathematics;
 using System.Collections.Generic;
 
+#if UNITY_EDITOR
+using UnityEditor;
+#endif
+
 namespace Landscape.FoliagePipeline
 {
     [Serializable]
-    public struct FMeshLODInfo : IEquatable<FMeshLODInfo>
+    public struct MeshLodInfo : IEquatable<MeshLodInfo>
     {
         public float screenSize;
         public int[] materialSlot;
 
-        public bool Equals(FMeshLODInfo target)
+        public bool Equals(MeshLodInfo target)
         {
             return screenSize.Equals(target.screenSize) && materialSlot.Equals(target.materialSlot);
         }
 
         public override bool Equals(object target)
         {
-            return Equals((FMeshLODInfo)target);
+            return Equals((MeshLodInfo)target);
         }
 
         public override int GetHashCode()
         {
-            int hashCode = screenSize.GetHashCode();
-            hashCode += materialSlot.GetHashCode();
-
-            return hashCode;
+            return screenSize.GetHashCode() + (materialSlot != null ? materialSlot.GetHashCode() : 0);
         }
     }
 
     [Serializable]
-    public struct FMesh : IEquatable<FMesh>
+    public struct FoliageMesh : IEquatable<FoliageMesh>
     {
-        private bool IsCreated;
+        public bool isCreated;
         public float numLOD;
         public Bounds boundBox;
         public int[] numSections;
         public Mesh[] meshes;
         public Material[] materials;
-        public FMeshLODInfo[] lODInfos;
+        public MeshLodInfo[] lODInfos;
 
-        public FMesh(Mesh[] meshes, Material[] materials, FMeshLODInfo[] lODInfos)
+        public FoliageMesh(Mesh[] meshes, Material[] materials, MeshLodInfo[] lODInfos)
         {
-            this.IsCreated = true;
+            this.isCreated = true;
             this.meshes = meshes;
             this.materials = materials;
-
             this.lODInfos = lODInfos;
             this.numLOD = meshes.Length;
             this.boundBox = meshes[0].bounds;
@@ -59,19 +58,19 @@ namespace Landscape.FoliagePipeline
             }
         }
 
-        public bool Equals(FMesh target)
+        public bool Equals(FoliageMesh target)
         {
-            return IsCreated.Equals(target.IsCreated) && meshes.Equals(target.meshes) && lODInfos.Equals(target.lODInfos) && materials.Equals(target.materials);
+            return isCreated.Equals(target.isCreated) && meshes.Equals(target.meshes) && lODInfos.Equals(target.lODInfos) && materials.Equals(target.materials);
         }
 
         public override bool Equals(object target)
         {
-            return Equals((FMesh)target);
+            return Equals((FoliageMesh)target);
         }
 
         public override int GetHashCode()
         {
-            return new float4(IsCreated ? 0 : 1, meshes.GetHashCode(), lODInfos.GetHashCode(), materials.GetHashCode()).GetHashCode();
+            return new float4(isCreated ? 0 : 1, meshes.GetHashCode(), lODInfos.GetHashCode(), materials.GetHashCode()).GetHashCode();
         }
     }
 
@@ -91,132 +90,83 @@ namespace Landscape.FoliagePipeline
         public Material[] materials;
 
         [Header("Culling")]
-        public FMeshLODInfo[] lODInfos;
+        public MeshLodInfo[] lODInfos;
 
         [Header("Proxy")]
         [HideInInspector]
-        public FMesh tree;
-
-
-        public MeshAsset()
-        {
-
-        }
-
-        void Awake()
-        {
-            //Debug.Log("Awake");
-            //BuildMeshProxy();
-        }
-
-        void Reset()
-        {
-            //Debug.Log("Reset");
-            //BuildMeshProxy();
-        }
-
-        void OnEnable()
-        {
-            //Debug.Log("OnEnable");
-            //BuildMeshProxy();
-        }
-
-        void OnValidate()
-        {
-            //Debug.Log("OnValidate");
-            //BuildMeshProxy();
-        }
-
-        void OnDisable()
-        {
-            //Debug.Log("OnDisable");
-        }
-
-        void OnDestroy()
-        {
-            //Debug.Log("OnDestroy");
-        }
+        public FoliageMesh tree;
 
 #if UNITY_EDITOR
-        void BuildMeshAsset(Mesh[] meshes, Material[] materials, FMeshLODInfo[] lODInfos)
+        void BuildMeshAsset(Mesh[] buildMeshes, Material[] buildMaterials, MeshLodInfo[] buildLodInfos)
         {
-            this.meshes = meshes;
-            this.materials = materials;
-            this.lODInfos = lODInfos;
-            this.tree = new FMesh(meshes, materials, lODInfos);
+            this.meshes = buildMeshes;
+            this.materials = buildMaterials;
+            this.lODInfos = buildLodInfos;
+            this.tree = new FoliageMesh(buildMeshes, buildMaterials, buildLodInfos);
         }
 
         internal static void BuildMeshAssetFromLODGroup(GameObject cloneTarget, MeshAsset meshAsset)
         {
-            List<Mesh> meshes = new List<Mesh>();
-            List<Material> materials = new List<Material>();
+            List<Mesh> meshList = new List<Mesh>();
+            List<Material> materialList = new List<Material>();
             LOD[] lods = cloneTarget.GetComponent<LODGroup>().GetLODs();
 
-            //Collector Meshes&Materials
             for (int j = 0; j < lods.Length; ++j)
             {
                 ref LOD lod = ref lods[j];
                 Renderer renderer = lod.renderers[0];
                 MeshFilter meshFilter = renderer.gameObject.GetComponent<MeshFilter>();
 
-                meshes.AddUnique(meshFilter.sharedMesh);
+                meshList.AddUnique(meshFilter.sharedMesh);
                 for (int k = 0; k < renderer.sharedMaterials.Length; ++k)
                 {
-                    materials.AddUnique(renderer.sharedMaterials[k]);
+                    materialList.AddUnique(renderer.sharedMaterials[k]);
                 }
             }
 
-            //Build LODInfo
-            FMeshLODInfo[] lODInfos = new FMeshLODInfo[lods.Length];
+            MeshLodInfo[] lodInfos = new MeshLodInfo[lods.Length];
             for (int l = 0; l < lods.Length; ++l)
             {
                 ref LOD lod = ref lods[l];
-                ref FMeshLODInfo lODInfo = ref lODInfos[l];
+                ref MeshLodInfo lodInfo = ref lodInfos[l];
                 Renderer renderer = lod.renderers[0];
 
-                lODInfo.screenSize = 1 - (l * 0.125f);
-                lODInfo.materialSlot = new int[renderer.sharedMaterials.Length];
+                lodInfo.screenSize = 1 - (l * 0.125f);
+                lodInfo.materialSlot = new int[renderer.sharedMaterials.Length];
 
                 for (int m = 0; m < renderer.sharedMaterials.Length; ++m)
                 {
-                    ref int materialSlot = ref lODInfo.materialSlot[m];
-                    materialSlot = materials.IndexOf(renderer.sharedMaterials[m]);
+                    lodInfo.materialSlot[m] = materialList.IndexOf(renderer.sharedMaterials[m]);
                 }
             }
 
-            meshAsset.BuildMeshAsset(meshes.ToArray(), materials.ToArray(), lODInfos);
+            meshAsset.BuildMeshAsset(meshList.ToArray(), materialList.ToArray(), lodInfos);
             EditorUtility.SetDirty(meshAsset);
         }
 
         internal static void BuildMeshAssetFromMeshRenderer(GameObject cloneTarget, MeshAsset meshAsset)
         {
-            List<Mesh> meshes = new List<Mesh>();
-            List<Material> materials = new List<Material>();
+            List<Mesh> meshList = new List<Mesh>();
+            List<Material> materialList = new List<Material>();
 
-            //Collector Meshes&Materials
             Renderer renderer = cloneTarget.GetComponent<MeshRenderer>();
             MeshFilter meshFilter = cloneTarget.GetComponent<MeshFilter>();
 
-            meshes.AddUnique(meshFilter.sharedMesh);
+            meshList.AddUnique(meshFilter.sharedMesh);
             for (int k = 0; k < renderer.sharedMaterials.Length; ++k)
             {
-                materials.AddUnique(renderer.sharedMaterials[k]);
+                materialList.AddUnique(renderer.sharedMaterials[k]);
             }
 
-            //Build LODInfo
-            FMeshLODInfo[] lODInfos = new FMeshLODInfo[1];
-
-            ref FMeshLODInfo lODInfo = ref lODInfos[0];
-            lODInfo.screenSize = 1;
-            lODInfo.materialSlot = new int[renderer.sharedMaterials.Length];
-
+            MeshLodInfo[] lodInfos = new MeshLodInfo[1];
+            lodInfos[0].screenSize = 1;
+            lodInfos[0].materialSlot = new int[renderer.sharedMaterials.Length];
             for (int m = 0; m < renderer.sharedMaterials.Length; ++m)
             {
-                ref int MaterialSlot = ref lODInfo.materialSlot[m];
-                MaterialSlot = materials.IndexOf(renderer.sharedMaterials[m]);
+                lodInfos[0].materialSlot[m] = materialList.IndexOf(renderer.sharedMaterials[m]);
             }
 
-            meshAsset.BuildMeshAsset(meshes.ToArray(), materials.ToArray(), lODInfos);
+            meshAsset.BuildMeshAsset(meshList.ToArray(), materialList.ToArray(), lodInfos);
             EditorUtility.SetDirty(meshAsset);
         }
 
@@ -230,7 +180,7 @@ namespace Landscape.FoliagePipeline
 
             bool buildOK = false;
 
-            if(cloneTarget.GetComponent<LODGroup>() != null)
+            if (cloneTarget.GetComponent<LODGroup>() != null)
             {
                 buildOK = true;
                 meshAsset.target = cloneTarget;

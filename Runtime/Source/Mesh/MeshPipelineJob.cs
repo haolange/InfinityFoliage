@@ -4,7 +4,6 @@ using Unity.Burst;
 using UnityEngine;
 using Unity.Collections;
 using Unity.Mathematics;
-using InfinityTech.Core.Geometry;
 using System.Collections.Generic;
 using System.Runtime.InteropServices;
 using Unity.Collections.LowLevel.Unsafe;
@@ -18,7 +17,7 @@ namespace Landscape.FoliagePipeline
         void Execute();
     }
 
-    public struct FUpdateTreeTask : ITask
+    public struct UpdateTreeTask : ITask
     {
         public int length;
         public float2 size;
@@ -26,17 +25,17 @@ namespace Landscape.FoliagePipeline
         public TreePrototype treePrototype;
         public TreeInstance[] treeInstances;
         public TreePrototype[] treePrototypes;
-        public List<FTransform> treeTransfroms;
+        public List<InstanceTransform> treeTransfroms;
 
         public void Execute()
         {
-            FTransform transform = new FTransform();
+            InstanceTransform transform = new InstanceTransform();
 
             for (int i = 0; i < length; ++i)
             {
                 ref TreeInstance treeInstance = ref treeInstances[i];
-                TreePrototype serchTreePrototype = treePrototypes[treeInstance.prototypeIndex];
-                if (serchTreePrototype.Equals(treePrototype))
+                TreePrototype searchTreePrototype = treePrototypes[treeInstance.prototypeIndex];
+                if (searchTreePrototype.Equals(treePrototype))
                 {
                     transform.rotation = new float3(0, treeInstance.rotation, 0);
                     transform.position = (treeInstance.position * new float3(size.x, size.y, size.x)) + terrainPosition;
@@ -47,14 +46,13 @@ namespace Landscape.FoliagePipeline
         }
     }
 
-    public struct FUpdateGrassTask : ITask
+    public struct UpdateGrassTask : ITask
     {
         public int length;
         public byte[] dscDensity;
         public int[,] srcDensity;
         public float[,] srcHeight;
-        //public float[] dscHeight;
-        public FGrassSection grassSection;
+        public GrassSection grassSection;
 
         public void Execute()
         {
@@ -63,15 +61,14 @@ namespace Landscape.FoliagePipeline
                 for (int k = 0; k < length; ++k)
                 {
                     int densityIndex = j * length + k;
-                    //dscHeight[densityIndex] = srcHeight[j, k];
                     dscDensity[densityIndex] = (byte)srcDensity[j, k];
-                    grassSection.instanceCount += srcDensity[j, k];
+                    grassSection.count += srcDensity[j, k];
                 }
             }
         }
     }
 
-    public struct FUpdateFoliageJob : IJob
+    public struct UpdateFoliageJob : IJob
     {
         public long taskPtr;
 
@@ -85,77 +82,96 @@ namespace Landscape.FoliagePipeline
 #endif
 
     [BurstCompile]
-    public unsafe struct FGrassScatterJob : IJob
+    public unsafe struct GrassScatterJob : IJobParallelFor
     {
         [ReadOnly]
         public int split;
-
-        //[ReadOnly]
-        //public float heightScale;
-
-        [ReadOnly]
-        public float uniqueValue;
 
         [ReadOnly]
         public float densityScale;
 
         [ReadOnly]
-        public float3 sectionPivot;
-
-        [ReadOnly]
         public float4 widthScale;
 
         [ReadOnly]
-        public NativeArray<byte> densityMap;
+        public NativeArray<byte> flatDensity;
 
-        //[ReadOnly]
-        //public NativeArray<float> heightMap;
+        [ReadOnly]
+        public NativeArray<int> densityStarts;
 
-        [WriteOnly]
-        public NativeList<FGrassElement> grassElements;
+        [ReadOnly]
+        public NativeArray<int> destOffsets;
 
-        public void Execute()
+        [ReadOnly]
+        public NativeArray<int> slotCounts;
+
+        [ReadOnly]
+        public NativeArray<float3> sectionPivots;
+
+        [NativeDisableParallelForRestriction]
+        public NativeArray<GrassElement> packedElements;
+
+        public void Execute(int sectionIndex)
         {
-            FGrassElement grassElement;
+            int slotCount = slotCounts[sectionIndex];
+            if (slotCount <= 0) { return; }
 
-            for (int i = 0; i < densityMap.Length; ++i)
+            int destOffset = destOffsets[sectionIndex];
+            float uniqueValue = 1.0f + (randomFloat((float)(sectionIndex + 1)) * 15.0f);
+            float3 sectionPivot = sectionPivots[sectionIndex];
+            int densityStart = densityStarts[sectionIndex];
+            int densityLength = densityStarts[sectionIndex + 1] - densityStart;
+
+            int written = 0;
+            GrassElement grassElement;
+            grassElement.matrix_World = float4x4.identity;
+
+            for (int i = 0; i < densityLength && written < slotCount; ++i)
             {
-                //height = heightMap[i];
-                int density = (int)((float)densityMap[i] / densityScale);
-                if(density == 0) { continue; }
+                float scale = densityScale;
+                if (scale <= 0.0001f) { break; }
+                int density = (int)((float)flatDensity[densityStart + i] / scale);
+                if (density == 0) { continue; }
 
-                float3 position = sectionPivot + new float3(i % split, 0 /*height * heightScale*/, i / split);
-                for (int j = 0; j < density; ++j)
+                float3 position = sectionPivot + new float3(i % split, 0, i / split);
+                for (int j = 0; j < density && written < slotCount; ++j)
                 {
                     float multiplier = (j + 1) * uniqueValue;
                     float2 randomPoint = randomFloat2(new float2(position.x * multiplier, position.z * multiplier));
                     float3 newPosition = position + new float3(randomPoint.x, 0, randomPoint.y);
 
                     float randomRotate = randomFloat(newPosition.x - newPosition.y * multiplier);
-
                     float randomScale = randomFloat((newPosition.x + newPosition.z) * multiplier);
                     float yScale = widthScale.z + ((widthScale.w - widthScale.z) * randomScale);
                     float xzScale = widthScale.x + ((widthScale.y - widthScale.x) * randomScale);
-                    float3 scale = new float3(xzScale, yScale, xzScale);
+                    float3 instanceScale = new float3(xzScale, yScale, xzScale);
 
-                    grassElement.matrix_World = float4x4.TRS(newPosition, quaternion.AxisAngle(new float3(0, 1, 0), math.radians(randomRotate * 360)), scale);
-                    grassElements.Add(grassElement);
+                    grassElement.matrix_World = float4x4.TRS(newPosition, quaternion.AxisAngle(new float3(0, 1, 0), math.radians(randomRotate * 360)), instanceScale);
+                    packedElements[destOffset + written] = grassElement;
+                    ++written;
                 }
+            }
+
+            grassElement.matrix_World = float4x4.TRS(sectionPivot, quaternion.identity, float3.zero);
+            while (written < slotCount)
+            {
+                packedElements[destOffset + written] = grassElement;
+                ++written;
             }
         }
     }
 
     [BurstCompile]
-    public unsafe struct FBoundCullingJob : IJob
+    public unsafe struct BoundCullingJob : IJob
     {
         public int length;
 
         [ReadOnly]
         [NativeDisableUnsafePtrRestriction]
-        public FPlane* planes;
+        public FrustumPlane* planes;
 
         [NativeDisableUnsafePtrRestriction]
-        public FAABB* sectorBounds;
+        public Aabb* sectorBounds;
 
         [WriteOnly]
         public NativeArray<byte> visibleMap;
@@ -166,14 +182,13 @@ namespace Landscape.FoliagePipeline
             {
                 int visible = 1;
                 float2 distRadius = new float2(0, 0);
-                ref FAABB sectorBound = ref sectorBounds[index];
+                ref Aabb sectorBound = ref sectorBounds[index];
 
-                for (int PlaneIndex = 0; PlaneIndex < 6; ++PlaneIndex)
+                for (int planeIndex = 0; planeIndex < 6; ++planeIndex)
                 {
-                    ref FPlane plane = ref planes[PlaneIndex];
+                    ref FrustumPlane plane = ref planes[planeIndex];
                     distRadius.x = math.dot(plane.normalDist.xyz, sectorBound.center) + plane.normalDist.w;
                     distRadius.y = math.dot(math.abs(plane.normalDist.xyz), sectorBound.extents);
-
                     visible = math.select(visible, 0, distRadius.x + distRadius.y < 0);
                 }
                 visibleMap[index] = (byte)visible;
@@ -182,14 +197,14 @@ namespace Landscape.FoliagePipeline
     }
 
     [BurstCompile]
-    public unsafe struct FBoundCullingParallelJob : IJobParallelFor
+    public unsafe struct BoundCullingParallelJob : IJobParallelFor
     {
         [ReadOnly]
         [NativeDisableUnsafePtrRestriction]
-        public FPlane* planes;
+        public FrustumPlane* planes;
 
         [NativeDisableUnsafePtrRestriction]
-        public FAABB* sectorBounds;
+        public Aabb* sectorBounds;
 
         [WriteOnly]
         public NativeArray<byte> visibleMap;
@@ -198,14 +213,13 @@ namespace Landscape.FoliagePipeline
         {
             int visible = 1;
             float2 distRadius = new float2(0, 0);
-            ref FAABB sectorBound = ref sectorBounds[index];
+            ref Aabb sectorBound = ref sectorBounds[index];
 
-            for (int PlaneIndex = 0; PlaneIndex < 6; ++PlaneIndex)
+            for (int planeIndex = 0; planeIndex < 6; ++planeIndex)
             {
-                ref FPlane plane = ref planes[PlaneIndex];
+                ref FrustumPlane plane = ref planes[planeIndex];
                 distRadius.x = math.dot(plane.normalDist.xyz, sectorBound.center) + plane.normalDist.w;
                 distRadius.y = math.dot(math.abs(plane.normalDist.xyz), sectorBound.extents);
-
                 visible = math.select(visible, 0, distRadius.x + distRadius.y < 0);
             }
             visibleMap[index] = (byte)visible;
@@ -213,7 +227,7 @@ namespace Landscape.FoliagePipeline
     }
 
     [BurstCompile]
-    public unsafe struct FGrassCullingJob : IJobParallelFor
+    public unsafe struct SectionCullingJob : IJobParallelFor
     {
         [ReadOnly]
         public float4 viewOrigin;
@@ -223,10 +237,10 @@ namespace Landscape.FoliagePipeline
 
         [ReadOnly]
         [NativeDisableUnsafePtrRestriction]
-        public FPlane* planes;
+        public FrustumPlane* planes;
 
         [NativeDisableUnsafePtrRestriction]
-        public FBoundSection* sectionBounds;
+        public BoundSection* sectionBounds;
 
         [WriteOnly]
         public NativeArray<byte> visibleMap;
@@ -235,14 +249,13 @@ namespace Landscape.FoliagePipeline
         {
             int visible = 1;
             float2 distRadius = new float2(0, 0);
-            ref FBoundSection sectionBound = ref sectionBounds[index];
+            ref BoundSection sectionBound = ref sectionBounds[index];
 
             for (int i = 0; i < 6; ++i)
             {
-                ref FPlane plane = ref planes[i];
+                ref FrustumPlane plane = ref planes[i];
                 distRadius.x = math.dot(plane.normalDist.xyz, sectionBound.boundBox.center) + plane.normalDist.w;
                 distRadius.y = math.dot(math.abs(plane.normalDist.xyz), sectionBound.boundBox.extents);
-
                 visible = math.select(visible, 0, distRadius.x + distRadius.y < 0);
             }
             float4 boundPivot = new float4(sectionBound.boundBox.center.x, sectionBound.boundBox.center.y + sectionBound.boundBox.extents.y, sectionBound.boundBox.center.z, 1);
@@ -251,122 +264,165 @@ namespace Landscape.FoliagePipeline
     }
 
     [BurstCompile]
-    public unsafe struct FTreeScatterJob : IJobParallelFor
+    public unsafe struct TreeCullLodJob : IJobParallelFor
     {
-        public Bounds boundBox;
-
-        [ReadOnly]
-        public NativeArray<FTransform> transforms;
-
-        [WriteOnly]
-        public NativeArray<FTreeElement> treeElements;
-
-        public void Execute(int index)
-        {
-            float4x4 matrixWorld = float4x4.TRS(transforms[index].position, quaternion.EulerXYZ(transforms[index].rotation), transforms[index].scale);
-
-            FTreeElement treeElement;
-            treeElement.meshIndex = 0;
-            treeElement.matrix_World = matrixWorld;
-            treeElement.boundBox = Geometry.CaculateWorldBound(boundBox, matrixWorld);
-            treeElement.boundSphere = new FSphere(Geometry.CaculateBoundRadius(treeElement.boundBox), treeElement.boundBox.center);
-            treeElements[index] = treeElement;
-        }
-    }
-
-    [BurstCompile]
-    public unsafe struct FTreeComputeLODJob : IJobParallelFor
-    {
-        public int numLOD;
-
-        public float3 viewOringin;
-
-        public float4x4 matrix_Proj;
-
-        [ReadOnly]
-        [NativeDisableUnsafePtrRestriction]
-        public float* treeLODInfos;
-
-        [ReadOnly]
-        [NativeDisableUnsafePtrRestriction]
-        public FTreeElement* treeElements;
-
-        public void Execute(int index)
-        {
-            ref FTreeElement treeElement = ref treeElements[index];
-            float screenRadiusSqr = Geometry.ComputeBoundsScreenRadiusSquared(treeElement.boundSphere.radius, treeElement.boundBox.center, viewOringin, matrix_Proj);
-
-            for (int lodIndex = numLOD; lodIndex >= 0; --lodIndex)
-            {
-                ref float treeLODInfo = ref treeLODInfos[lodIndex];
-
-                if (mathExtent.sqr(treeLODInfo * 0.5f) >= screenRadiusSqr)
-                {
-                    treeElement.meshIndex = lodIndex;
-                    break;
-                }
-            }
-        }
-    }
-
-    [BurstCompile]
-    public unsafe struct FTreeCullingJob : IJobParallelFor
-    {
+        public int writeLod;
         public float maxDistance;
+        public float3 viewOrigin;
+        public float4x4 matrixProj;
+
+        [ReadOnly]
+        public NativeArray<byte> cellVisible;
+
+        [ReadOnly]
+        public NativeArray<int> cellOffset;
+
+        [ReadOnly]
+        public NativeArray<int> cellCount;
+
+        [ReadOnly]
+        public NativeArray<Aabb> bounds;
+
+        [ReadOnly]
+        public NativeArray<float> lodScreenSizes;
 
         [ReadOnly]
         [NativeDisableUnsafePtrRestriction]
-        public FPlane* planes;
+        public FrustumPlane* planes;
 
-        public float3 viewOringin;
+        [NativeDisableParallelForRestriction]
+        public NativeArray<int> instanceVisible;
 
-        [ReadOnly]
-        [NativeDisableUnsafePtrRestriction]
-        public FTreeElement* treeElements;
+        [NativeDisableParallelForRestriction]
+        public NativeArray<int> lodNow;
 
-        [WriteOnly]
-        public NativeArray<int> viewTreeElements;
-
-        public void Execute(int index)
+        public void Execute(int cell)
         {
-            int visible = 1;
-            float2 distRadius = new float2(0, 0);
-            ref FTreeElement treeElement = ref treeElements[index];
-
-            for (int planeIndex = 0; planeIndex < 6; ++planeIndex)
+            int offset = cellOffset[cell];
+            int count = cellCount[cell];
+            if (cellVisible[cell] == 0)
             {
-                ref FPlane plane = ref planes[planeIndex];
-                distRadius.x = math.dot(plane.normalDist.xyz, treeElement.boundBox.center) + plane.normalDist.w;
-                distRadius.y = math.dot(math.abs(plane.normalDist.xyz), treeElement.boundBox.extents);
-
-                visible = math.select(visible, 0, distRadius.x + distRadius.y < 0);
+                for (int i = 0; i < count; ++i)
+                {
+                    instanceVisible[offset + i] = 0;
+                    if (writeLod != 0)
+                    {
+                        lodNow[offset + i] = -1;
+                    }
+                }
+                return;
             }
-            viewTreeElements[index] = math.select(visible, 0, math.distance(viewOringin, treeElement.boundBox.center) > maxDistance);
+
+            for (int i = 0; i < count; ++i)
+            {
+                int index = offset + i;
+                Aabb box = bounds[index];
+                int visible = 1;
+                float2 distRadius = new float2(0, 0);
+                for (int planeIndex = 0; planeIndex < 6; ++planeIndex)
+                {
+                    ref FrustumPlane plane = ref planes[planeIndex];
+                    distRadius.x = math.dot(plane.normalDist.xyz, box.center) + plane.normalDist.w;
+                    distRadius.y = math.dot(math.abs(plane.normalDist.xyz), box.extents);
+                    visible = math.select(visible, 0, distRadius.x + distRadius.y < 0);
+                }
+                visible = math.select(visible, 0, math.distance(viewOrigin, box.center) > maxDistance);
+                instanceVisible[index] = visible;
+                if (writeLod == 0)
+                {
+                    continue;
+                }
+                if (visible == 0)
+                {
+                    lodNow[index] = -1;
+                    continue;
+                }
+
+                float radius = math.max(math.max(math.abs(box.extents.x), math.abs(box.extents.y)), math.abs(box.extents.z));
+                float distSqr = ((box.center.x - viewOrigin.x) * (box.center.x - viewOrigin.x)) + ((box.center.y - viewOrigin.y) * (box.center.y - viewOrigin.y)) + ((box.center.z - viewOrigin.z) * (box.center.z - viewOrigin.z));
+                distSqr *= matrixProj.c2.z;
+                float screenMultiple = math.max(0.5f * matrixProj.c0.x, 0.5f * matrixProj.c1.y) * radius;
+                float screenRadiusSqr = (screenMultiple * screenMultiple) / math.max(1, distSqr);
+
+                int lod = 0;
+                int last = lodScreenSizes.Length - 1;
+                for (int lodIndex = last; lodIndex >= 0; --lodIndex)
+                {
+                    float threshold = lodScreenSizes[lodIndex] * 0.5f;
+                    if ((threshold * threshold) >= screenRadiusSqr)
+                    {
+                        lod = lodIndex;
+                        break;
+                    }
+                }
+                lodNow[index] = lod;
+            }
         }
     }
 
     [BurstCompile]
-    public unsafe struct FTreeSelectLODJob : IJob
+    public struct TreeCompactLodJob : IJob
     {
         public int meshIndex;
+        public int ditherEnabled;
 
         [ReadOnly]
-        public NativeArray<FTreeElement> treeElements;
+        public NativeArray<int> instanceVisible;
 
         [ReadOnly]
-        public NativeArray<int> viewTreeElements;
+        public NativeArray<int> lodHold;
 
-        [WriteOnly]
-        public NativeList<int> passTreeSections;
+        [ReadOnly]
+        public NativeArray<int> lodNow;
+
+        public NativeList<int> stable;
+        public NativeList<int> fadeOut;
+        public NativeList<int> fadeIn;
 
         public void Execute()
         {
-            for (int i = 0; i < treeElements.Length; ++i)
+            for (int i = 0; i < instanceVisible.Length; ++i)
             {
-                if (viewTreeElements[i] != 0 && treeElements[i].meshIndex == meshIndex)
+                if (instanceVisible[i] == 0) { continue; }
+                int hold = lodHold[i];
+                int now = lodNow[i];
+                if (now < 0) { continue; }
+                if (hold < 0) { hold = now; }
+
+                int bucket;
+                if (ditherEnabled == 0)
                 {
-                    passTreeSections.Add(i);
+                    bucket = now == meshIndex ? (int)LodBucket.Stable : (int)LodBucket.None;
                 }
+                else
+                {
+                    int delta = hold - now;
+                    if (delta < 0) { delta = -delta; }
+                    if (delta > 1)
+                    {
+                        bucket = now == meshIndex ? (int)LodBucket.Stable : (int)LodBucket.None;
+                    }
+                    else if (hold == now)
+                    {
+                        bucket = now == meshIndex ? (int)LodBucket.Stable : (int)LodBucket.None;
+                    }
+                    else if (hold == meshIndex)
+                    {
+                        bucket = (int)LodBucket.FadeOut;
+                    }
+                    else if (now == meshIndex)
+                    {
+                        bucket = (int)LodBucket.FadeIn;
+                    }
+                    else
+                    {
+                        bucket = (int)LodBucket.None;
+                    }
+                }
+
+                if (bucket == (int)LodBucket.Stable) { stable.Add(i); }
+                else if (bucket == (int)LodBucket.FadeOut) { fadeOut.Add(i); }
+                else if (bucket == (int)LodBucket.FadeIn) { fadeIn.Add(i); }
             }
         }
     }

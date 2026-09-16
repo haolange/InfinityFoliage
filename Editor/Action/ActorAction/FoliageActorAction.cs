@@ -33,12 +33,13 @@ namespace Landscape.FoliagePipeline.Editor
                 treeComponent.terrain = terrain;
                 treeComponent.terrainData = terrainData;
                 treeComponent.OnSave();
-                treeComponent.treeSectors = new FTreeSector[terrainData.treePrototypes.Length];
+                treeComponent.treeSectors = new TreeSector[terrainData.treePrototypes.Length];
 
                 for (int index = 0; index < terrainData.treePrototypes.Length; ++index)
                 {
-                    treeComponent.treeSectors[index] = new FTreeSector();
+                    treeComponent.treeSectors[index] = new TreeSector();
                     treeComponent.treeSectors[index].treeIndex = index;
+                    treeComponent.treeSectors[index].RebuildSpatialGrid(treeComponent.numSection, terrainData.heightmapResolution - 1, SelectObject.transform.position, terrainData.bounds);
 
                     TreePrototype treePrototype = terrainData.treePrototypes[index];
                     List<Mesh> meshes = new List<Mesh>();
@@ -48,7 +49,6 @@ namespace Landscape.FoliagePipeline.Editor
                     LODGroup lodGroup = treePrefab.GetComponent<LODGroup>();
                     LOD[] lods = lodGroup.GetLODs();
 
-                    //Collector Meshes&Materials
                     for (int j = 0; j < lods.Length; ++j)
                     {
                         ref LOD lod = ref lods[j];
@@ -62,12 +62,11 @@ namespace Landscape.FoliagePipeline.Editor
                         }
                     }
 
-                    //Build LODInfo
-                    FMeshLODInfo[] lodInfos = new FMeshLODInfo[lods.Length];
+                    MeshLodInfo[] lodInfos = new MeshLodInfo[lods.Length];
                     for (int l = 0; l < lods.Length; ++l)
                     {
                         ref LOD lod = ref lods[l];
-                        ref FMeshLODInfo lodInfo = ref lodInfos[l];
+                        ref MeshLodInfo lodInfo = ref lodInfos[l];
                         Renderer renderer = lod.renderers[0];
 
                         lodInfo.screenSize = 1 - (l * 0.03125f);
@@ -75,11 +74,10 @@ namespace Landscape.FoliagePipeline.Editor
 
                         for (int m = 0; m < renderer.sharedMaterials.Length; ++m)
                         {
-                            ref int materialSlot = ref lodInfo.materialSlot[m];
-                            materialSlot = materials.IndexOf(renderer.sharedMaterials[m]);
+                            lodInfo.materialSlot[m] = materials.IndexOf(renderer.sharedMaterials[m]);
                         }
                     }
-                    treeComponent.treeSectors[index].tree = new FMesh(meshes.ToArray(), materials.ToArray(), lodInfos);
+                    treeComponent.treeSectors[index].tree = new FoliageMesh(meshes.ToArray(), materials.ToArray(), lodInfos);
                 }
 
                 EditorUtility.SetDirty(treeComponent);
@@ -109,16 +107,15 @@ namespace Landscape.FoliagePipeline.Editor
                 treeComponent.terrain = terrain;
                 treeComponent.terrainData = terrainData;
 
-                if (treeComponent.treeSectors.Length != 0)
+                if (treeComponent.treeSectors != null && treeComponent.treeSectors.Length != 0)
                 {
                     for (var i = 0; i < treeComponent.treeSectors.Length; ++i)
                     {
-                        ref var treeSector = ref treeComponent.treeSectors[i];
-                        treeSector.transforms = new List<FTransform>(512);
+                        var treeSector = treeComponent.treeSectors[i];
+                        treeSector.transforms = new List<InstanceTransform>(512);
                         var treePrototype = terrainData.treePrototypes[treeSector.treeIndex];
 
-                        //Build Transforms
-                        var updateTreeTask = new FUpdateTreeTask();
+                        var updateTreeTask = new UpdateTreeTask();
                         {
                             updateTreeTask.length = terrainData.treeInstanceCount;
                             updateTreeTask.size = new float2(terrainData.heightmapResolution - 1, terrainData.heightmapScale.y);
@@ -132,7 +129,7 @@ namespace Landscape.FoliagePipeline.Editor
                         long taskPtr = ((IntPtr)taskHandle).ToInt64();
                         tasksPtr.Add(taskPtr);
 
-                        var updateTreeJob = new FUpdateFoliageJob();
+                        var updateTreeJob = new UpdateFoliageJob();
                         {
                             updateTreeJob.taskPtr = taskPtr;
                         }
@@ -148,8 +145,16 @@ namespace Landscape.FoliagePipeline.Editor
                 jobsHandle[j].Complete();
                 GCHandle.FromIntPtr((IntPtr)tasksPtr[j]).Free();
             }
+
+            foreach (var selectObject in selectObjects)
+            {
+                var treeComponent = selectObject.GetComponent<TreeComponent>();
+                if (treeComponent == null) { continue; }
+                treeComponent.BakeAfterTransforms();
+                EditorUtility.SetDirty(selectObject);
+            }
         }
-        #endregion //Tree
+        #endregion
 
         #region Grass
         [MenuItem("GameObject/EntityAction/Landscape/BuildTerrainGrass", false, 11)]
@@ -159,10 +164,10 @@ namespace Landscape.FoliagePipeline.Editor
             foreach (GameObject selectObject in selectObjects)
             {
                 Terrain terrain = selectObject.GetComponent<Terrain>();
-                if (!terrain) 
+                if (!terrain)
                 {
                     Debug.LogWarning("select GameObject doesn't have terrain component");
-                    continue; 
+                    continue;
                 }
 
                 TerrainData terrainData = terrain.terrainData;
@@ -176,11 +181,11 @@ namespace Landscape.FoliagePipeline.Editor
                 grassComponent.numSection = (terrainData.heightmapResolution - 1) / 32;
                 grassComponent.OnSave();
 
-                grassComponent.grassSectors = new FGrassSector[terrainData.detailPrototypes.Length];
+                grassComponent.grassSectors = new GrassSector[terrainData.detailPrototypes.Length];
 
                 for (int index = 0; index < terrainData.detailPrototypes.Length; ++index)
                 {
-                    grassComponent.grassSectors[index] = new FGrassSector(grassComponent.boundSector.sections.Length);
+                    grassComponent.grassSectors[index] = new GrassSector(grassComponent.boundSector.sections.Length);
                     grassComponent.grassSectors[index].grassIndex = index;
 
                     DetailPrototype detailPrototype = terrainData.detailPrototypes[index];
@@ -189,7 +194,6 @@ namespace Landscape.FoliagePipeline.Editor
                     List<Mesh> meshes = new List<Mesh>();
                     List<Material> materials = new List<Material>();
 
-                    //Collector Meshes&Materials
                     MeshFilter meshFilter = grassPrefab.GetComponent<MeshFilter>();
                     MeshRenderer meshRenderer = grassPrefab.GetComponent<MeshRenderer>();
 
@@ -199,24 +203,20 @@ namespace Landscape.FoliagePipeline.Editor
                         materials.AddUnique(meshRenderer.sharedMaterials[i]);
                     }
 
-                    //Build LODInfo
-                    FMeshLODInfo[] lodInfos = new FMeshLODInfo[1];
-                    ref FMeshLODInfo lodInfo = ref lodInfos[0];
-
+                    MeshLodInfo[] lodInfos = new MeshLodInfo[1];
+                    ref MeshLodInfo lodInfo = ref lodInfos[0];
                     lodInfo.screenSize = 1;
                     lodInfo.materialSlot = new int[meshRenderer.sharedMaterials.Length];
 
                     for (int j = 0; j < meshRenderer.sharedMaterials.Length; ++j)
                     {
-                        ref int materialSlot = ref lodInfo.materialSlot[j];
-                        materialSlot = materials.IndexOf(meshRenderer.sharedMaterials[j]);
+                        lodInfo.materialSlot[j] = materials.IndexOf(meshRenderer.sharedMaterials[j]);
                     }
-                    grassComponent.grassSectors[index].grass = new FMesh(meshes.ToArray(), materials.ToArray(), lodInfos);
-                    grassComponent.grassSectors[index].grassIndex = index;
+                    grassComponent.grassSectors[index].grass = new FoliageMesh(meshes.ToArray(), materials.ToArray(), lodInfos);
 
                     for (int k = 0; k < grassComponent.boundSector.sections.Length; ++k)
                     {
-                        FGrassSection grassSection = new FGrassSection();
+                        GrassSection grassSection = new GrassSection();
                         grassSection.boundIndex = k;
                         grassComponent.grassSectors[index].sections[k] = grassSection;
                     }
@@ -249,43 +249,40 @@ namespace Landscape.FoliagePipeline.Editor
                 grassComponent.terrain = terrain;
                 grassComponent.terrainData = terrainData;
 
-                FBoundSector boundSector = grassComponent.boundSector;
+                BoundSector boundSector = grassComponent.boundSector;
                 for (int index = 0; index < grassComponent.grassSectors.Length; ++index)
                 {
-                    FGrassSector grassSector = grassComponent.grassSectors[index];
+                    GrassSector grassSector = grassComponent.grassSectors[index];
                     int grassIndex = grassSector.grassIndex;
 
                     for (int i = 0; i < grassSector.sections.Length; ++i)
                     {
-                        FGrassSection grassSection = grassSector.sections[i];
-                        FBoundSection boundSection = boundSector.sections[grassSection.boundIndex];
-
+                        GrassSection grassSection = grassSector.sections[i];
+                        BoundSection boundSection = boundSector.sections[grassSection.boundIndex];
+                        grassSection.count = 0;
+                        grassSection.offset = 0;
                         grassSection.densityMap = new byte[grassComponent.sectionSize * grassComponent.sectionSize];
-                        //grassSection.heightmap = new float[grassComponent.SectionSize * grassComponent.SectionSize];
 
                         int2 sampleUV = (int2)boundSection.pivotPosition - new int2((int)selectObject.transform.position.x, (int)selectObject.transform.position.z);
                         int[,] densityMap = terrainData.GetDetailLayer(sampleUV.x, sampleUV.y, grassComponent.sectionSize, grassComponent.sectionSize, grassIndex);
                         float[,] heightMap = terrainData.GetHeights(sampleUV.x, sampleUV.y, grassComponent.sectionSize, grassComponent.sectionSize);
 
-                        //Build Density and Height and Normal
-                        var updategrassTask = new FUpdateGrassTask();
+                        var updategrassTask = new UpdateGrassTask();
                         {
                             updategrassTask.length = grassComponent.sectionSize;
                             updategrassTask.srcHeight = heightMap;
                             updategrassTask.srcDensity = densityMap;
                             updategrassTask.grassSection = grassSection;
                             updategrassTask.dscDensity = grassSection.densityMap;
-                            //updategrassTask.dscHeight = grassSection.heightmap;
                         }
                         GCHandle taskHandle = GCHandle.Alloc(updategrassTask);
                         long taskPtr = ((IntPtr)taskHandle).ToInt64();
                         tasksPtr.Add(taskPtr);
 
-                        var updateGrassJob = new FUpdateFoliageJob();
+                        var updateGrassJob = new UpdateFoliageJob();
                         {
                             updateGrassJob.taskPtr = taskPtr;
                         }
-                        //updateGrassJob.Execute();
                         jobsHandle.Add(updateGrassJob.Schedule());
                     }
                 }
@@ -296,13 +293,12 @@ namespace Landscape.FoliagePipeline.Editor
             for (var j = 0; j < tasksPtr.Count; ++j)
             {
                 jobsHandle[j].Complete();
-                GCHandle.FromIntPtr( (IntPtr)tasksPtr[j] ).Free();
+                GCHandle.FromIntPtr((IntPtr)tasksPtr[j]).Free();
             }
 
             foreach (GameObject selectObject in selectObjects)
             {
                 Terrain terrain = selectObject.GetComponent<Terrain>();
-                TerrainData terrainData = terrain.terrainData;
                 if (!terrain)
                 {
                     Debug.LogWarning(selectObject.name + " doesn't have terrain component");
@@ -310,26 +306,25 @@ namespace Landscape.FoliagePipeline.Editor
                 }
 
                 GrassComponent grassComponent = selectObject.GetComponent<GrassComponent>();
-                if (grassComponent == null)
-                {
-                    grassComponent = selectObject.AddComponent<GrassComponent>();
-                }
-                
+                if (grassComponent == null) { continue; }
+
                 for (int index = 0; index < grassComponent.grassSectors.Length; ++index)
                 {
-                    FGrassSector grassSector = grassComponent.grassSectors[index];
-
+                    GrassSector grassSector = grassComponent.grassSectors[index];
+                    grassSector.BuildPackedOffsets();
+                    grassSector.BuildTightBound(grassComponent.boundSector);
                     for (int i = 0; i < grassSector.sections.Length; ++i)
                     {
-                        FGrassSection grassSection = grassSector.sections[i];
-                        if(grassSection.instanceCount == 0)
+                        GrassSection grassSection = grassSector.sections[i];
+                        if (grassSection.count == 0)
                         {
                             grassSection.densityMap = null;
                         }
                     }
                 }
+                EditorUtility.SetDirty(selectObject);
             }
         }
-        #endregion //Grass
+        #endregion
     }
 }

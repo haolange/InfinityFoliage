@@ -3,8 +3,6 @@ using UnityEngine;
 using Unity.Mathematics;
 using Unity.Collections;
 using UnityEngine.Rendering;
-using Landscape.FoliagePipeline;
-using InfinityTech.Core.Geometry;
 using UnityEngine.Rendering.Universal;
 using Unity.Collections.LowLevel.Unsafe;
 
@@ -25,9 +23,10 @@ namespace Landscape.FoliagePipeline
             cmdBuffer.Clear();
             renderContext.ExecuteCommandBuffer(cmdBuffer);
 
-            var planes = new NativeArray<FPlane>(6, Allocator.TempJob);
+            Camera camera = renderingData.cameraData.camera;
+            var planes = new NativeArray<FrustumPlane>(6, Allocator.TempJob);
             var taskHandles = new NativeList<JobHandle>(256, Allocator.Temp);
-            var sectorsBound = new NativeArray<FAABB>(FoliageComponent.FoliageComponents.Count, Allocator.TempJob);
+            var sectorsBound = new NativeArray<Aabb>(FoliageComponent.FoliageComponents.Count, Allocator.TempJob);
             var boundsVisible = new NativeArray<byte>(FoliageComponent.FoliageComponents.Count, Allocator.TempJob);
 
             renderingData.cameraData.camera.TryGetCullingParameters(false, out var cullingParams);
@@ -36,9 +35,9 @@ namespace Landscape.FoliagePipeline
                 planes[i] = cullingParams.cameraProperties.GetCameraCullingPlane(i);
             }
 
-            FPlane* planesPtr = (FPlane*)planes.GetUnsafePtr();
-            float3 viewOrigin = renderingData.cameraData.camera.transform.position;
-            var matrixProj = Geometry.GetProjectionMatrix(renderingData.cameraData.camera.fieldOfView, renderingData.cameraData.camera.pixelWidth, renderingData.cameraData.camera.pixelHeight, renderingData.cameraData.camera.nearClipPlane, renderingData.cameraData.camera.farClipPlane);
+            FrustumPlane* planesPtr = (FrustumPlane*)planes.GetUnsafePtr();
+            float3 viewOrigin = camera.transform.position;
+            var matrixProj = Geometry.GetProjectionMatrix(camera.fieldOfView, camera.pixelWidth, camera.pixelHeight, camera.nearClipPlane, camera.farClipPlane);
 
             #region InitViewBound
             for (int i = 0; i < sectorsBound.Length; ++i)
@@ -46,57 +45,65 @@ namespace Landscape.FoliagePipeline
                 sectorsBound[i] = FoliageComponent.FoliageComponents[i].boundSector.bound;
             }
 
-            if(sectorsBound.Length < 8)
+            if (sectorsBound.Length < 8)
             {
-                FBoundCullingJob sectorCullingJob;
-                sectorCullingJob.planes = planesPtr;
-                sectorCullingJob.length = sectorsBound.Length;
-                sectorCullingJob.visibleMap = boundsVisible;
-                sectorCullingJob.sectorBounds = (FAABB*)sectorsBound.GetUnsafePtr();
+                var sectorCullingJob = new BoundCullingJob();
+                {
+                    sectorCullingJob.planes = planesPtr;
+                    sectorCullingJob.length = sectorsBound.Length;
+                    sectorCullingJob.visibleMap = boundsVisible;
+                    sectorCullingJob.sectorBounds = (Aabb*)sectorsBound.GetUnsafePtr();
+                }
                 sectorCullingJob.Run();
-            } else {
-                FBoundCullingParallelJob sectorCullingJob;
-                sectorCullingJob.planes = planesPtr;
-                sectorCullingJob.visibleMap = boundsVisible;
-                sectorCullingJob.sectorBounds = (FAABB*)sectorsBound.GetUnsafePtr();
+            }
+            else
+            {
+                var sectorCullingJob = new BoundCullingParallelJob();
+                {
+                    sectorCullingJob.planes = planesPtr;
+                    sectorCullingJob.visibleMap = boundsVisible;
+                    sectorCullingJob.sectorBounds = (Aabb*)sectorsBound.GetUnsafePtr();
+                }
                 sectorCullingJob.Schedule(sectorsBound.Length, 8).Complete();
             }
-            #endregion //InitViewBound
+            #endregion
 
             #region InitViewFoliage
             for (int i = 0; i < sectorsBound.Length; ++i)
             {
-                if (boundsVisible[i] == 0) { continue; }
-
-                FoliageComponent foliageComponent = FoliageComponent.FoliageComponents[i];
-                foliageComponent.InitView(viewOrigin, matrixProj, planesPtr, taskHandles);
+                if (boundsVisible[i] == 0 && FoliageComponent.FoliageComponents[i].foliageType != EFoliageType.Grass) { continue; }
+                FoliageComponent.FoliageComponents[i].InitView(viewOrigin, matrixProj, planesPtr, taskHandles);
             }
             JobHandle.CompleteAll(taskHandles);
             taskHandles.Clear();
-            #endregion //InitViewFoliage
+            #endregion
 
             #region InitViewCommand
             for (int i = 0; i < sectorsBound.Length; ++i)
             {
                 if (boundsVisible[i] == 0) { continue; }
-                FoliageComponent foliageComponent = FoliageComponent.FoliageComponents[i];
-                foliageComponent.DispatchSetup(viewOrigin, matrixProj, taskHandles);
+                FoliageComponent.FoliageComponents[i].DispatchSetup(camera, viewOrigin, matrixProj, taskHandles);
             }
             JobHandle.CompleteAll(taskHandles);
             taskHandles.Clear();
-            #endregion //InitViewCommand
 
-            #region InitViewCommand
+            for (int i = 0; i < sectorsBound.Length; ++i)
+            {
+                if (boundsVisible[i] == 0 && FoliageComponent.FoliageComponents[i].foliageType != EFoliageType.Grass) { continue; }
+                FoliageComponent.FoliageComponents[i].FlushPendingUploads();
+            }
+            #endregion
+
+            #region DispatchDraw
             using (new ProfilingScope(cmdBuffer, ProfilingSampler.Get(EFoliageSamplerId.FoliageBatch)))
             {
                 for (int i = 0; i < sectorsBound.Length; ++i)
                 {
                     if (boundsVisible[i] == 0) { continue; }
-                    FoliageComponent foliageComponent = FoliageComponent.FoliageComponents[i];
-                    foliageComponent.DispatchDraw(cmdBuffer, 1);
+                    FoliageComponent.FoliageComponents[i].DispatchDraw(cmdBuffer, 1);
                 }
             }
-            #endregion //InitViewCommand
+            #endregion
 
             planes.Dispose();
             taskHandles.Dispose();
@@ -120,6 +127,7 @@ namespace Landscape.FoliagePipeline
 
         public override void Create()
         {
+            FoliageLogicAsserts.Evaluate();
             m_foliagePass = new FoliagePass();
             m_foliagePass.renderPassEvent = RenderPassEvent.AfterRenderingOpaques;
         }
@@ -135,5 +143,3 @@ namespace Landscape.FoliagePipeline
         }
     }
 }
-
-

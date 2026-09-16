@@ -208,7 +208,7 @@ Shader "Landscape/TreeLeave"
 			{
 				Varyings output = (Varyings)0;
 				output.PrimitiveId  = _TreeIndexBuffer[input.InstanceId];
-				FTreeElement treeElement = _TreeElementBuffer[output.PrimitiveId];
+				TreeElement treeElement = _TreeElementBuffer[output.PrimitiveId];
 
 				output.uv0 = input.uv0;
 				output.normalWS = normalize(mul((float3x3)treeElement.matrix_World, input.normalOS));
@@ -219,6 +219,11 @@ Shader "Landscape/TreeLeave"
 
 			float4 frag(Varyings input) : SV_Target
 			{
+				if (_LodFadeEnable > 0.5)
+				{
+					LODDitheringTransition(input.vertexCS.xy, _LODFactor);
+				}
+
 				//Surface
 				float4 baseColor = _AlbedoTexture.Sample(sampler_AlbedoTexture, input.uv0);
 				//clip(baseColor.a);

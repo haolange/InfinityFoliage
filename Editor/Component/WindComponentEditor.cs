@@ -91,21 +91,21 @@ namespace Landscape.FoliagePipeline.Editor
       switch (this._selectedPreset)
       {
         case WindComponentEditor.WindPreset.Calm:
-          target.Settings = FWindSettings.Calm;
+          target.Settings = WindSettings.Calm;
           break;
         case WindComponentEditor.WindPreset.Breeze:
-          target.Settings = FWindSettings.Breeze;
+          target.Settings = WindSettings.Breeze;
           break;
         case WindComponentEditor.WindPreset.StrongBreeze:
-          target.Settings = FWindSettings.StrongBreeze;
+          target.Settings = WindSettings.StrongBreeze;
           break;
         case WindComponentEditor.WindPreset.Storm:
-          target.Settings = FWindSettings.Storm;
+          target.Settings = WindSettings.Storm;
           break;
       }
-      target.Settings = new FWindSettings(target.Settings)
+      target.Settings = new WindSettings(target.Settings)
       {
-        WindDirection = FWindSettings.RotationToDirection(target.transform.rotation)
+        WindDirection = WindSettings.RotationToDirection(target.transform.rotation)
       };
       this.serializedObject.Update();
       if (this._sourceWindZone.objectReferenceValue != (UnityEngine.Object) null)

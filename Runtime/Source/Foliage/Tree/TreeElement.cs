@@ -1,29 +1,33 @@
 using System;
 using Unity.Mathematics;
-using InfinityTech.Core.Geometry;
 
 namespace Landscape.FoliagePipeline
 {
-    public struct FTreeElement : IEquatable<FTreeElement>
+    public struct TreeElement : IEquatable<TreeElement>
     {
-        public int meshIndex;
-        public FAABB boundBox;
-        public FSphere boundSphere;
         public float4x4 matrix_World;
 
-        public bool Equals(FTreeElement target)
+        public bool Equals(TreeElement target)
         {
-            return meshIndex.Equals(target.meshIndex) && boundBox.Equals(target.boundBox) && boundSphere.Equals(target.boundSphere) && matrix_World.Equals(target.matrix_World);
+            return matrix_World.Equals(target.matrix_World);
         }
 
         public override bool Equals(object target)
         {
-            return Equals((FTreeElement)target);
+            return Equals((TreeElement)target);
         }
 
         public override int GetHashCode()
         {
-            return new int4(meshIndex, boundBox.GetHashCode(), boundSphere.GetHashCode(), matrix_World.GetHashCode()).GetHashCode();
+            return matrix_World.GetHashCode();
         }
+    }
+
+    internal static class TreeShaderID
+    {
+        internal static int IndexBuffer = UnityEngine.Shader.PropertyToID("_TreeIndexBuffer");
+        internal static int ElementBuffer = UnityEngine.Shader.PropertyToID("_TreeElementBuffer");
+        internal static int LodFactor = UnityEngine.Shader.PropertyToID("_LODFactor");
+        internal static int LodFadeEnable = UnityEngine.Shader.PropertyToID("_LodFadeEnable");
     }
 }
