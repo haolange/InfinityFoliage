@@ -14,22 +14,22 @@
 
 `package.json` 名为 `com.infinity.render-foliage`，文件夹为 `com.infinity.foliage`。不改包名。
 
-停在：烘焙密度 + CPU 粗格 + 草的 1D 窗口 / 树的 index compact。开放世界生成、整场景 GPU 驱动、阴影第二视口、Morton、Compute kernel 都是加层，不改格键。
+停在：烘焙密度 + CPU 粗格 + 草的 1D 窗口 / 树的 Visibility IR + lowering + VisibleIndex。开放世界生成、整场景 GPU 驱动、阴影第二视口都是加层，不改格键。树 Compute 只做 Visibility 展开 / HZB / 可选 GPU cull。Morton 只排树 Candidate Stream。
 
-两套系统，两份 `BoundSector` / `visibleMap`。只挂 `TreeComponent` 可运行。
+两套系统，两份 `BoundSector` / `visibleMap`。只挂 `TreeComponent` 可运行。文档里的 Sector 是 mesh × LOD × fade bucket，对应 `TreeLodBatch`，不是 `BoundSector`。
 
 | 单位 | 草 | 树 |
 |---|---|---|
 | 剔除 | 组件盒 → 自持格 → 种盒（可选） | 组件盒 → 自持格 → 实例 |
 | 资源 | 一种草一张 packed `ComputeBuffer`，格 `{offset,count}` | 一种树 `bounds[]` + `matrices[]`，格 `{offset,count}` |
-| 提交 | 1D 连续 run + `DrawMeshInstancedProcedural` | mesh × LOD × bucket + index + args + Indirect |
-| 搬运 | 不每帧搬矩阵 | 矩阵只在重排后 upload 一次；每帧只写 uint index / args |
+| 提交 | 1D 连续 run + `DrawMeshInstancedProcedural` | mesh × LOD × bucket + VisibleIndex + args + Indirect |
+| 搬运 | 不每帧搬矩阵 | 矩阵只在重排后 upload 一次；每帧 IR lowering，VS 只吃 uint index |
 
 Pass 相位：组件盒粗剔 → `InitView` 入队后 `CompleteAll` → `DispatchSetup` 入队后 `CompleteAll` → `FlushPendingUploads` → `DispatchDraw`。`InitView` 只写 `visibleMap`。草 cull 可进共享 list；草 scatter 用组件私有 `JobHandle`，禁止 `taskHandles.Add`。Setup 后的 `CompleteAll` 只等树。草 `DispatchSetup` 禁止再对共享 `taskHandles` `CompleteAll` / `Clear`。草 Flush 只在私有 handle `IsCompleted` 后 `Complete` 一次，再 upload。草的 `InitView` / `Flush` 不受组件盒守卫；树的 InitView / Setup / Flush / Draw 仍按盒跳过。Draw 两边都按盒剔。
 
 草：`sections` 保持 `N×N`；同一组件一份 `visibleMap`；断开仅 `count>0 && visible==0`；`count==0` 当桥。Play 的 `OnRegiste` 每种草一次 `IJobParallelFor` 扫全格；跨帧 `IsCompleted` 轮询，不对未完成 scatter `Complete`。`ComputeBuffer` 延到首次 `SetData`。每显示帧最多挑 16 格（`count>0` 且未 upload）：visible 优先，同级按格 pivot 到 `viewOrigin` 的 XZ 距离；相邻格（空格当桥）合成一段 packed `SetData`，允许多段。`m_Uploaded` 是格位图；`m_Counter` 只计已 upload 格数，不当 Draw 前缀。Draw = uploaded ∧ visible。CPU scatter 只做 XZ / 旋转 / 缩放，Y 由 VS 采 heightmap；只画 `meshes[0]`。
 
-树：无「自有地形大 bound」；自持 `numSection` 默认 16；先按格重排再 upload 矩阵；已 cull 不算 LOD；fade 不进 payload，按当前渲染 `Camera` 分桶；`|lod0-lod1|==1` 才双几何；VS 只绑矩阵；DC = 种 × LOD × bucket × submesh。
+树：无「自有地形大 bound」；自持 `numSection` 默认 16；Bake 先 Morton 排 Candidate Stream，再 `CellFromLocal` 写 `{offset,count}`，格键公式不变。已 cull 不算 LOD；fade 不进 payload，按当前渲染 `Camera` 分桶；`|lod0-lod1|==1` 才双几何。Visibility 是 IR（64 宽 chunk mask），不是绘制格式。同一套 TreeCullGraph：GridCull → InstanceCull → LodClassify → OcclusionCull → EmitVisibility。CPU Burst 与树 Compute 是两个 ExecutionPolicy，不是两套树系统。三种 lowering（CompactIndex / BitMaskTransfer / RunTransfer）按代价每桶每帧选一个，必须落到 `VisibleIndexBuffer`；Run/Mask 不准进 VS。GPU 资源一律 `ComputeBuffer`。DC = 种 × LOD × bucket × submesh。
 
 Bake：density / transforms 写完之后才算格归属。`OnSave` 只在 `numSection` 变化时重建空间格。Play 中禁止把空 `transforms` 写回。旧 Scene + MeshAsset 必 rebake。
 
@@ -39,7 +39,7 @@ GPU 资源一律 `ComputeBuffer`，不引入 `GraphicsBuffer`。
 
 Shader 路径不改：`Landscape/Grass`、`Landscape/TreeLeave`、`Landscape/TreeBrak`。
 
-Out of Scope：Compute kernel；Morton；阴影第二份 index；屏占比迟滞；内部 BVH；草 mesh LOD；可变 section；跨块双归属；改 package 名；剥 `WindSettings` 的 Gust 别名。
+Out of Scope：阴影第二份 index；屏占比迟滞；内部 BVH；草 mesh LOD；可变 section；跨块双归属；改 package 名；剥 `WindSettings` 的 Gust 别名；草 Compute scatter；VS 寻址 run；CPU/GPU 两套独立 TreeCuller；版本史 / legacy 双路径。
 
 ## C# 风格
 
@@ -81,7 +81,9 @@ var job = new TreeCullLodJob { planes = planes };
 - 可见矩阵 compact 换 1 DC。
 - 草 `DispatchSetup` 对 Pass 共享的 `taskHandles` 再 `CompleteAll` / `Clear`。
 - 草 scatter 进共享 `taskHandles`，或对未完成 scatter `Complete`。
-- 草 scatter 用 C# `Task` / `async` / `Thread`，或用 Compute kernel 做 scatter。
+- 草 scatter 用 C# `Task` / `async` / `Thread` / `Awaitable`，或用 Compute kernel 做 scatter。
+- 热路径用 `async` / `Task` / `Awaitable` 包 `JobHandle`。
+- VS 里查找 run / mask；`GraphicsBuffer`；全数组 `instanceVisible` 再扫一遍当 compact。
 - 保留 `ScheduleScatter`、顺序前缀 `i < m_Counter`、或 `TryGetSetupSlice` 双路径。
 - 把多段 packed run 写成旧 per-section buffer / 逐格 `SetData` 双路径。
 - Play 模式把空 `transforms` 写回 scene。

@@ -17,11 +17,14 @@ namespace Landscape.FoliagePipeline
         public int[] materialIndexs;
         public ComputeBuffer[] indexBuffers;
         public ComputeBuffer[] argsBuffers;
-        public NativeList<int> stable;
-        public NativeList<int> fadeOut;
-        public NativeList<int> fadeIn;
+        public NativeArray<ulong> stableMask;
+        public NativeArray<ulong> fadeOutMask;
+        public NativeArray<ulong> fadeInMask;
+        public NativeArray<int> bucketCounts;
+        public int[] uploadedCount;
+        public bool[] gpuArgs;
 
-        public void Initialize(in int instanceCount)
+        public void Initialize(in int instanceCount, in int chunkCount)
         {
             indexBuffers = new ComputeBuffer[3];
             int argsCount = 3 * math.max(sectionIndexs.Length, 1);
@@ -34,18 +37,23 @@ namespace Landscape.FoliagePipeline
             {
                 argsBuffers[i] = new ComputeBuffer(5, sizeof(uint), ComputeBufferType.IndirectArguments);
             }
-            stable = new NativeList<int>(instanceCount, Allocator.Persistent);
-            fadeOut = new NativeList<int>(instanceCount, Allocator.Persistent);
-            fadeIn = new NativeList<int>(instanceCount, Allocator.Persistent);
+            int chunks = math.max(chunkCount, 1);
+            stableMask = new NativeArray<ulong>(chunks, Allocator.Persistent);
+            fadeOutMask = new NativeArray<ulong>(chunks, Allocator.Persistent);
+            fadeInMask = new NativeArray<ulong>(chunks, Allocator.Persistent);
+            bucketCounts = new NativeArray<int>(3, Allocator.Persistent);
+            uploadedCount = new int[3];
+            gpuArgs = new bool[3];
         }
 
         public void Dispose()
         {
             for (int i = 0; i < indexBuffers.Length; ++i) { indexBuffers[i].Dispose(); }
             for (int i = 0; i < argsBuffers.Length; ++i) { argsBuffers[i].Dispose(); }
-            stable.Dispose();
-            fadeOut.Dispose();
-            fadeIn.Dispose();
+            if (stableMask.IsCreated) { stableMask.Dispose(); }
+            if (fadeOutMask.IsCreated) { fadeOutMask.Dispose(); }
+            if (fadeInMask.IsCreated) { fadeInMask.Dispose(); }
+            if (bucketCounts.IsCreated) { bucketCounts.Dispose(); }
         }
     }
 
@@ -90,18 +98,28 @@ namespace Landscape.FoliagePipeline
         private ComputeBuffer m_MatrixBuffer;
         private NativeArray<float4x4> m_Matrices;
         private NativeArray<Aabb> m_Bounds;
-        private NativeArray<int> m_CellOffset;
-        private NativeArray<int> m_CellCount;
+        private NativeArray<int> m_InstanceCell;
         private NativeArray<float> m_LodScreenSizes;
-        private NativeArray<int> m_InstanceVisible;
+        private NativeArray<ulong> m_ChunkMasks;
         private NativeArray<int> m_LodNow;
+        private NativeArray<float> m_Heights;
         private List<TreeLodBatch> m_Batches;
         private Dictionary<int, TreeCameraFade> m_FadeViews;
         private TreeCameraFade m_ActiveFade;
+        private TreeVisibilityGpu m_Gpu;
+        private Camera m_ActiveCamera;
         private uint[] m_ArgsScratch;
+        private int[] m_IndexScratch;
+        private ulong[] m_MaskScratch;
+        private VisibilityRun[] m_RunScratch;
+        private Vector4[] m_PlaneScratch;
         private bool m_DitherEnabled;
         private int m_InstanceCount;
-        private bool m_PendingCompact;
+        private int m_HeightRes;
+        private float m_DrawDistance;
+        private float3 m_TerrainPos;
+        private float3 m_TerrainSize;
+        private bool m_PendingVisibility;
 
         public void RebuildSpatialGrid(in int numSection, in int sectorSize, in float3 terrainPosition, in Aabb terrainBound)
         {
@@ -130,17 +148,20 @@ namespace Landscape.FoliagePipeline
             float sectionWorld = sectorSize / (float)math.max(numSection, 1);
             int[] counts = new int[cellCount];
             int[] cellOf = new int[n];
+            int[] order = new int[n];
             Aabb localBound = tree.boundBox;
-
             Aabb[] worldBounds = new Aabb[n];
+            BuildMortonOrder(n, terrainPosition, sectorSize, order);
+
             for (int i = 0; i < n; ++i)
             {
-                InstanceTransform transform = transforms[i];
+                int src = order[i];
+                InstanceTransform transform = transforms[src];
                 float4x4 matrixWorld = float4x4.TRS(transform.position, quaternion.EulerXYZ(transform.rotation), transform.scale);
-                worldBounds[i] = Geometry.CaculateWorldBound(localBound, matrixWorld);
+                worldBounds[src] = Geometry.CaculateWorldBound(localBound, matrixWorld);
                 float3 local = transform.position - terrainPosition;
-                cellOf[i] = FoliageLogic.CellFromLocal(local.x, local.z, sectionWorld, numSection);
-                counts[cellOf[i]]++;
+                cellOf[src] = FoliageLogic.CellFromLocal(local.x, local.z, sectionWorld, numSection);
+                counts[cellOf[src]]++;
             }
 
             int[] offsets = new int[cellCount];
@@ -149,7 +170,8 @@ namespace Landscape.FoliagePipeline
             int[] cursor = (int[])offsets.Clone();
             for (int i = 0; i < n; ++i)
             {
-                packedBounds[cursor[cellOf[i]]++] = worldBounds[i];
+                int src = order[i];
+                packedBounds[cursor[cellOf[src]]++] = worldBounds[src];
             }
 
             hasPackedBound = false;
@@ -197,6 +219,28 @@ namespace Landscape.FoliagePipeline
             }
         }
 
+        public void SetHeightField(float[] heights, int res, float3 pos, float3 size)
+        {
+            if (heights == null || res <= 1) { return; }
+            if (m_Heights.IsCreated) { m_Heights.Dispose(); }
+            m_Heights = new NativeArray<float>(heights, Allocator.Persistent);
+            m_HeightRes = res;
+            m_TerrainPos = pos;
+            m_TerrainSize = size;
+        }
+
+        void BuildMortonOrder(int n, in float3 terrainPosition, in float worldSize, int[] order)
+        {
+            uint[] keys = new uint[n];
+            for (int i = 0; i < n; ++i)
+            {
+                float3 local = transforms[i].position - terrainPosition;
+                keys[i] = FoliageLogic.MortonFromLocal(local.x, local.z, worldSize);
+                order[i] = i;
+            }
+            FoliageLogic.SortIndicesByKey(keys, order, n);
+        }
+
         void BuildSoA(in int numSection, in int sectorSize, in float3 terrainPosition)
         {
             int n = transforms.Count;
@@ -206,29 +250,35 @@ namespace Landscape.FoliagePipeline
 
             int[] counts = new int[cellCount];
             int[] cellOf = new int[n];
+            int[] order = new int[n];
             float4x4[] worldMatrices = new float4x4[n];
             Aabb[] worldBounds = new Aabb[n];
+            BuildMortonOrder(n, terrainPosition, sectorSize, order);
             for (int i = 0; i < n; ++i)
             {
-                InstanceTransform transform = transforms[i];
+                int src = order[i];
+                InstanceTransform transform = transforms[src];
                 float4x4 matrixWorld = float4x4.TRS(transform.position, quaternion.EulerXYZ(transform.rotation), transform.scale);
-                worldMatrices[i] = matrixWorld;
-                worldBounds[i] = Geometry.CaculateWorldBound(localBound, matrixWorld);
+                worldMatrices[src] = matrixWorld;
+                worldBounds[src] = Geometry.CaculateWorldBound(localBound, matrixWorld);
                 float3 local = transform.position - terrainPosition;
-                cellOf[i] = FoliageLogic.CellFromLocal(local.x, local.z, sectionWorld, numSection);
-                counts[cellOf[i]]++;
+                cellOf[src] = FoliageLogic.CellFromLocal(local.x, local.z, sectionWorld, numSection);
+                counts[cellOf[src]]++;
             }
 
             int[] offsets = new int[cellCount];
             FoliageLogic.PrefixOffsets(counts, offsets);
             m_Matrices = new NativeArray<float4x4>(n, Allocator.Persistent);
             m_Bounds = new NativeArray<Aabb>(n, Allocator.Persistent);
+            m_InstanceCell = new NativeArray<int>(n, Allocator.Persistent);
             int[] cursor = (int[])offsets.Clone();
             for (int i = 0; i < n; ++i)
             {
-                int dest = cursor[cellOf[i]]++;
-                m_Matrices[dest] = worldMatrices[i];
-                m_Bounds[dest] = worldBounds[i];
+                int src = order[i];
+                int dest = cursor[cellOf[src]]++;
+                m_Matrices[dest] = worldMatrices[src];
+                m_Bounds[dest] = worldBounds[src];
+                m_InstanceCell[dest] = cellOf[src];
             }
 
             if (cells == null || cells.Length != cellCount)
@@ -269,16 +319,9 @@ namespace Landscape.FoliagePipeline
             if (m_InstanceCount <= 0 || tree.lODInfos == null) { return; }
 
             boundSector.BuildNativeCollection();
-            m_CellOffset = new NativeArray<int>(cells.Length, Allocator.Persistent);
-            m_CellCount = new NativeArray<int>(cells.Length, Allocator.Persistent);
-            for (int i = 0; i < cells.Length; ++i)
-            {
-                m_CellOffset[i] = cells[i].offset;
-                m_CellCount[i] = cells[i].count;
-            }
-
+            int chunkCount = FoliageLogic.VisibilityChunkCount(m_InstanceCount);
             m_LodScreenSizes = new NativeArray<float>(tree.lODInfos.Length, Allocator.Persistent);
-            m_InstanceVisible = new NativeArray<int>(m_InstanceCount, Allocator.Persistent);
+            m_ChunkMasks = new NativeArray<ulong>(math.max(chunkCount, 1), Allocator.Persistent);
             m_LodNow = new NativeArray<int>(m_InstanceCount, Allocator.Persistent);
             for (int i = 0; i < m_InstanceCount; ++i) { m_LodNow[i] = -1; }
 
@@ -304,12 +347,27 @@ namespace Landscape.FoliagePipeline
                         m_DitherEnabled = true;
                     }
                 }
-                batch.Initialize(m_InstanceCount);
+                batch.Initialize(m_InstanceCount, chunkCount);
                 m_Batches.Add(batch);
             }
 
             m_FadeViews = new Dictionary<int, TreeCameraFade>(4);
             m_ArgsScratch = new uint[5];
+            m_IndexScratch = new int[m_InstanceCount];
+            m_MaskScratch = new ulong[math.max(chunkCount, 1)];
+            m_RunScratch = new VisibilityRun[m_InstanceCount];
+            m_PlaneScratch = new Vector4[6];
+            m_Gpu = new TreeVisibilityGpu();
+            m_Gpu.Initialize(m_InstanceCount, chunkCount, cells.Length);
+            if (m_Gpu.IsReady)
+            {
+                m_Gpu.UploadBounds(m_Bounds, m_InstanceCell);
+            }
+            if (!m_Heights.IsCreated)
+            {
+                m_Heights = new NativeArray<float>(1, Allocator.Persistent);
+                m_HeightRes = 0;
+            }
         }
 
         TreeCameraFade GetFade(Camera camera)
@@ -337,26 +395,36 @@ namespace Landscape.FoliagePipeline
         {
             if (m_InstanceCount <= 0) { return; }
 
+            m_ActiveCamera = camera;
+            m_DrawDistance = cullDistance;
+            for (int i = 0; i < 6; ++i)
+            {
+                float4 plane = planes[i].normalDist;
+                m_PlaneScratch[i] = new Vector4(plane.x, plane.y, plane.z, plane.w);
+            }
+
             m_ActiveFade = GetFade(camera);
             int writeLod = m_ActiveFade.fading ? 0 : 1;
             var cullLodJob = new TreeCullLodJob();
             {
                 cullLodJob.writeLod = writeLod;
+                cullLodJob.heightRes = m_Heights.IsCreated ? m_HeightRes : 0;
                 cullLodJob.maxDistance = cullDistance;
                 cullLodJob.viewOrigin = viewOrigin;
                 cullLodJob.matrixProj = matrixProj;
+                cullLodJob.terrainPos = m_TerrainPos;
+                cullLodJob.terrainSize = m_TerrainSize;
                 cullLodJob.cellVisible = boundSector.visibleMap;
-                cullLodJob.cellOffset = m_CellOffset;
-                cullLodJob.cellCount = m_CellCount;
+                cullLodJob.instanceCell = m_InstanceCell;
                 cullLodJob.bounds = m_Bounds;
                 cullLodJob.lodScreenSizes = m_LodScreenSizes;
+                cullLodJob.heights = m_Heights;
                 cullLodJob.planes = planes;
-                cullLodJob.instanceVisible = m_InstanceVisible;
+                cullLodJob.chunkMasks = m_ChunkMasks;
                 cullLodJob.lodNow = m_LodNow;
             }
-            JobHandle cullHandle = cullLodJob.Schedule(cells.Length, 8);
-            taskHandles.Add(cullHandle);
-            m_PendingCompact = true;
+            taskHandles.Add(cullLodJob.Schedule(m_ChunkMasks.Length, 4));
+            m_PendingVisibility = true;
             m_ActiveFade.lastOrigin = viewOrigin;
             m_ActiveFade.lastProj = matrixProj;
             m_ActiveFade.hasLast = true;
@@ -365,35 +433,147 @@ namespace Landscape.FoliagePipeline
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public void FlushPendingUploads(in float duration, in float deltaTime)
         {
-            if (!m_PendingCompact || m_InstanceCount <= 0 || m_ActiveFade == null) { return; }
+            if (!m_PendingVisibility || m_InstanceCount <= 0 || m_ActiveFade == null) { return; }
             UpdateFade(duration, deltaTime);
 
-            JobHandle compactHandle = default;
+            JobHandle emitHandle = default;
             bool scheduled = false;
             int dither = (m_DitherEnabled && m_ActiveFade.fading) ? 1 : 0;
             for (int i = 0; i < m_Batches.Count; ++i)
             {
                 TreeLodBatch batch = m_Batches[i];
-                batch.stable.Clear();
-                batch.fadeOut.Clear();
-                batch.fadeIn.Clear();
-                var compactJob = new TreeCompactLodJob();
+                var emitJob = new TreeEmitLodMasksJob();
                 {
-                    compactJob.meshIndex = batch.meshIndex;
-                    compactJob.ditherEnabled = dither;
-                    compactJob.instanceVisible = m_InstanceVisible;
-                    compactJob.lodHold = m_ActiveFade.lodHold;
-                    compactJob.lodNow = m_LodNow;
-                    compactJob.stable = batch.stable;
-                    compactJob.fadeOut = batch.fadeOut;
-                    compactJob.fadeIn = batch.fadeIn;
+                    emitJob.meshIndex = batch.meshIndex;
+                    emitJob.ditherEnabled = dither;
+                    emitJob.instanceCount = m_InstanceCount;
+                    emitJob.chunkMasks = m_ChunkMasks;
+                    emitJob.lodHold = m_ActiveFade.lodHold;
+                    emitJob.lodNow = m_LodNow;
+                    emitJob.stableMask = batch.stableMask;
+                    emitJob.fadeOutMask = batch.fadeOutMask;
+                    emitJob.fadeInMask = batch.fadeInMask;
+                    emitJob.bucketCounts = batch.bucketCounts;
                 }
-                JobHandle handle = compactJob.Schedule();
-                compactHandle = scheduled ? JobHandle.CombineDependencies(compactHandle, handle) : handle;
+                JobHandle handle = emitJob.Schedule();
+                emitHandle = scheduled ? JobHandle.CombineDependencies(emitHandle, handle) : handle;
                 scheduled = true;
             }
-            if (scheduled) { compactHandle.Complete(); }
-            m_PendingCompact = false;
+            if (scheduled) { emitHandle.Complete(); }
+
+            int gpuReady = (m_Gpu != null && m_Gpu.IsReady) ? 1 : 0;
+            if (gpuReady != 0)
+            {
+                m_Gpu.BuildHzb(m_ActiveCamera);
+            }
+
+            int chunkCount = m_ChunkMasks.Length;
+            for (int i = 0; i < m_Batches.Count; ++i)
+            {
+                LowerBatch(m_Batches[i], gpuReady, chunkCount);
+            }
+            m_PendingVisibility = false;
+        }
+
+        void LowerBatch(TreeLodBatch batch, in int gpuReady, in int chunkCount)
+        {
+            LowerBucket(batch, 0, batch.stableMask, gpuReady, chunkCount);
+            LowerBucket(batch, 1, batch.fadeOutMask, gpuReady, chunkCount);
+            LowerBucket(batch, 2, batch.fadeInMask, gpuReady, chunkCount);
+        }
+
+        void LowerBucket(TreeLodBatch batch, in int bucket, NativeArray<ulong> masks, in int gpuReady, in int chunkCount)
+        {
+            int visible = batch.bucketCounts[bucket];
+            batch.uploadedCount[bucket] = visible;
+            batch.gpuArgs[bucket] = false;
+            if (visible <= 0) { return; }
+
+            for (int i = 0; i < chunkCount; ++i)
+            {
+                m_MaskScratch[i] = masks[i];
+            }
+
+            int runCount = FoliageLogic.EncodeRunsFromMasks(m_MaskScratch, chunkCount, m_InstanceCount, m_RunScratch);
+            int codec = FoliageLogic.PickVisibilityCodec(visible, chunkCount, runCount, gpuReady);
+            ComputeBuffer indexBuffer = batch.indexBuffers[bucket];
+            bool useGpu = gpuReady != 0;
+            bool useHzb = useGpu && m_Gpu.HasHzb;
+
+            if (!useGpu || (codec == (int)VisibilityCodec.CompactIndex && !useHzb))
+            {
+                int written = FoliageLogic.ExpandMasksToIndex(m_MaskScratch, chunkCount, m_InstanceCount, m_IndexScratch);
+                indexBuffer.SetData(m_IndexScratch, 0, 0, written);
+                WriteCpuArgs(batch, bucket, written);
+                return;
+            }
+
+            ResetGpuArgs(batch, bucket);
+            m_Gpu.BindCommon(indexBuffer, FirstArgs(batch, bucket), m_ActiveCamera, m_DrawDistance);
+
+            if (codec == (int)VisibilityCodec.BitMaskTransfer)
+            {
+                m_Gpu.CullChunks(m_MaskScratch, chunkCount, m_InstanceCount, boundSector.visibleMap, m_PlaneScratch, indexBuffer, FirstArgs(batch, bucket));
+                m_Gpu.ExpandMask(m_MaskScratch, chunkCount, m_InstanceCount, indexBuffer, FirstArgs(batch, bucket), 1);
+            }
+            else if (codec == (int)VisibilityCodec.RunTransfer)
+            {
+                m_Gpu.ExpandRun(m_RunScratch, runCount, indexBuffer, FirstArgs(batch, bucket));
+            }
+            else
+            {
+                int written = FoliageLogic.ExpandMasksToIndex(m_MaskScratch, chunkCount, m_InstanceCount, m_IndexScratch);
+                m_Gpu.FilterIndex(m_IndexScratch, written, indexBuffer, FirstArgs(batch, bucket));
+            }
+
+            CopyGpuArgs(batch, bucket);
+            batch.gpuArgs[bucket] = true;
+        }
+
+        ComputeBuffer FirstArgs(TreeLodBatch batch, in int bucket)
+        {
+            return batch.argsBuffers[bucket * batch.sectionIndexs.Length];
+        }
+
+        void ResetGpuArgs(TreeLodBatch batch, in int bucket)
+        {
+            Mesh mesh = tree.meshes[batch.meshIndex];
+            for (int s = 0; s < batch.sectionIndexs.Length; ++s)
+            {
+                int submesh = batch.sectionIndexs[s];
+                ComputeBuffer argsBuffer = batch.argsBuffers[(bucket * batch.sectionIndexs.Length) + s];
+                m_ArgsScratch[0] = mesh.GetIndexCount(submesh);
+                m_ArgsScratch[1] = 0;
+                m_ArgsScratch[2] = mesh.GetIndexStart(submesh);
+                m_ArgsScratch[3] = mesh.GetBaseVertex(submesh);
+                m_ArgsScratch[4] = 0;
+                argsBuffer.SetData(m_ArgsScratch);
+            }
+        }
+
+        void WriteCpuArgs(TreeLodBatch batch, in int bucket, in int instanceCount)
+        {
+            Mesh mesh = tree.meshes[batch.meshIndex];
+            for (int s = 0; s < batch.sectionIndexs.Length; ++s)
+            {
+                int submesh = batch.sectionIndexs[s];
+                ComputeBuffer argsBuffer = batch.argsBuffers[(bucket * batch.sectionIndexs.Length) + s];
+                m_ArgsScratch[0] = mesh.GetIndexCount(submesh);
+                m_ArgsScratch[1] = (uint)instanceCount;
+                m_ArgsScratch[2] = mesh.GetIndexStart(submesh);
+                m_ArgsScratch[3] = mesh.GetBaseVertex(submesh);
+                m_ArgsScratch[4] = 0;
+                argsBuffer.SetData(m_ArgsScratch);
+            }
+        }
+
+        void CopyGpuArgs(TreeLodBatch batch, in int bucket)
+        {
+            ComputeBuffer src = FirstArgs(batch, bucket);
+            for (int s = 1; s < batch.sectionIndexs.Length; ++s)
+            {
+                m_Gpu.CopyArgsInstanceCount(src, batch.argsBuffers[(bucket * batch.sectionIndexs.Length) + s]);
+            }
         }
 
         void UpdateFade(float duration, float deltaTime)
@@ -467,28 +647,15 @@ namespace Landscape.FoliagePipeline
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         void DrawBucket(CommandBuffer cmdBuffer, in int passIndex, MaterialPropertyBlock propertyBlock, TreeLodBatch batch, Mesh mesh, in int bucket, in float lodFactor, in float fadeEnable, Bounds worldBounds)
         {
-            NativeList<int> indices = batch.stable;
-            if (bucket == (int)LodBucket.FadeOut) { indices = batch.fadeOut; }
-            else if (bucket == (int)LodBucket.FadeIn) { indices = batch.fadeIn; }
-            int count = indices.Length;
-            if (count <= 0) { return; }
-
             int argsIndex = bucket == (int)LodBucket.FadeOut ? 1 : bucket == (int)LodBucket.FadeIn ? 2 : 0;
-            ComputeBuffer indexBuffer = batch.indexBuffers[argsIndex];
-            indexBuffer.SetData(indices.AsArray(), 0, 0, count);
+            if (!batch.gpuArgs[argsIndex] && batch.uploadedCount[argsIndex] <= 0) { return; }
 
+            ComputeBuffer indexBuffer = batch.indexBuffers[argsIndex];
             for (int s = 0; s < batch.sectionIndexs.Length; ++s)
             {
                 int submesh = batch.sectionIndexs[s];
                 Material material = tree.materials[batch.materialIndexs[s]];
                 ComputeBuffer argsBuffer = batch.argsBuffers[(argsIndex * batch.sectionIndexs.Length) + s];
-                m_ArgsScratch[0] = mesh.GetIndexCount(submesh);
-                m_ArgsScratch[1] = (uint)count;
-                m_ArgsScratch[2] = mesh.GetIndexStart(submesh);
-                m_ArgsScratch[3] = mesh.GetBaseVertex(submesh);
-                m_ArgsScratch[4] = 0;
-                argsBuffer.SetData(m_ArgsScratch);
-
                 propertyBlock.Clear();
                 propertyBlock.SetBuffer(TreeShaderID.IndexBuffer, indexBuffer);
                 propertyBlock.SetBuffer(TreeShaderID.ElementBuffer, m_MatrixBuffer);
@@ -503,12 +670,13 @@ namespace Landscape.FoliagePipeline
             if (boundSector != null) { boundSector.ReleaseNativeCollection(); }
             if (m_Matrices.IsCreated) { m_Matrices.Dispose(); }
             if (m_Bounds.IsCreated) { m_Bounds.Dispose(); }
-            if (m_CellOffset.IsCreated) { m_CellOffset.Dispose(); }
-            if (m_CellCount.IsCreated) { m_CellCount.Dispose(); }
+            if (m_InstanceCell.IsCreated) { m_InstanceCell.Dispose(); }
             if (m_LodScreenSizes.IsCreated) { m_LodScreenSizes.Dispose(); }
-            if (m_InstanceVisible.IsCreated) { m_InstanceVisible.Dispose(); }
+            if (m_ChunkMasks.IsCreated) { m_ChunkMasks.Dispose(); }
             if (m_LodNow.IsCreated) { m_LodNow.Dispose(); }
+            if (m_Heights.IsCreated) { m_Heights.Dispose(); }
             if (m_MatrixBuffer != null) { m_MatrixBuffer.Dispose(); }
+            if (m_Gpu != null) { m_Gpu.Release(); }
             if (m_Batches != null)
             {
                 for (int i = 0; i < m_Batches.Count; ++i) { m_Batches[i].Dispose(); }
@@ -526,7 +694,9 @@ namespace Landscape.FoliagePipeline
             if (Application.isPlaying == false || !m_Bounds.IsCreated) { return; }
             for (int i = 0; i < m_Bounds.Length; ++i)
             {
-                if (m_InstanceVisible.IsCreated && m_InstanceVisible[i] == 0) { continue; }
+                int chunk = i >> 6;
+                int bit = i & 63;
+                if (m_ChunkMasks.IsCreated && (m_ChunkMasks[chunk] & (1UL << bit)) == 0) { continue; }
                 int lod = m_LodNow.IsCreated ? math.max(m_LodNow[i], 0) : 0;
                 Color color = Geometry.LODColors[math.min(lod, Geometry.LODColors.Length - 1)];
                 Geometry.DrawBound(m_Bounds[i], lodColorState ? color : Color.blue);

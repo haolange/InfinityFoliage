@@ -267,18 +267,18 @@ namespace Landscape.FoliagePipeline
     public unsafe struct TreeCullLodJob : IJobParallelFor
     {
         public int writeLod;
+        public int heightRes;
         public float maxDistance;
         public float3 viewOrigin;
         public float4x4 matrixProj;
+        public float3 terrainPos;
+        public float3 terrainSize;
 
         [ReadOnly]
         public NativeArray<byte> cellVisible;
 
         [ReadOnly]
-        public NativeArray<int> cellOffset;
-
-        [ReadOnly]
-        public NativeArray<int> cellCount;
+        public NativeArray<int> instanceCell;
 
         [ReadOnly]
         public NativeArray<Aabb> bounds;
@@ -287,35 +287,35 @@ namespace Landscape.FoliagePipeline
         public NativeArray<float> lodScreenSizes;
 
         [ReadOnly]
+        public NativeArray<float> heights;
+
+        [ReadOnly]
         [NativeDisableUnsafePtrRestriction]
         public FrustumPlane* planes;
 
-        [NativeDisableParallelForRestriction]
-        public NativeArray<int> instanceVisible;
+        [WriteOnly]
+        public NativeArray<ulong> chunkMasks;
 
         [NativeDisableParallelForRestriction]
         public NativeArray<int> lodNow;
 
-        public void Execute(int cell)
+        public void Execute(int chunk)
         {
-            int offset = cellOffset[cell];
-            int count = cellCount[cell];
-            if (cellVisible[cell] == 0)
-            {
-                for (int i = 0; i < count; ++i)
-                {
-                    instanceVisible[offset + i] = 0;
-                    if (writeLod != 0)
-                    {
-                        lodNow[offset + i] = -1;
-                    }
-                }
-                return;
-            }
+            int candidateBase = chunk * 64;
+            int remain = bounds.Length - candidateBase;
+            int count = remain > 64 ? 64 : (remain < 0 ? 0 : remain);
+            ulong mask = 0;
 
-            for (int i = 0; i < count; ++i)
+            for (int bit = 0; bit < count; ++bit)
             {
-                int index = offset + i;
+                int index = candidateBase + bit;
+                int cell = instanceCell[index];
+                if (cellVisible[cell] == 0)
+                {
+                    if (writeLod != 0) { lodNow[index] = -1; }
+                    continue;
+                }
+
                 Aabb box = bounds[index];
                 int visible = 1;
                 float2 distRadius = new float2(0, 0);
@@ -327,16 +327,18 @@ namespace Landscape.FoliagePipeline
                     visible = math.select(visible, 0, distRadius.x + distRadius.y < 0);
                 }
                 visible = math.select(visible, 0, math.distance(viewOrigin, box.center) > maxDistance);
-                instanceVisible[index] = visible;
-                if (writeLod == 0)
+                if (visible != 0 && heights.IsCreated && heightRes > 1)
                 {
-                    continue;
+                    visible = math.select(visible, 0, TerrainOccludes(box) != 0);
                 }
                 if (visible == 0)
                 {
-                    lodNow[index] = -1;
+                    if (writeLod != 0) { lodNow[index] = -1; }
                     continue;
                 }
+
+                mask |= 1UL << bit;
+                if (writeLod == 0) { continue; }
 
                 float radius = math.max(math.max(math.abs(box.extents.x), math.abs(box.extents.y)), math.abs(box.extents.z));
                 float distSqr = ((box.center.x - viewOrigin.x) * (box.center.x - viewOrigin.x)) + ((box.center.y - viewOrigin.y) * (box.center.y - viewOrigin.y)) + ((box.center.z - viewOrigin.z) * (box.center.z - viewOrigin.z));
@@ -357,17 +359,68 @@ namespace Landscape.FoliagePipeline
                 }
                 lodNow[index] = lod;
             }
+
+            chunkMasks[chunk] = mask;
+        }
+
+        int TerrainOccludes(Aabb box)
+        {
+            float3 min = box.min;
+            float3 max = box.max;
+            float centerX = (min.x + max.x) * 0.5f;
+            float centerZ = (min.z + max.z) * 0.5f;
+            float dx = centerX - viewOrigin.x;
+            float dz = centerZ - viewOrigin.z;
+            float boxDist = math.sqrt((dx * dx) + (dz * dz));
+            if (boxDist < 0.5f) { return 0; }
+
+            float boxTopSlope = (max.y - viewOrigin.y) / boxDist;
+            for (int s = 1; s < 8; ++s)
+            {
+                float t = s / 8.0f;
+                if (t > 0.85f) { break; }
+                float dist = boxDist * t;
+                if (dist < 1f) { continue; }
+                float height = SampleHeight(viewOrigin.x + (dx * t), viewOrigin.z + (dz * t));
+                float terrainSlope = (height - viewOrigin.y) / dist;
+                if (terrainSlope > boxTopSlope + 0.05f) { return 1; }
+            }
+            return 0;
+        }
+
+        float SampleHeight(float worldX, float worldZ)
+        {
+            float u = terrainSize.x > 0.0001f ? (worldX - terrainPos.x) / terrainSize.x : 0f;
+            float v = terrainSize.z > 0.0001f ? (worldZ - terrainPos.z) / terrainSize.z : 0f;
+            u = math.clamp(u, 0f, 1f);
+            v = math.clamp(v, 0f, 1f);
+            float fx = u * (heightRes - 1);
+            float fz = v * (heightRes - 1);
+            int x0 = (int)fx;
+            int z0 = (int)fz;
+            int x1 = x0 + 1;
+            int z1 = z0 + 1;
+            if (x1 >= heightRes) { x1 = heightRes - 1; }
+            if (z1 >= heightRes) { z1 = heightRes - 1; }
+            float tx = fx - x0;
+            float tz = fz - z0;
+            float h00 = heights[(z0 * heightRes) + x0];
+            float h10 = heights[(z0 * heightRes) + x1];
+            float h01 = heights[(z1 * heightRes) + x0];
+            float h11 = heights[(z1 * heightRes) + x1];
+            return math.lerp(math_lerp(h00, h10, tx), math_lerp(h01, h11, tx), tz);
         }
     }
 
     [BurstCompile]
-    public struct TreeCompactLodJob : IJob
+    public struct TreeEmitLodMasksJob : IJob
     {
         public int meshIndex;
         public int ditherEnabled;
+        public int instanceCount;
 
         [ReadOnly]
-        public NativeArray<int> instanceVisible;
+        public NativeArray<ulong> chunkMasks;
 
         [ReadOnly]
         public NativeArray<int> lodHold;
@@ -375,55 +428,90 @@ namespace Landscape.FoliagePipeline
         [ReadOnly]
         public NativeArray<int> lodNow;
 
-        public NativeList<int> stable;
-        public NativeList<int> fadeOut;
-        public NativeList<int> fadeIn;
+        public NativeArray<ulong> stableMask;
+        public NativeArray<ulong> fadeOutMask;
+        public NativeArray<ulong> fadeInMask;
+        public NativeArray<int> bucketCounts;
 
         public void Execute()
         {
-            for (int i = 0; i < instanceVisible.Length; ++i)
+            int stableCount = 0;
+            int fadeOutCount = 0;
+            int fadeInCount = 0;
+            int chunkCount = chunkMasks.Length;
+            for (int chunk = 0; chunk < chunkCount; ++chunk)
             {
-                if (instanceVisible[i] == 0) { continue; }
-                int hold = lodHold[i];
-                int now = lodNow[i];
-                if (now < 0) { continue; }
-                if (hold < 0) { hold = now; }
+                int candidateBase = chunk * 64;
+                int remain = instanceCount - candidateBase;
+                int count = remain > 64 ? 64 : (remain < 0 ? 0 : remain);
+                ulong vis = chunkMasks[chunk];
+                ulong stable = 0;
+                ulong fadeOut = 0;
+                ulong fadeIn = 0;
+                for (int bit = 0; bit < count; ++bit)
+                {
+                    if ((vis & (1UL << bit)) == 0) { continue; }
+                    int index = candidateBase + bit;
+                    int hold = lodHold[index];
+                    int now = lodNow[index];
+                    if (now < 0) { continue; }
+                    if (hold < 0) { hold = now; }
 
-                int bucket;
-                if (ditherEnabled == 0)
-                {
-                    bucket = now == meshIndex ? (int)LodBucket.Stable : (int)LodBucket.None;
-                }
-                else
-                {
-                    int delta = hold - now;
-                    if (delta < 0) { delta = -delta; }
-                    if (delta > 1)
+                    int bucket;
+                    if (ditherEnabled == 0)
                     {
                         bucket = now == meshIndex ? (int)LodBucket.Stable : (int)LodBucket.None;
-                    }
-                    else if (hold == now)
-                    {
-                        bucket = now == meshIndex ? (int)LodBucket.Stable : (int)LodBucket.None;
-                    }
-                    else if (hold == meshIndex)
-                    {
-                        bucket = (int)LodBucket.FadeOut;
-                    }
-                    else if (now == meshIndex)
-                    {
-                        bucket = (int)LodBucket.FadeIn;
                     }
                     else
                     {
-                        bucket = (int)LodBucket.None;
+                        int delta = hold - now;
+                        if (delta < 0) { delta = -delta; }
+                        if (delta > 1)
+                        {
+                            bucket = now == meshIndex ? (int)LodBucket.Stable : (int)LodBucket.None;
+                        }
+                        else if (hold == now)
+                        {
+                            bucket = now == meshIndex ? (int)LodBucket.Stable : (int)LodBucket.None;
+                        }
+                        else if (hold == meshIndex)
+                        {
+                            bucket = (int)LodBucket.FadeOut;
+                        }
+                        else if (now == meshIndex)
+                        {
+                            bucket = (int)LodBucket.FadeIn;
+                        }
+                        else
+                        {
+                            bucket = (int)LodBucket.None;
+                        }
+                    }
+
+                    ulong bitMask = 1UL << bit;
+                    if (bucket == (int)LodBucket.Stable)
+                    {
+                        stable |= bitMask;
+                        ++stableCount;
+                    }
+                    else if (bucket == (int)LodBucket.FadeOut)
+                    {
+                        fadeOut |= bitMask;
+                        ++fadeOutCount;
+                    }
+                    else if (bucket == (int)LodBucket.FadeIn)
+                    {
+                        fadeIn |= bitMask;
+                        ++fadeInCount;
                     }
                 }
-
-                if (bucket == (int)LodBucket.Stable) { stable.Add(i); }
-                else if (bucket == (int)LodBucket.FadeOut) { fadeOut.Add(i); }
-                else if (bucket == (int)LodBucket.FadeIn) { fadeIn.Add(i); }
+                stableMask[chunk] = stable;
+                fadeOutMask[chunk] = fadeOut;
+                fadeInMask[chunk] = fadeIn;
             }
+            bucketCounts[0] = stableCount;
+            bucketCounts[1] = fadeOutCount;
+            bucketCounts[2] = fadeInCount;
         }
     }
 }

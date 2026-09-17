@@ -1,0 +1,324 @@
+#pragma kernel BuildHzb
+#pragma kernel BuildHzbMip
+#pragma kernel ExpandMaskToIndex
+#pragma kernel ExpandRunToIndex
+#pragma kernel FilterIndexHzb
+#pragma kernel CullInstances
+#pragma kernel CopyArgsCount
+#pragma target 5.0
+
+struct GpuChunk
+{
+    int candidateBase;
+    int count;
+    uint maskLo;
+    uint maskHi;
+};
+
+struct GpuRun
+{
+    int start;
+    int count;
+};
+
+struct GpuAabb
+{
+    float3 center;
+    float pad0;
+    float3 extents;
+    float pad1;
+};
+
+StructuredBuffer<GpuChunk> _Chunks;
+StructuredBuffer<GpuRun> _Runs;
+StructuredBuffer<uint> _SrcIndices;
+StructuredBuffer<GpuAabb> _Bounds;
+StructuredBuffer<int> _InstanceCell;
+StructuredBuffer<uint> _CellVisible;
+StructuredBuffer<float4> _Planes;
+RWStructuredBuffer<GpuChunk> _RwChunks;
+RWStructuredBuffer<uint> _Indices;
+RWStructuredBuffer<uint> _Args;
+RWStructuredBuffer<uint> _ArgsDst;
+RWStructuredBuffer<float> _Hzb;
+
+Texture2D _CameraDepthTexture;
+
+float4 _ZBufferParams;
+float4 _HzbSize;
+float4x4 _ViewProj;
+float3 _ViewOrigin;
+float _MaxDistance;
+int _ChunkCount;
+int _RunCount;
+int _SrcCount;
+int _EnableHzb;
+int _HzbWidth;
+int _HzbHeight;
+
+bool MaskBit(GpuChunk chunk, uint bit)
+{
+    if (bit < 32)
+    {
+        return (chunk.maskLo & (1u << bit)) != 0;
+    }
+    return (chunk.maskHi & (1u << (bit - 32))) != 0;
+}
+
+float LinearEye(float raw)
+{
+    return 1.0 / (_ZBufferParams.z * raw + _ZBufferParams.w);
+}
+
+bool FrustumDistance(GpuAabb box)
+{
+    [unroll]
+    for (int i = 0; i < 6; ++i)
+    {
+        float4 plane = _Planes[i];
+        float dist = dot(plane.xyz, box.center) + plane.w;
+        float radius = dot(abs(plane.xyz), box.extents);
+        if (dist + radius < 0)
+        {
+            return false;
+        }
+    }
+    float3 delta = box.center - _ViewOrigin;
+    return dot(delta, delta) <= (_MaxDistance * _MaxDistance);
+}
+
+bool HzbOccluded(GpuAabb box)
+{
+    if (_EnableHzb == 0)
+    {
+        return false;
+    }
+
+    float3 ext = box.extents;
+    float3 center = box.center;
+    float2 screenMin = float2(10, 10);
+    float2 screenMax = float2(-10, -10);
+    float closest = 1e10;
+    int behind = 0;
+
+    [unroll]
+    for (int i = 0; i < 8; ++i)
+    {
+        float3 corner = center + ext * float3((i & 1) ? 1.0 : -1.0, (i & 2) ? 1.0 : -1.0, (i & 4) ? 1.0 : -1.0);
+        float4 clip = mul(_ViewProj, float4(corner, 1.0));
+        if (clip.w <= 0.0001)
+        {
+            behind += 1;
+            continue;
+        }
+        float2 uv = (clip.xy / clip.w) * 0.5 + 0.5;
+        screenMin = min(screenMin, uv);
+        screenMax = max(screenMax, uv);
+        closest = min(closest, clip.w);
+    }
+
+    if (behind == 8)
+    {
+        return true;
+    }
+
+    screenMin = saturate(screenMin);
+    screenMax = saturate(screenMax);
+
+    int mip = 0;
+    float2 rect = max(screenMax - screenMin, float2(1.0 / _HzbWidth, 1.0 / _HzbHeight));
+    if (max(rect.x * _HzbWidth, rect.y * _HzbHeight) > 2.0)
+    {
+        mip = 1;
+    }
+
+    int w = max(_HzbWidth >> mip, 1);
+    int h = max(_HzbHeight >> mip, 1);
+    int offset = mip == 0 ? 0 : (_HzbWidth * _HzbHeight);
+    int x0 = clamp((int)(screenMin.x * w), 0, w - 1);
+    int y0 = clamp((int)(screenMin.y * h), 0, h - 1);
+    int x1 = clamp((int)(screenMax.x * w), 0, w - 1);
+    int y1 = clamp((int)(screenMax.y * h), 0, h - 1);
+
+    float occ = _Hzb[offset + y0 * w + x0];
+    occ = min(occ, _Hzb[offset + y0 * w + x1]);
+    occ = min(occ, _Hzb[offset + y1 * w + x0]);
+    occ = min(occ, _Hzb[offset + y1 * w + x1]);
+    return (occ + 0.08) < closest;
+}
+
+void AppendIndex(uint instanceId)
+{
+    uint slot;
+    InterlockedAdd(_Args[1], 1, slot);
+    _Indices[slot] = instanceId;
+}
+
+[numthreads(8, 8, 1)]
+void BuildHzb(uint3 id : SV_DispatchThreadID)
+{
+    if (id.x >= (uint)_HzbWidth || id.y >= (uint)_HzbHeight)
+    {
+        return;
+    }
+
+    int depthWidth = (int)_HzbSize.z;
+    int depthHeight = (int)_HzbSize.w;
+    int x0 = (int)(id.x * depthWidth / _HzbWidth);
+    int y0 = (int)(id.y * depthHeight / _HzbHeight);
+    int x1 = (int)((id.x + 1) * depthWidth / _HzbWidth);
+    int y1 = (int)((id.y + 1) * depthHeight / _HzbHeight);
+    float closest = 1e10;
+
+    [loop]
+    for (int y = y0; y < y1; y += 2)
+    {
+        [loop]
+        for (int x = x0; x < x1; x += 2)
+        {
+            float raw = _CameraDepthTexture.Load(int3(x, y, 0)).r;
+            closest = min(closest, LinearEye(raw));
+        }
+    }
+
+    _Hzb[id.y * _HzbWidth + id.x] = closest;
+}
+
+[numthreads(8, 8, 1)]
+void BuildHzbMip(uint3 id : SV_DispatchThreadID)
+{
+    int w = max(_HzbWidth / 2, 1);
+    int h = max(_HzbHeight / 2, 1);
+    if (id.x >= (uint)w || id.y >= (uint)h)
+    {
+        return;
+    }
+
+    int x = id.x * 2;
+    int y = id.y * 2;
+    float occ = _Hzb[y * _HzbWidth + x];
+    occ = min(occ, _Hzb[y * _HzbWidth + min(x + 1, _HzbWidth - 1)]);
+    occ = min(occ, _Hzb[min(y + 1, _HzbHeight - 1) * _HzbWidth + x]);
+    occ = min(occ, _Hzb[min(y + 1, _HzbHeight - 1) * _HzbWidth + min(x + 1, _HzbWidth - 1)]);
+    _Hzb[(_HzbWidth * _HzbHeight) + id.y * w + id.x] = occ;
+}
+
+[numthreads(64, 1, 1)]
+void ExpandMaskToIndex(uint3 groupId : SV_GroupID, uint threadIndex : SV_GroupIndex)
+{
+    uint chunk = groupId.x;
+    if (chunk >= (uint)_ChunkCount)
+    {
+        return;
+    }
+
+    GpuChunk packed = _Chunks[chunk];
+    if (threadIndex >= (uint)packed.count)
+    {
+        return;
+    }
+    if (!MaskBit(packed, threadIndex))
+    {
+        return;
+    }
+
+    uint instanceId = (uint)(packed.candidateBase + threadIndex);
+    if (HzbOccluded(_Bounds[instanceId]))
+    {
+        return;
+    }
+    AppendIndex(instanceId);
+}
+
+[numthreads(64, 1, 1)]
+void ExpandRunToIndex(uint3 groupId : SV_GroupID, uint threadIndex : SV_GroupIndex)
+{
+    uint run = groupId.x;
+    if (run >= (uint)_RunCount)
+    {
+        return;
+    }
+
+    GpuRun packed = _Runs[run];
+    [loop]
+    for (uint i = threadIndex; i < (uint)packed.count; i += 64)
+    {
+        uint instanceId = (uint)(packed.start + i);
+        if (HzbOccluded(_Bounds[instanceId]))
+        {
+            continue;
+        }
+        AppendIndex(instanceId);
+    }
+}
+
+[numthreads(64, 1, 1)]
+void FilterIndexHzb(uint3 id : SV_DispatchThreadID)
+{
+    if (id.x >= (uint)_SrcCount)
+    {
+        return;
+    }
+
+    uint instanceId = _SrcIndices[id.x];
+    if (HzbOccluded(_Bounds[instanceId]))
+    {
+        return;
+    }
+    AppendIndex(instanceId);
+}
+
+groupshared uint gsMaskLo;
+groupshared uint gsMaskHi;
+
+[numthreads(64, 1, 1)]
+void CullInstances(uint3 groupId : SV_GroupID, uint threadIndex : SV_GroupIndex)
+{
+    uint chunk = groupId.x;
+    if (chunk >= (uint)_ChunkCount)
+    {
+        return;
+    }
+
+    GpuChunk packed = _RwChunks[chunk];
+    if (threadIndex == 0)
+    {
+        gsMaskLo = packed.maskLo;
+        gsMaskHi = packed.maskHi;
+    }
+    GroupMemoryBarrierWithGroupSync();
+
+    if (threadIndex < (uint)packed.count && MaskBit(packed, threadIndex))
+    {
+        uint instanceId = (uint)(packed.candidateBase + threadIndex);
+        int cell = _InstanceCell[instanceId];
+        uint cellVisible = _CellVisible[cell];
+        GpuAabb box = _Bounds[instanceId];
+        bool keep = cellVisible != 0 && FrustumDistance(box) && !HzbOccluded(box);
+        if (!keep)
+        {
+            if (threadIndex < 32)
+            {
+                InterlockedAnd(gsMaskLo, ~(1u << threadIndex));
+            }
+            else
+            {
+                InterlockedAnd(gsMaskHi, ~(1u << (threadIndex - 32)));
+            }
+        }
+    }
+
+    GroupMemoryBarrierWithGroupSync();
+    if (threadIndex == 0)
+    {
+        packed.maskLo = gsMaskLo;
+        packed.maskHi = gsMaskHi;
+        _RwChunks[chunk] = packed;
+    }
+}
+
+[numthreads(1, 1, 1)]
+void CopyArgsCount()
+{
+    _ArgsDst[1] = _Args[1];
+}

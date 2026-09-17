@@ -12,4 +12,4 @@ Agent 工作台见 [AGENTS.md](AGENTS.md)。交付与宿主验收见 [Docs/DELIV
 4. 改过数据布局或类型名后，**必须重新 Build/Update**。旧 Scene 与 MeshAsset 无兼容层。
 5. Play 时组件会关掉 Terrain 内置草 / 树距离，停用后恢复。
 
-URP Renderer 需挂 `FoliageRenderer`。
+URP Renderer 需挂 `FoliageRenderer`。树的绘制 index 来自 Visibility IR lowering，Vertex Shader 只读 `_TreeIndexBuffer`。

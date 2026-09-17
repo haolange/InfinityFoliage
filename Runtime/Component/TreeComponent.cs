@@ -34,6 +34,25 @@ namespace Landscape.FoliagePipeline
             }
         }
 
+        float[] SampleOcclusionHeight()
+        {
+            const int res = 64;
+            float[] heights = new float[res * res];
+            float3 pos = transform.position;
+            float3 size = terrainData.size;
+            for (int z = 0; z < res; ++z)
+            {
+                for (int x = 0; x < res; ++x)
+                {
+                    float u = x / (float)(res - 1);
+                    float v = z / (float)(res - 1);
+                    Vector3 world = new Vector3(pos.x + (u * size.x), pos.y, pos.z + (v * size.z));
+                    heights[(z * res) + x] = terrain.SampleHeight(world);
+                }
+            }
+            return heights;
+        }
+
         protected override void OnRegiste()
         {
             terrain = GetComponent<Terrain>();
@@ -47,10 +66,13 @@ namespace Landscape.FoliagePipeline
             float3 terrainPosition = transform.position;
             if (treeSectors != null)
             {
+                float[] heights = SampleOcclusionHeight();
+                float3 terrainSize = terrainData.size;
                 foreach (TreeSector treeSector in treeSectors)
                 {
                     treeSector.Initialize(numSection, sectorSize, terrainPosition, terrainBound);
                     treeSector.BuildRuntimeData();
+                    treeSector.SetHeightField(heights, 64, terrainPosition, terrainSize);
                 }
             }
             EncapsulateComponentBound();

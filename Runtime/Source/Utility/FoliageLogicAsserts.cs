@@ -15,6 +15,7 @@ namespace Landscape.FoliagePipeline
             AssertGrassUploadPick();
             AssertTreeLod();
             AssertTreeDrawCount();
+            AssertVisibilityIr();
         }
 
         static void AssertGrassLayout()
@@ -211,6 +212,123 @@ namespace Landscape.FoliagePipeline
             if (eight != eighty || eight != 2 * 3 * 3 * 2)
             {
                 Fail("tree draw count is types x lod x bucket x submesh, independent of visible cells");
+            }
+        }
+
+        static void AssertVisibilityIr()
+        {
+            if (FoliageLogic.Morton2(1, 0) == FoliageLogic.Morton2(0, 1))
+            {
+                Fail("Morton2 must distinguish swapped axes");
+            }
+            if (FoliageLogic.MortonFromLocal(0f, 0f, 16f) >= FoliageLogic.MortonFromLocal(8f, 0f, 16f))
+            {
+                Fail("Morton along +X must increase");
+            }
+
+            uint[] keys = { 8, 2, 5, 2 };
+            int[] order = { 0, 1, 2, 3 };
+            FoliageLogic.SortIndicesByKey(keys, order, 4);
+            if (keys[order[0]] > keys[order[1]] || keys[order[1]] > keys[order[2]] || keys[order[2]] > keys[order[3]])
+            {
+                Fail("SortIndicesByKey must order by Morton key");
+            }
+
+            if (FoliageLogic.VisibilityChunkCount(0) != 0 || FoliageLogic.VisibilityChunkCount(64) != 1 || FoliageLogic.VisibilityChunkCount(65) != 2)
+            {
+                Fail("chunk count is ceil(n/64)");
+            }
+            if (FoliageLogic.VisibilityChunkSize(1, 70) != 6)
+            {
+                Fail("last chunk size must clip to remaining instances");
+            }
+            if (FoliageLogic.PopCount(0) != 0 || FoliageLogic.PopCount(7) != 3 || FoliageLogic.PopCount(ulong.MaxValue) != 64)
+            {
+                Fail("PopCount failed");
+            }
+
+            int[] dest = new int[8];
+            int written = FoliageLogic.ExpandMaskToIndex(100, 8, 0x15UL, dest, 0);
+            if (written != 3 || dest[0] != 100 || dest[1] != 102 || dest[2] != 104)
+            {
+                Fail("ExpandMaskToIndex must emit set bits in order");
+            }
+
+            ulong[] masks = { 0xF, 0x3 };
+            written = FoliageLogic.ExpandMasksToIndex(masks, 2, 66, dest);
+            if (written != 6 || dest[4] != 64 || dest[5] != 65)
+            {
+                Fail("ExpandMasksToIndex must walk chunks in candidate order");
+            }
+
+            int[] ids = { 10, 11, 12, 20, 21 };
+            VisibilityRun[] runs = new VisibilityRun[4];
+            int runCount = FoliageLogic.EncodeRuns(ids, 5, runs);
+            if (runCount != 2 || runs[0].start != 10 || runs[0].count != 3 || runs[1].start != 20 || runs[1].count != 2)
+            {
+                Fail("EncodeRuns must merge consecutive ids");
+            }
+
+            ulong[] runMasks = { 0x7, 0 };
+            runMasks[0] = 0x7;
+            runCount = FoliageLogic.EncodeRunsFromMasks(runMasks, 1, 8, runs);
+            if (runCount != 1 || runs[0].start != 0 || runs[0].count != 3)
+            {
+                Fail("EncodeRunsFromMasks must merge set bits");
+            }
+
+            written = FoliageLogic.ExpandRunsToIndex(runs, 1, dest);
+            if (written != 3 || dest[0] != 0 || dest[2] != 2)
+            {
+                Fail("ExpandRunsToIndex must fill VisibleIndex");
+            }
+
+            if (FoliageLogic.PickVisibilityCodec(1, 1, 1, 0) != (int)VisibilityCodec.CompactIndex)
+            {
+                Fail("CPU policy must pick CompactIndex");
+            }
+            if (FoliageLogic.PickVisibilityCodec(64, 1, 1, 1) != (int)VisibilityCodec.RunTransfer)
+            {
+                Fail("one dense run on GPU must pick RunTransfer");
+            }
+            if (FoliageLogic.PickVisibilityCodec(1, 1, 1, 1) != (int)VisibilityCodec.CompactIndex)
+            {
+                Fail("single visible instance must pick CompactIndex");
+            }
+            if (FoliageLogic.PickVisibilityCodec(32, 32, 32, 1) != (int)VisibilityCodec.CompactIndex)
+            {
+                Fail("fully fragmented visibility must pick CompactIndex");
+            }
+
+            byte[] visible = { 0, 1, 0, 1 };
+            int[] cells = new int[4];
+            int cellCount = FoliageLogic.CollectVisibleCells(visible, cells);
+            if (cellCount != 2 || cells[0] != 1 || cells[1] != 3)
+            {
+                Fail("CollectVisibleCells must skip culled cells");
+            }
+
+            float[] flat = new float[4];
+            if (FoliageLogic.SampleHeightField(flat, 2, 0, 0, 10, 10, 0, 0) != 0f)
+            {
+                Fail("flat height field must sample 0");
+            }
+
+            float[] ridge = new float[16];
+            for (int i = 0; i < 16; ++i) { ridge[i] = 0f; }
+            ridge[5] = 50f;
+            ridge[6] = 50f;
+            ridge[9] = 50f;
+            ridge[10] = 50f;
+            bool occluded = FoliageLogic.TerrainOccludes(20f, 1f, 20f, 21f, 2f, 21f, 0f, 1f, 0f, ridge, 4, 0f, 0f, 24f, 24f);
+            if (!occluded)
+            {
+                Fail("ridge between camera and box must occlude");
+            }
+            bool open = FoliageLogic.TerrainOccludes(20f, 1f, 20f, 21f, 2f, 21f, 0f, 1f, 0f, flat, 2, 0f, 0f, 24f, 24f);
+            if (open)
+            {
+                Fail("flat ground must not occlude a box sitting on it");
             }
         }
 
