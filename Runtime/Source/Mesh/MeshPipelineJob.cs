@@ -408,7 +408,7 @@ namespace Landscape.FoliagePipeline
             float h10 = heights[(z0 * heightRes) + x1];
             float h01 = heights[(z1 * heightRes) + x0];
             float h11 = heights[(z1 * heightRes) + x1];
-            return math.lerp(math_lerp(h00, h10, tx), math_lerp(h01, h11, tx), tz);
+            return math.lerp(math.lerp(h00, h10, tx), math.lerp(h01, h11, tx), tz);
         }
     }
 

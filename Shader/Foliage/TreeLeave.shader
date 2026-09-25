@@ -31,37 +31,27 @@ Shader "Landscape/TreeLeave"
 		Texture2D _AlbedoTexture, _NomralTexture;
     	SamplerState sampler_AlbedoTexture, sampler_NomralTexture;
 
-#if HAS_HALF
-		half3 SampleSHCustom(half3 normalWS)
-		{
-			// LPPV is not supported in Ligthweight Pipeline
-			half4 SHCoefficients[7];
-			SHCoefficients[0] = half4(-0.0123161, -0.0050645, -0.0049810, 0.1772474);
-			SHCoefficients[1] = half4(-0.0193599, 0.0411433, -0.0078300, 0.2203828);
-			SHCoefficients[2] = half4(0.0331310, 0.1232350, -0.0134000, 0.2950366);
-			SHCoefficients[3] = half4(0.0095811, -0.0038749, 0.0195689, 0.0144025);
-			SHCoefficients[4] = half4(-0.0152499, -0.0061670, 0.0262519, 0.0208497);
-			SHCoefficients[5] = half4(-0.0270614, -0.0109440, 0.0281989, 0.0296785);
-			SHCoefficients[6] = half4(0.0342860, 0.0476035, 0.0587234, 1);
+float4 _FoliageSHAr, _FoliageSHAg, _FoliageSHAb;
+		float4 _FoliageSHBr, _FoliageSHBg, _FoliageSHBb, _FoliageSHC;
 
-			return max(half3(0, 0, 0), SampleSH9(SHCoefficients, normalWS));
-		}
-#else
-		float3 SampleSHCustom(float3 normalWS)
+		float3 SampleFoliageSH(float3 normalWS)
 		{
-			// LPPV is not supported in Ligthweight Pipeline
-			float4 SHCoefficients[7];
-			SHCoefficients[0] = float4(-0.0123161, -0.0050645, -0.0049810, 0.1772474);
-			SHCoefficients[1] = float4(-0.0193599, 0.0411433, -0.0078300, 0.2203828);
-			SHCoefficients[2] = float4(0.0331310, 0.1232350, -0.0134000, 0.2950366);
-			SHCoefficients[3] = float4(0.0095811, -0.0038749, 0.0195689, 0.0144025);
-			SHCoefficients[4] = float4(-0.0152499, -0.0061670, 0.0262519, 0.0208497);
-			SHCoefficients[5] = float4(-0.0270614, -0.0109440, 0.0281989, 0.0296785);
-			SHCoefficients[6] = float4(0.0342860, 0.0476035, 0.0587234, 1);
-
-			return max(float3(0, 0, 0), SampleSH9(SHCoefficients, normalWS));
-		}
+			float3 irradiance = SHEvalLinearL0L1(normalWS, _FoliageSHAr, _FoliageSHAg, _FoliageSHAb);
+			irradiance += SHEvalLinearL2(normalWS, _FoliageSHBr, _FoliageSHBg, _FoliageSHBb, _FoliageSHC);
+#ifdef UNITY_COLORSPACE_GAMMA
+			irradiance = LinearToSRGB(irradiance);
 #endif
+			return max(irradiance, 0.0);
+		}
+
+		float3 TransformFoliageNormal(float4x4 matrixWorld, float3 normalOS)
+		{
+			float3 x = matrixWorld._m00_m10_m20;
+			float3 y = matrixWorld._m01_m11_m21;
+			float3 z = matrixWorld._m02_m12_m22;
+			float3 normalWS = cross(y, z) * normalOS.x + cross(z, x) * normalOS.y + cross(x, y) * normalOS.z;
+			return normalize(normalWS * (dot(x, cross(y, z)) < 0.0 ? -1.0 : 1.0));
+		}
 
 		float LODCrossDither(uint2 fadeMaskSeed, float ditherFactor)
 		{
@@ -211,7 +201,7 @@ Shader "Landscape/TreeLeave"
 				TreeElement treeElement = _TreeElementBuffer[output.PrimitiveId];
 
 				output.uv0 = input.uv0;
-				output.normalWS = normalize(mul((float3x3)treeElement.matrix_World, input.normalOS));
+				output.normalWS = TransformFoliageNormal(treeElement.matrix_World, input.normalOS);
 				output.vertexWS = mul(treeElement.matrix_World, input.vertexOS);
 				output.vertexCS = mul(UNITY_MATRIX_VP, output.vertexWS);
 				return output;
@@ -246,7 +236,7 @@ Shader "Landscape/TreeLeave"
 
 				//Lighting
 				float3 directDiffuse = saturate(dot(normalize(_MainLightPosition.xyz), input.normalWS)) * baseColor.rgb;
-				float3 indirectDiffuse = SampleSHCustom(input.normalWS) * baseColor.rgb;
+				float3 indirectDiffuse = SampleFoliageSH(input.normalWS) * baseColor.rgb;
 				float3 subsurfaceColor = Transmission(baseColor.rgb * float3(0.95, 1, 0), lightDir, viewDir, input.normalWS, halfDir, 1, 0.25) * 2;
 
 				return float4(indirectDiffuse + (directDiffuse + subsurfaceColor) * lightAttenuated, baseColor.a);

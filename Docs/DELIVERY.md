@@ -1,5 +1,19 @@
 # Infinity Foliage 交付记录
 
+## 2026-09-25：Bound、VT、植被 SH 分项修复与验收
+
+本轮使用已打开的 Unity 6.6.0f1 Editor，未启动第二个 Editor、未建分支。保留了 foliage 与相邻 `com.infinity.virtual-texture` 包原有的未提交改动。
+
+| 验收项 | 结果 | 本机证据及界限 |
+|---|---|---|
+| Bound 深度 | **转镜头复现并通过当前画面验收** | Play 中将 `PlayerCamera` Y 旋转从 -50.629° 改到 20° 后，Bound 在画面约 66% 宽处出现笔直明暗分界；该位置没有对应几何。`Assets/Profile/UniversalAsset.asset` 的 Render Scale 为 0.66；Frame Debugger 的场景目标 1033×1174、GameView 目标 1565×1780，且异常位于 URP `Final Depth Copy → DrawGizmos`。URP Asset Inspector 明确提示：GameView 启用 Upscaling 时 Camera depth 不受支持，会对该 pass 停用 depth test。临时改为 Render Scale 1，同机位分界消失；恢复 0.66 后分界回归。最终将 URP Asset Render Scale 保存为 **1**，Bound 继续使用真实深度。未修改 Foliage 深度附件或 `Debug.DrawLine`。代价是内部像素数相对 0.66 约为 2.30 倍；实际 GPU 耗时未测。 |
+| VT 地形黑面 | **当前机位 Edit/Play/退出 Play 画面通过；边界全状态未验收** | `TerrainLitInclude.hlsl` 现在以 URP TerrainLit 片元路径回退，只有 `_VTReady`、覆盖范围和页表 alpha 有效时采样 VT。页表首次使用及反馈重建时清零，驻留条目标 alpha=1。现有 Editor 的同一 Game 相机在非 Play、Play、退出 Play 均显示正常地形颜色；尚未逐一跨越 VT 边界或验证每种缺页状态。 |
+| VT 反馈寿命 | **当前连续 Play 未再出现目标异常** | `FVirtualTextureFeedback` 在 GPU 回调内复制为持久 NativeArray，只允许一个未完成请求，消费后释放，停用/销毁时撤销回调代次。Editor.log 最后一次 `FDecodeFeedbackJob.encodeDatas has been deallocated` 为第 20972 行（修复前）；本轮 Play 后日志超过 22200 行，未新增该异常。Editor 仍间歇报 `attempt to write a readonly database`，属于独立的资产数据库问题，本轮未修复。 |
+| 植被 SH | **编译及当前天空画面通过；天空变化 A/B 未验收** | Grass、TreeLeave、TreeBrak 的实例 pass 删除七组固定系数，按当前 `RenderSettings.ambientProbe` 七向量打包至每次绘制的 MaterialPropertyBlock；Tree 在 `Clear()` 后重绑。实例法线改为逆转置等价的余子式变换。当前 Play 的实例树比非 Play 的静态显示明显受天空环境照亮；未对同材质普通 Forward 作数值测量，也未改变天空设置做控制实验。 |
+| 工程 | **通过** | 使用本机 Unity 6.6 Roslyn `csc.dll` 和 `Library/Bee/artifacts/200b0aE.dag` 现有响应文件分别编译 `Infinity.Rendering.VirtualTexture.Runtime`、`Infinity.Rendering.Foliage.Runtime` 到 `/private/tmp`，均 exit 0；只有原有 API 废弃与序列化警告。改动路径 `git diff --check` 无新增空白错误；Editor 中无本轮新增 CS 或 shader 编译错误。 |
+
+上述 Play/Frame Debugger 截图由当前 Editor 的交互工具观察，未导出为持久图像文件。VT 跨边界、天空变化和 Forward/实例数值对照仍未通过，不能用当前画面代替。URP 的缩放 GameView 深度限制仍在；Render Scale 1 是本项目的画面修复及成本选择，未来若恢复 Upscaling，需先验证所用 URP 版本已修复该限制。
+
 日期：2026-09-17。本机未打开 Unity Editor / Unity Hub。Agent 工作台只在 [AGENTS.md](../AGENTS.md)，没有 `DESIGN.md`。
 
 ## 本步：树 Visibility IR

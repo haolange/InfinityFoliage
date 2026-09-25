@@ -2,34 +2,75 @@ using Unity.Jobs;
 using UnityEngine;
 using Unity.Mathematics;
 using Unity.Collections;
-using UnityEngine.Rendering;
 using UnityEngine.Rendering.Universal;
+using UnityEngine.Rendering.RenderGraphModule;
+using UnityEngine.Rendering;
 using Unity.Collections.LowLevel.Unsafe;
 
 namespace Landscape.FoliagePipeline
 {
+    internal static class FoliageAmbientSH
+    {
+        private static readonly int[] s_Ids =
+        {
+            Shader.PropertyToID("_FoliageSHAr"), Shader.PropertyToID("_FoliageSHAg"), Shader.PropertyToID("_FoliageSHAb"),
+            Shader.PropertyToID("_FoliageSHBr"), Shader.PropertyToID("_FoliageSHBg"), Shader.PropertyToID("_FoliageSHBb"),
+            Shader.PropertyToID("_FoliageSHC")
+        };
+
+        internal static void Bind(MaterialPropertyBlock block)
+        {
+            SphericalHarmonicsL2 sh = RenderSettings.ambientProbe;
+            for (int c = 0; c < 3; ++c)
+            {
+                block.SetVector(s_Ids[c], new Vector4(sh[c, 3], sh[c, 1], sh[c, 2], sh[c, 0] - sh[c, 6]));
+                block.SetVector(s_Ids[c + 3], new Vector4(sh[c, 4], sh[c, 5], sh[c, 6] * 3f, sh[c, 7]));
+            }
+            block.SetVector(s_Ids[6], new Vector4(sh[0, 8], sh[1, 8], sh[2, 8], 1f));
+        }
+    }
+
     internal unsafe class FoliagePass : ScriptableRenderPass
     {
-        public override void OnCameraSetup(CommandBuffer cmdBuffer, ref RenderingData renderingData)
+        private class PassData
         {
-
+            internal Camera camera;
+            internal TextureHandle color;
+            internal TextureHandle depth;
         }
 
-        public override void Execute(ScriptableRenderContext renderContext, ref RenderingData renderingData)
+        public override void RecordRenderGraph(RenderGraph renderGraph, ContextContainer frameData)
         {
             if (Application.isPlaying == false) { return; }
 
-            var cmdBuffer = CommandBufferPool.Get();
-            cmdBuffer.Clear();
-            renderContext.ExecuteCommandBuffer(cmdBuffer);
+            var resourceData = frameData.Get<UniversalResourceData>();
+            var camera = frameData.Get<UniversalCameraData>().camera;
+            using (var builder = renderGraph.AddUnsafePass<PassData>("Foliage", out var passData))
+            {
+                passData.camera = camera;
+                passData.color = resourceData.activeColorTexture;
+                passData.depth = resourceData.activeDepthTexture;
+                builder.UseTexture(passData.color, AccessFlags.ReadWrite);
+                builder.UseTexture(passData.depth, AccessFlags.ReadWrite);
+                builder.AllowGlobalStateModification(true);
+                builder.AllowPassCulling(false);
+                builder.SetRenderFunc(static (PassData data, UnsafeGraphContext context) =>
+                {
+                    var cmdBuffer = CommandBufferHelpers.GetNativeCommandBuffer(context.cmd);
+                    cmdBuffer.SetRenderTarget(data.color, data.depth);
+                    ExecuteFoliage(cmdBuffer, data.camera);
+                });
+            }
+        }
 
-            Camera camera = renderingData.cameraData.camera;
+        private static void ExecuteFoliage(CommandBuffer cmdBuffer, Camera camera)
+        {
             var planes = new NativeArray<FrustumPlane>(6, Allocator.TempJob);
             var taskHandles = new NativeList<JobHandle>(256, Allocator.Temp);
             var sectorsBound = new NativeArray<Aabb>(FoliageComponent.FoliageComponents.Count, Allocator.TempJob);
             var boundsVisible = new NativeArray<byte>(FoliageComponent.FoliageComponents.Count, Allocator.TempJob);
 
-            renderingData.cameraData.camera.TryGetCullingParameters(false, out var cullingParams);
+            camera.TryGetCullingParameters(false, out var cullingParams);
             for (var i = 0; i < 6; ++i)
             {
                 planes[i] = cullingParams.cameraProperties.GetCameraCullingPlane(i);
@@ -109,14 +150,6 @@ namespace Landscape.FoliagePipeline
             taskHandles.Dispose();
             sectorsBound.Dispose();
             boundsVisible.Dispose();
-
-            renderContext.ExecuteCommandBuffer(cmdBuffer);
-            cmdBuffer.Clear();
-            CommandBufferPool.Release(cmdBuffer);
-        }
-
-        public override void OnCameraCleanup(CommandBuffer cmdBuffer)
-        {
 
         }
     }

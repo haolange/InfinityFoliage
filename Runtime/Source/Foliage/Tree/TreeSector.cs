@@ -104,7 +104,7 @@ namespace Landscape.FoliagePipeline
         private NativeArray<int> m_LodNow;
         private NativeArray<float> m_Heights;
         private List<TreeLodBatch> m_Batches;
-        private Dictionary<int, TreeCameraFade> m_FadeViews;
+        private Dictionary<ulong, TreeCameraFade> m_FadeViews;
         private TreeCameraFade m_ActiveFade;
         private TreeVisibilityGpu m_Gpu;
         private Camera m_ActiveCamera;
@@ -351,7 +351,7 @@ namespace Landscape.FoliagePipeline
                 m_Batches.Add(batch);
             }
 
-            m_FadeViews = new Dictionary<int, TreeCameraFade>(4);
+            m_FadeViews = new Dictionary<ulong, TreeCameraFade>(4);
             m_ArgsScratch = new uint[5];
             m_IndexScratch = new int[m_InstanceCount];
             m_MaskScratch = new ulong[math.max(chunkCount, 1)];
@@ -372,7 +372,7 @@ namespace Landscape.FoliagePipeline
 
         TreeCameraFade GetFade(Camera camera)
         {
-            int key = camera != null ? camera.GetInstanceID() : 0;
+            ulong key = camera != null ? EntityId.ToULong(camera.GetEntityId()) : 0;
             if (m_FadeViews.TryGetValue(key, out TreeCameraFade fade))
             {
                 return fade;
@@ -657,6 +657,7 @@ namespace Landscape.FoliagePipeline
                 Material material = tree.materials[batch.materialIndexs[s]];
                 ComputeBuffer argsBuffer = batch.argsBuffers[(argsIndex * batch.sectionIndexs.Length) + s];
                 propertyBlock.Clear();
+                FoliageAmbientSH.Bind(propertyBlock);
                 propertyBlock.SetBuffer(TreeShaderID.IndexBuffer, indexBuffer);
                 propertyBlock.SetBuffer(TreeShaderID.ElementBuffer, m_MatrixBuffer);
                 propertyBlock.SetFloat(TreeShaderID.LodFactor, lodFactor);

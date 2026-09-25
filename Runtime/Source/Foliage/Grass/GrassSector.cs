@@ -198,6 +198,7 @@ namespace Landscape.FoliagePipeline
             Mesh mesh = grass.meshes[0];
             Material material = grass.materials[0];
 
+            FoliageAmbientSH.Bind(propertyBlock);
             propertyBlock.SetBuffer(GrassShaderID.ElementBuffer, m_PackedBuffer);
             for (int i = 0; i < runCount; ++i)
             {
