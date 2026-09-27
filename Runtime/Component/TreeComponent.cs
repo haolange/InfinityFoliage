@@ -8,6 +8,15 @@ using System.Runtime.CompilerServices;
 
 namespace Landscape.FoliagePipeline
 {
+#if UNITY_EDITOR
+    public enum TreeBoundsMode
+    {
+        Component,
+        Cells,
+        Instances
+    }
+#endif
+
     [AddComponentMenu("HG/Foliage/Tree Component")]
     public unsafe class TreeComponent : FoliageComponent
     {
@@ -17,10 +26,26 @@ namespace Landscape.FoliagePipeline
         public string assetKey;
         [Range(0.05f, 2f)]
         public float fadeDuration = 0.5f;
+        [Header("Rendering Overrides")]
+        public bool overrideDrawDistance;
+        [Min(0f)] public float drawDistanceOverride;
+        public bool overrideOcclusion;
+        public TreeOcclusionMode occlusionOverride = TreeOcclusionMode.TerrainAndHzb;
+        public bool overrideLodFade;
+        public bool lodFadeOverride = true;
+        public bool overrideLodHysteresis;
+        [Range(0f, 0.5f)] public float lodHysteresisOverride = 0.08f;
+        public bool overrideMainShadows;
+        public bool castMainShadowsOverride = true;
 
 #if UNITY_EDITOR
         [Header("Debug")]
         public bool showBounds = false;
+        public TreeBoundsMode boundsMode = TreeBoundsMode.Instances;
+        public Camera debugCamera;
+        public int debugTreeIndex = -1;
+        public int debugCandidateIndex = -1;
+        private bool m_SnapshotRequested;
 #endif
         [HideInInspector]
         public TreeSector[] treeSectors;
@@ -34,6 +59,32 @@ namespace Landscape.FoliagePipeline
         private int m_Generation;
         private float[] m_OcclusionHeights;
         private Matrix4x4 m_DepthViewProj;
+        private FoliageRenderSettings m_RenderSettings;
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        internal void SetRenderSettings(FoliageRenderSettings settings)
+        {
+            m_RenderSettings = settings;
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        internal float ResolveDrawDistance(FoliageRenderSettings settings)
+        {
+            return overrideDrawDistance ? Mathf.Max(0f, drawDistanceOverride) :
+                drawDistance * Mathf.Max(0f, settings.treeDistanceScale);
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        internal TreeOcclusionMode ResolveOcclusion(FoliageRenderSettings settings)
+        {
+            return overrideOcclusion ? occlusionOverride : settings.treeOcclusion;
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        internal bool CastMainShadows(FoliageRenderSettings settings)
+        {
+            return overrideMainShadows ? castMainShadowsOverride : settings.castTreeMainShadows;
+        }
 
         internal int sectorSize
         {
@@ -185,18 +236,65 @@ namespace Landscape.FoliagePipeline
             EncapsulateComponentBound();
         }
 
-        private void DrawBounds(in bool color = false)
+        private void DrawBounds()
         {
             if (showBounds == false || Application.isPlaying == false || this.enabled == false || this.gameObject.activeSelf == false) return;
+            if (boundSector == null || treeSectors == null) { return; }
+            Geometry.DrawBound(boundSector.bound, Color.white);
+            if (boundsMode == TreeBoundsMode.Component) { return; }
             foreach (TreeSector treeSector in treeSectors)
             {
-                treeSector.DrawBounds(color);
+                if (treeSector != null) { treeSector.DrawBounds(boundsMode, debugCamera); }
             }
         }
 
         protected virtual void OnDrawGizmosSelected()
         {
-            DrawBounds(true);
+            DrawBounds();
+        }
+
+        public void RequestVisibilitySnapshot()
+        {
+            m_SnapshotRequested = true;
+        }
+
+        public void ClearVisibilitySnapshot()
+        {
+            m_SnapshotRequested = false;
+            if (treeSectors == null) { return; }
+            for (int i = 0; i < treeSectors.Length; ++i) { treeSectors[i]?.ClearVisibilitySnapshot(); }
+        }
+
+        public void CaptureVisibilitySnapshot(CommandBuffer cmdBuffer, Camera camera)
+        {
+            if (!m_SnapshotRequested || !m_RuntimeReady || !m_Resident || camera == null) { return; }
+            Camera targetCamera = debugCamera != null ? debugCamera : Camera.main;
+            if (targetCamera != null && targetCamera != camera) { return; }
+            if (targetCamera == null && camera.cameraType != CameraType.Game) { return; }
+            if (treeSectors == null) { return; }
+            for (int i = 0; i < treeSectors.Length; ++i)
+            {
+                if (m_SectorReady[i]) { treeSectors[i].CaptureVisibilitySnapshot(cmdBuffer, camera); }
+            }
+            m_SnapshotRequested = false;
+        }
+
+        public string VisibilitySnapshotSummary()
+        {
+            if (treeSectors == null) { return "No loaded tree sectors."; }
+            var summary = new System.Text.StringBuilder();
+            for (int i = 0; i < treeSectors.Length; ++i)
+            {
+                if (!m_RuntimeReady || m_SectorReady == null || !m_SectorReady[i]) { continue; }
+                summary.Append("Tree ").Append(treeSectors[i].treeIndex).Append(": ")
+                    .Append(treeSectors[i].VisibilitySnapshotSummary()).Append('\n');
+                if (treeSectors[i].treeIndex == debugTreeIndex && debugCandidateIndex >= 0)
+                {
+                    summary.Append(treeSectors[i].VisibilitySnapshotCandidate(debugCandidateIndex)).Append('\n');
+                    summary.Append(treeSectors[i].VisibilitySnapshotGpuRejections(12)).Append('\n');
+                }
+            }
+            return summary.Length == 0 ? "Tree assets are loading." : summary.ToString();
         }
 #endif
 
@@ -227,7 +325,7 @@ namespace Landscape.FoliagePipeline
             if (treeSectors == null) { return; }
             for (int i = 0; i < treeSectors.Length; ++i)
             {
-                if (m_SectorReady[i]) { treeSectors[i].InitView(drawDistance, viewOrigin, matrixProj, planes, taskHandles); }
+                if (m_SectorReady[i]) { treeSectors[i].InitView(ResolveDrawDistance(m_RenderSettings), viewOrigin, matrixProj, planes, taskHandles); }
             }
         }
 
@@ -238,7 +336,14 @@ namespace Landscape.FoliagePipeline
             if (treeSectors == null) { return; }
             for (int i = 0; i < treeSectors.Length; ++i)
             {
-                if (m_SectorReady[i]) { treeSectors[i].DispatchSetup(camera, drawDistance, viewOrigin, matrixProj, m_Planes, taskHandles); }
+                if (m_SectorReady[i])
+                {
+                    TreeOcclusionMode mode = ResolveOcclusion(m_RenderSettings);
+                    bool lodFade = overrideLodFade ? lodFadeOverride : m_RenderSettings.treeLodFade;
+                    float hysteresis = overrideLodHysteresis ? lodHysteresisOverride : m_RenderSettings.treeLodHysteresis;
+                    treeSectors[i].DispatchSetup(camera, ResolveDrawDistance(m_RenderSettings), viewOrigin, matrixProj,
+                        m_Planes, mode, lodFade, hysteresis, taskHandles);
+                }
             }
         }
 
@@ -256,7 +361,11 @@ namespace Landscape.FoliagePipeline
             float dt = Time.deltaTime;
             for (int i = 0; i < treeSectors.Length; ++i)
             {
-                if (m_SectorReady[i]) { treeSectors[i].FlushPendingUploads(cmdBuffer, cameraDepth, zParams, m_DepthViewProj, fadeDuration, dt); }
+                if (m_SectorReady[i])
+                {
+                    bool hzb = (ResolveOcclusion(m_RenderSettings) & TreeOcclusionMode.Hzb) != 0;
+                    treeSectors[i].FlushPendingUploads(cmdBuffer, cameraDepth, zParams, m_DepthViewProj, hzb, fadeDuration, dt);
+                }
             }
         }
 
@@ -275,9 +384,10 @@ namespace Landscape.FoliagePipeline
         internal void DispatchShadow(CommandBuffer cmdBuffer, Camera camera, in int cascadeIndex, Plane[] planes)
         {
             if (!m_RuntimeReady || !m_Resident || treeSectors == null) { return; }
+            float hysteresis = overrideLodHysteresis ? lodHysteresisOverride : m_RenderSettings.treeLodHysteresis;
             for (int i = 0; i < treeSectors.Length; ++i)
             {
-                if (m_SectorReady[i]) { treeSectors[i].DispatchShadow(cmdBuffer, camera, cascadeIndex, planes, m_PropertyBlock); }
+                if (m_SectorReady[i]) { treeSectors[i].DispatchShadow(cmdBuffer, camera, cascadeIndex, planes, hysteresis, m_PropertyBlock); }
             }
         }
     }

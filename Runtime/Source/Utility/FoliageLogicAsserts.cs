@@ -152,7 +152,7 @@ namespace Landscape.FoliagePipeline
 
         static void AssertResidencyBudget()
         {
-            FoliageResidency.PageLease[] leases = new FoliageResidency.PageLease[FoliageResidency.DetailPageBudget];
+            FoliageResidency.PageLease[] leases = new FoliageResidency.PageLease[FoliageResidency.DefaultDetailPageBudget];
             for (int i = 0; i < leases.Length; ++i)
             {
                 if (!FoliageResidency.TryAcquireDetailPageSlot(ulong.MaxValue, out leases[i])) { Fail("detail page pool must admit its full budget"); }
@@ -174,6 +174,33 @@ namespace Landscape.FoliagePipeline
             FoliageResidency.ReleaseDetailPageSlot(replacement);
             FoliageResidency.ReleaseDetailPageSlot(otherSpecies);
             for (int i = 1; i < leases.Length; ++i) { FoliageResidency.ReleaseDetailPageSlot(leases[i]); }
+
+            FoliageRenderSettings settings = new FoliageRenderSettings();
+            settings.grassDetailPageBudget = 3;
+            FoliageResidency.ApplySettings(settings);
+            FoliageResidency.PageLease[] reduced = new FoliageResidency.PageLease[3];
+            for (int i = 0; i < reduced.Length; ++i)
+            {
+                if (!FoliageResidency.TryAcquireDetailPageSlot(ulong.MaxValue, out reduced[i]))
+                {
+                    Fail("runtime detail budget must admit its configured page count");
+                }
+            }
+            if (FoliageResidency.TryAcquireDetailPageSlot(ulong.MaxValue, out excess))
+            {
+                FoliageResidency.ReleaseDetailPageSlot(excess);
+                Fail("runtime detail budget must reject an excess page");
+            }
+            for (int i = 0; i < reduced.Length; ++i) { FoliageResidency.ReleaseDetailPageSlot(reduced[i]); }
+            settings.grassDetailPageBudget = 0;
+            FoliageResidency.ApplySettings(settings);
+            if (FoliageResidency.TryAcquireDetailPageSlot(ulong.MaxValue, out excess))
+            {
+                FoliageResidency.ReleaseDetailPageSlot(excess);
+                Fail("zero detail budget must retain only the grass base layer");
+            }
+            settings.grassDetailPageBudget = FoliageResidency.DefaultDetailPageBudget;
+            FoliageResidency.ApplySettings(settings);
         }
 
         static void AssertGrassResidencyDemand()

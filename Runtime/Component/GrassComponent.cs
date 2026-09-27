@@ -7,6 +7,15 @@ using System.Runtime.CompilerServices;
 
 namespace Landscape.FoliagePipeline
 {
+#if UNITY_EDITOR
+    public enum GrassBoundsMode
+    {
+        Component,
+        Cells,
+        Pages
+    }
+#endif
+
     [AddComponentMenu("HG/Foliage/Grass Component")]
     public unsafe class GrassComponent : FoliageComponent
     {
@@ -14,10 +23,14 @@ namespace Landscape.FoliagePipeline
         public int numSection = 16;
         [HideInInspector]
         public string assetKey;
+        [Header("Rendering")]
+        public bool overrideDrawDistance;
+        [Min(0f)] public float drawDistanceOverride;
 
 #if UNITY_EDITOR
         [Header("Debug")]
         public bool showBounds = false;
+        public GrassBoundsMode boundsMode = GrassBoundsMode.Cells;
 #endif
 
         internal int sectorSize
@@ -55,9 +68,23 @@ namespace Landscape.FoliagePipeline
         private byte[] m_Visible;
         private float m_DensityScale;
         private float m_DrawDistance;
+        private FoliageRenderSettings m_RenderSettings;
         private MaterialPropertyBlock m_PropertyBlock;
 
         internal float drawDistance { get { return m_DrawDistance; } }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        internal void SetRenderSettings(FoliageRenderSettings settings)
+        {
+            m_RenderSettings = settings;
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        internal float ResolveDrawDistance(FoliageRenderSettings settings)
+        {
+            return overrideDrawDistance ? Mathf.Max(0f, drawDistanceOverride) :
+                m_DrawDistance * Mathf.Max(0f, settings.grassDistanceScale);
+        }
 
         protected override void OnRegiste()
         {
@@ -160,8 +187,32 @@ namespace Landscape.FoliagePipeline
         private void DrawBounds()
         {
             if (showBounds == false || Application.isPlaying == false || this.enabled == false || this.gameObject.activeSelf == false) return;
+            if (boundSector == null) { return; }
 
             Geometry.DrawBound(boundSector.bound, Color.white);
+            if (boundsMode == GrassBoundsMode.Component) { return; }
+
+            if (boundsMode == GrassBoundsMode.Pages)
+            {
+                int axis = FoliageAssetCodec.PageAxis;
+                for (int x = 0; x < axis; ++x)
+                {
+                    for (int y = 0; y < axis; ++y)
+                    {
+                        bool resident = false;
+                        for (int s = 0; grassSectors != null && s < grassSectors.Length; ++s)
+                        {
+                            if (IsDetailResident(s, x, y)) { resident = true; break; }
+                        }
+                        Vector3 size = terrainData.size;
+                        Vector3 pageSize = new Vector3(size.x / axis, boundSector.bound.size.y, size.z / axis);
+                        Vector3 center = transform.position + new Vector3((x + 0.5f) * pageSize.x,
+                            boundSector.bound.center.y - transform.position.y, (y + 0.5f) * pageSize.z);
+                        Geometry.DrawBound(new Bounds(center, pageSize), resident ? Color.green : Color.yellow);
+                    }
+                }
+                return;
+            }
 
             for (int i = 0; i < boundSector.sections.Length; ++i)
             {
@@ -175,7 +226,9 @@ namespace Landscape.FoliagePipeline
 
                 if (count > 0)
                 {
-                    Geometry.DrawBound(boundSector.sections[i].boundBox, boundSector.visibleMap[i] == 1 ? Color.green : Color.red);
+                    Color color = !boundSector.visibleMap.IsCreated ? Color.gray :
+                        boundSector.visibleMap[i] == 1 ? Color.green : Color.red;
+                    Geometry.DrawBound(boundSector.sections[i].boundBox, color);
                 }
             }
         }
@@ -190,7 +243,7 @@ namespace Landscape.FoliagePipeline
         public override void InitView(in float3 viewOrigin, in float4x4 matrixProj, in FrustumPlane* planes, in NativeList<JobHandle> taskHandles)
         {
             if (!m_RuntimeReady || !m_Resident) { return; }
-            taskHandles.Add(boundSector.InitView(m_DrawDistance, new float4(viewOrigin, 1), planes));
+            taskHandles.Add(boundSector.InitView(ResolveDrawDistance(m_RenderSettings), new float4(viewOrigin, 1), planes));
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]

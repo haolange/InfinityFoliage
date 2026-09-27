@@ -7,9 +7,9 @@ namespace Landscape.FoliagePipeline
 {
     public static class FoliageResidency
     {
-        internal const int TerrainBudget = 2;
-        internal const int DetailPageBudget = 8;
-        private const int PageVisibilityHoldFrames = 12;
+        internal const int DefaultTerrainBudget = 2;
+        internal const int DefaultDetailPageBudget = 8;
+        internal const int DefaultPageVisibilityHoldFrames = 12;
 
         internal class PageLease
         {
@@ -62,6 +62,10 @@ namespace Landscape.FoliagePipeline
         private static int s_SelectedDetailPages;
         private static long s_PageHits;
         private static long s_PageEvictions;
+        private static int s_TerrainBudget = DefaultTerrainBudget;
+        private static int s_DetailPageBudget = DefaultDetailPageBudget;
+        private static int s_PageVisibilityHoldFrames = DefaultPageVisibilityHoldFrames;
+        private static float s_GrassDistanceScale = 1f;
 
         public static int ResidentTerrains { get { return s_ResidentTerrains; } }
         public static int ResidentDetailPages { get { return s_ResidentDetailPages; } }
@@ -84,13 +88,17 @@ namespace Landscape.FoliagePipeline
             s_SelectedDetailPages = 0;
             s_PageHits = 0;
             s_PageEvictions = 0;
+            s_TerrainBudget = DefaultTerrainBudget;
+            s_DetailPageBudget = DefaultDetailPageBudget;
+            s_PageVisibilityHoldFrames = DefaultPageVisibilityHoldFrames;
+            s_GrassDistanceScale = 1f;
         }
 
         internal static bool TryAcquireDetailPageSlot(in ulong species, out PageLease lease)
         {
             s_PageSlots.TryGetValue(species, out int count);
             lease = null;
-            if (count >= DetailPageBudget) { return false; }
+            if (count >= s_DetailPageBudget) { return false; }
             lease = new PageLease();
             lease.species = species;
             s_PageLeases.Add(lease);
@@ -193,9 +201,25 @@ namespace Landscape.FoliagePipeline
             return eligible;
         }
 
-        internal static void UpdateView(Camera camera, in float3 viewOrigin)
+        internal static bool ApplySettings(FoliageRenderSettings settings)
+        {
+            int terrainBudget = math.max(settings.residentTerrainBudget, 1);
+            int pageBudget = math.max(settings.grassDetailPageBudget, 0);
+            int holdFrames = math.max(settings.pageVisibilityHoldFrames, 0);
+            float grassScale = math.max(settings.grassDistanceScale, 0f);
+            bool settingsChanged = s_TerrainBudget != terrainBudget || s_DetailPageBudget != pageBudget ||
+                s_PageVisibilityHoldFrames != holdFrames || s_GrassDistanceScale != grassScale;
+            s_TerrainBudget = terrainBudget;
+            s_DetailPageBudget = pageBudget;
+            s_PageVisibilityHoldFrames = holdFrames;
+            s_GrassDistanceScale = grassScale;
+            return settingsChanged;
+        }
+
+        internal static void UpdateView(Camera camera, in float3 viewOrigin, FoliageRenderSettings settings)
         {
             if (camera == null || !IsResidentCameraType(camera.cameraType)) { return; }
+            bool settingsChanged = ApplySettings(settings);
             s_Frame = Time.frameCount;
             ulong cameraKey = EntityId.ToULong(camera.GetEntityId());
             Matrix4x4 viewMatrix = camera.worldToCameraMatrix;
@@ -205,7 +229,7 @@ namespace Landscape.FoliagePipeline
                 view = new CameraView();
                 s_Views.Add(cameraKey, view);
             }
-            else if (view.frame == s_Frame && math.all(view.origin == viewOrigin) &&
+            else if (!settingsChanged && view.frame == s_Frame && math.all(view.origin == viewOrigin) &&
                 view.viewMatrix == viewMatrix && view.projectionMatrix == projectionMatrix) { return; }
             view.camera = camera;
             view.origin = viewOrigin;
@@ -244,7 +268,7 @@ namespace Landscape.FoliagePipeline
             for (int i = 0; i < s_TerrainSort.Count; ++i)
             {
                 TerrainEntry entry = s_TerrainSort[i];
-                bool resident = i < TerrainBudget;
+                bool resident = i < s_TerrainBudget;
                 if (resident) { ++s_ResidentTerrains; }
                 if (entry.resident != resident)
                 {
@@ -297,7 +321,7 @@ namespace Landscape.FoliagePipeline
                             {
                                 CameraView candidateView = viewPair.Value;
                                 if (!PageDemand(bounds, sections, grass.numSection, x, y, candidateView.origin, candidateView.planes,
-                                    grass.drawDistance, out bool visible, out float distance)) { continue; }
+                                    grass.ResolveDrawDistance(settings), out bool visible, out float distance)) { continue; }
                                 eligible = true;
                                 if (visible) { candidate.visible = true; }
                                 if (distance < candidate.distance) { candidate.distance = distance; }
@@ -313,7 +337,7 @@ namespace Landscape.FoliagePipeline
                             else if (candidate.resident)
                             {
                                 int lastVisible = grass.PageLastVisible(species, x, y);
-                                candidate.visible = lastVisible >= 0 && s_Frame - lastVisible <= PageVisibilityHoldFrames;
+                                candidate.visible = lastVisible >= 0 && s_Frame - lastVisible <= s_PageVisibilityHoldFrames;
                             }
                             candidate.lastUse = grass.PageLastUsed(species, x, y);
                             s_PageSort.Add(candidate);
@@ -350,7 +374,7 @@ namespace Landscape.FoliagePipeline
                     hasSpecies = true;
                     used = 0;
                 }
-                candidate.selected = used < DetailPageBudget;
+                candidate.selected = used < s_DetailPageBudget;
                 if (candidate.selected)
                 {
                     ++used;

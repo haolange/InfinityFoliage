@@ -11,6 +11,35 @@ using Unity.Collections.LowLevel.Unsafe;
 
 namespace Landscape.FoliagePipeline
 {
+    public enum TreeOcclusionMode
+    {
+        None = 0,
+        Terrain = 1,
+        Hzb = 2,
+        TerrainAndHzb = 3
+    }
+
+    [Serializable]
+    public class FoliageRenderSettings
+    {
+        [Header("Drawing")]
+        public bool drawGrass = true;
+        public bool drawTrees = true;
+        public bool castTreeMainShadows = true;
+        [Min(0f)] public float grassDistanceScale = 1f;
+        [Min(0f)] public float treeDistanceScale = 1f;
+
+        [Header("Tree Visibility")]
+        public TreeOcclusionMode treeOcclusion = TreeOcclusionMode.TerrainAndHzb;
+        public bool treeLodFade = true;
+        [Range(0f, 0.5f)] public float treeLodHysteresis = 0.08f;
+
+        [Header("Residency")]
+        [Min(1)] public int residentTerrainBudget = 2;
+        [Min(0)] public int grassDetailPageBudget = 8;
+        [Min(0)] public int pageVisibilityHoldFrames = 12;
+    }
+
     internal static class FoliageAmbientSH
     {
         private static readonly int[] s_Ids =
@@ -34,8 +63,16 @@ namespace Landscape.FoliagePipeline
 
     internal unsafe class FoliagePass : ScriptableRenderPass
     {
+        private readonly FoliageRenderSettings m_Settings;
+
+        internal FoliagePass(FoliageRenderSettings settings)
+        {
+            m_Settings = settings;
+        }
+
         private class PassData
         {
+            internal FoliageRenderSettings settings;
             internal Camera camera;
             internal TextureHandle color;
             internal TextureHandle depth;
@@ -53,6 +90,7 @@ namespace Landscape.FoliagePipeline
             var camera = cameraData.camera;
             using (var builder = renderGraph.AddUnsafePass<PassData>("Foliage", out var passData))
             {
+                passData.settings = m_Settings;
                 passData.camera = camera;
                 passData.color = resourceData.activeColorTexture;
                 passData.depth = resourceData.activeDepthTexture;
@@ -71,15 +109,21 @@ namespace Landscape.FoliagePipeline
                     RTHandle cameraDepth = data.cameraDepth.IsValid() ? (RTHandle)data.cameraDepth : null;
                     bool renderIntoTexture = cameraDepth != null && context.GetTextureUVOrigin(data.cameraDepth) == TextureUVOrigin.BottomLeft;
                     Matrix4x4 depthViewProj = GL.GetGPUProjectionMatrix(data.cameraProjection, renderIntoTexture) * data.cameraView;
-                    ExecuteFoliage(cmdBuffer, data.camera, cameraDepth, depthViewProj);
+                    ExecuteFoliage(cmdBuffer, data.camera, cameraDepth, depthViewProj, data.settings);
                 });
             }
         }
 
-        private static void ExecuteFoliage(CommandBuffer cmdBuffer, Camera camera, RTHandle cameraDepth, in Matrix4x4 depthViewProj)
+        private static void ExecuteFoliage(CommandBuffer cmdBuffer, Camera camera, RTHandle cameraDepth, in Matrix4x4 depthViewProj, FoliageRenderSettings settings)
         {
             float3 viewOrigin = camera.transform.position;
-            FoliageResidency.UpdateView(camera, viewOrigin);
+            for (int i = 0; i < FoliageComponent.FoliageComponents.Count; ++i)
+            {
+                FoliageComponent component = FoliageComponent.FoliageComponents[i];
+                if (component is TreeComponent tree) { tree.SetRenderSettings(settings); }
+                else if (component is GrassComponent grass) { grass.SetRenderSettings(settings); }
+            }
+            FoliageResidency.UpdateView(camera, viewOrigin, settings);
             var planes = new NativeArray<FrustumPlane>(6, Allocator.TempJob);
             var taskHandles = new NativeList<JobHandle>(256, Allocator.Temp);
             var sectorsBound = new NativeArray<Aabb>(FoliageComponent.FoliageComponents.Count, Allocator.TempJob);
@@ -148,6 +192,7 @@ namespace Landscape.FoliagePipeline
             {
                 if (FoliageComponent.FoliageComponents[i] == null || FoliageComponent.FoliageComponents[i].boundSector == null) { continue; }
                 if (boundsVisible[i] == 0 && FoliageComponent.FoliageComponents[i].foliageType != EFoliageType.Grass) { continue; }
+                if (!ShouldDraw(FoliageComponent.FoliageComponents[i], settings)) { continue; }
                 FoliageComponent.FoliageComponents[i].InitView(viewOrigin, matrixProj, planesPtr, taskHandles);
             }
             JobHandle.CompleteAll(taskHandles.AsArray());
@@ -158,6 +203,7 @@ namespace Landscape.FoliagePipeline
             for (int i = 0; i < sectorsBound.Length; ++i)
             {
                 if (boundsVisible[i] == 0 || FoliageComponent.FoliageComponents[i] == null || FoliageComponent.FoliageComponents[i].boundSector == null) { continue; }
+                if (!ShouldDraw(FoliageComponent.FoliageComponents[i], settings)) { continue; }
                 FoliageComponent.FoliageComponents[i].DispatchSetup(camera, viewOrigin, matrixProj, taskHandles);
             }
             JobHandle.CompleteAll(taskHandles.AsArray());
@@ -179,7 +225,14 @@ namespace Landscape.FoliagePipeline
                 for (int i = 0; i < sectorsBound.Length; ++i)
                 {
                     if (boundsVisible[i] == 0 || FoliageComponent.FoliageComponents[i] == null || FoliageComponent.FoliageComponents[i].boundSector == null) { continue; }
+                    if (!ShouldDraw(FoliageComponent.FoliageComponents[i], settings)) { continue; }
                     FoliageComponent.FoliageComponents[i].DispatchDraw(cmdBuffer, 1);
+#if UNITY_EDITOR
+                    if (FoliageComponent.FoliageComponents[i] is TreeComponent tree)
+                    {
+                        tree.CaptureVisibilitySnapshot(cmdBuffer, camera);
+                    }
+#endif
                 }
             }
             #endregion
@@ -190,10 +243,22 @@ namespace Landscape.FoliagePipeline
             boundsVisible.Dispose();
 
         }
+
+        private static bool ShouldDraw(FoliageComponent component, FoliageRenderSettings settings)
+        {
+            return component.foliageType == EFoliageType.Grass ? settings.drawGrass : settings.drawTrees;
+        }
     }
 
     internal class FoliageMainShadowPass : ScriptableRenderPass
     {
+        private readonly FoliageRenderSettings m_Settings;
+
+        internal FoliageMainShadowPass(FoliageRenderSettings settings)
+        {
+            m_Settings = settings;
+        }
+
         private static readonly Func<Light, bool, float> s_SoftShadowQuality = BindSoftShadowQuality();
         private static readonly int s_MainShadowTexture = Shader.PropertyToID("_MainLightShadowmapTexture");
         private static readonly int s_WorldToShadow = Shader.PropertyToID("_MainLightWorldToShadow");
@@ -216,6 +281,7 @@ namespace Landscape.FoliagePipeline
 
         private class PassData
         {
+            internal FoliageRenderSettings settings;
             internal Camera camera;
             internal TextureHandle shadow;
             internal ShadowSliceData[] slices;
@@ -234,6 +300,14 @@ namespace Landscape.FoliagePipeline
         public override void RecordRenderGraph(RenderGraph renderGraph, ContextContainer frameData)
         {
             if (!Application.isPlaying) { return; }
+            if (!m_Settings.drawTrees) { return; }
+            bool hasTreeCaster = false;
+            for (int i = 0; i < FoliageComponent.FoliageComponents.Count; ++i)
+            {
+                TreeComponent tree = FoliageComponent.FoliageComponents[i] as TreeComponent;
+                if (tree != null && tree.CastMainShadows(m_Settings)) { hasTreeCaster = true; break; }
+            }
+            if (!hasTreeCaster) { return; }
             var resourceData = frameData.Get<UniversalResourceData>();
             var shadowData = frameData.Get<UniversalShadowData>();
             var lightData = frameData.Get<UniversalLightData>();
@@ -284,6 +358,7 @@ namespace Landscape.FoliagePipeline
 
             using (var builder = renderGraph.AddUnsafePass<PassData>("Foliage Main Light Shadows", out var passData))
             {
+                passData.settings = m_Settings;
                 passData.camera = cameraData.camera;
                 passData.shadow = shadowTexture;
                 passData.slices = slices;
@@ -305,7 +380,13 @@ namespace Landscape.FoliagePipeline
                 {
                     CommandBuffer cmdBuffer = CommandBufferHelpers.GetNativeCommandBuffer(context.cmd);
                     cmdBuffer.SetRenderTarget(data.shadow);
-                    FoliageResidency.UpdateView(data.camera, data.camera.transform.position);
+                    for (int i = 0; i < FoliageComponent.FoliageComponents.Count; ++i)
+                    {
+                        FoliageComponent component = FoliageComponent.FoliageComponents[i];
+                        if (component is TreeComponent tree) { tree.SetRenderSettings(data.settings); }
+                        else if (component is GrassComponent grass) { grass.SetRenderSettings(data.settings); }
+                    }
+                    FoliageResidency.UpdateView(data.camera, data.camera.transform.position, data.settings);
                     for (int cascade = 0; cascade < data.cascadeCount; ++cascade)
                     {
                         ShadowSliceData slice = data.slices[cascade];
@@ -317,7 +398,10 @@ namespace Landscape.FoliagePipeline
                         for (int i = 0; i < FoliageComponent.FoliageComponents.Count; ++i)
                         {
                             TreeComponent tree = FoliageComponent.FoliageComponents[i] as TreeComponent;
-                            if (tree != null) { tree.DispatchShadow(cmdBuffer, data.camera, cascade, data.planes[cascade]); }
+                            if (tree != null && data.settings.drawTrees && tree.CastMainShadows(data.settings))
+                            {
+                                tree.DispatchShadow(cmdBuffer, data.camera, cascade, data.planes[cascade]);
+                            }
                         }
                     }
                     if (data.ownsShadowAtlas) { SetupShadowReceiver(cmdBuffer, data); }
@@ -485,16 +569,18 @@ namespace Landscape.FoliagePipeline
 
     public class FoliageRenderer : ScriptableRendererFeature
     {
+        public FoliageRenderSettings settings = new FoliageRenderSettings();
         private FoliagePass m_foliagePass;
         private FoliageMainShadowPass m_MainShadowPass;
 
         public override void Create()
         {
+            if (settings == null) { settings = new FoliageRenderSettings(); }
             FoliageLogicAsserts.Evaluate();
-            m_foliagePass = new FoliagePass();
+            m_foliagePass = new FoliagePass(settings);
             m_foliagePass.renderPassEvent = RenderPassEvent.AfterRenderingOpaques;
             m_foliagePass.ConfigureInput(ScriptableRenderPassInput.Depth);
-            m_MainShadowPass = new FoliageMainShadowPass();
+            m_MainShadowPass = new FoliageMainShadowPass(settings);
             m_MainShadowPass.renderPassEvent = RenderPassEvent.AfterRenderingShadows;
         }
 

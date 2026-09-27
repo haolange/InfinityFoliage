@@ -1,3 +1,4 @@
+using System;
 using System.Runtime.InteropServices;
 using Unity.Collections;
 using Unity.Mathematics;
@@ -69,6 +70,15 @@ namespace Landscape.FoliagePipeline
         {
             get { return m_HasHzb; }
         }
+
+#if UNITY_EDITOR
+        public bool RequestCellReadback(CommandBuffer cmdBuffer, Action<AsyncGPUReadbackRequest> callback)
+        {
+            if (!m_Ready || m_CellVisible == null) { return false; }
+            cmdBuffer.RequestAsyncReadback(m_CellVisible, callback);
+            return true;
+        }
+#endif
 
         public void Initialize(in int instanceCount, in int chunkCount, in int cellCount)
         {
@@ -167,12 +177,14 @@ namespace Landscape.FoliagePipeline
             m_CellBounds.SetData(packed);
         }
 
-        public void BuildHzb(CommandBuffer cmdBuffer, Camera camera, RTHandle depth, in Vector4 zParams, in Matrix4x4 depthViewProj)
+        public void BuildHzb(CommandBuffer cmdBuffer, Camera camera, RTHandle depth, in Vector4 zParams,
+            in Matrix4x4 depthViewProj, in bool enabled)
         {
             m_CmdBuffer = cmdBuffer;
             m_HasHzb = false;
             m_DepthViewProj = depthViewProj;
-            if (!m_Ready || cmdBuffer == null || camera == null || camera.orthographic || depth == null || depth.rt == null || depth.rt.antiAliasing > 1 || zParams == Vector4.zero) { return; }
+            if (!enabled || !m_Ready || cmdBuffer == null || camera == null || camera.orthographic ||
+                depth == null || depth.rt == null || depth.rt.antiAliasing > 1 || zParams == Vector4.zero) { return; }
 
             cmdBuffer.SetComputeIntParam(m_Shader, "_EnableHzb", 1);
             cmdBuffer.SetComputeIntParam(m_Shader, "_HzbWidth", HzbWidth);

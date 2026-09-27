@@ -1,5 +1,19 @@
 # Infinity Foliage 交付记录
 
+## 2026-09-28 渲染控制与遮挡诊断任务板
+
+本轮沿用现有 `main` 与原 `Scene_PBR`，不新建 Terrain、分支或 Editor。旧 T0–T7 结论是上一交付版本的证据；本轮的设置切换和突隐原因另行验收。以下为本轮实际结果，不能把可切换等同于误剔修复。
+
+| 任务 | 依赖 | 代码验收 | 编译验收 | Play / GPU 验收 | 结论 |
+|---|---|---|---|---|---|
+| C1 设置权威与预算 | 无 | Renderer Feature 全局默认、组件局部覆盖；Terrain 密度和 URP 阴影仍为原真源；运行预算可调整 | Runtime / Editor Managed 编译 0 warning、0 error | 原场景 Play：预算 0 时 0 细节页，预算 9 时全草种合计 28 页；默认 2/8/12 Inspector 已核 | 代码和预算切换通过；2 Terrain 上限仍只具逻辑证据，未建新 Terrain |
+| C2 树可见性开关 | C1 | 地形与 HZB 四模式独立，关闭 HZB 清旧状态；fade、迟滞、距离和主光开关传递 | 同上；本次 Editor Tundra 成功，未见目标 Metal warning | 同一候选 187、两机位四模式：机位 0 均 24/24；机位 1 两种 HZB 模式 39→33、两种非 HZB 模式 39→39；运行中切换正常 | 四模式通过；新 fade / 主光开关的独立画面 A/B 尚未完成，沿用旧 T4/T5 默认效果证据 |
+| C3 Bound 与冻结快照 | C2 | 组件 / 格 / 实例或页三层线框；树颜色注明 CPU 与最终 GPU 阶段；指定相机一次异步读回 GPU 格、VisibleIndex、args | 同上 | 原 Play 对 `PlayerCamera` 快照：Tree 0 在 frame 3627 CPU 候选 228、最终 GPU index 217、HZB on；15 个树种均返回；旧 T6 的真实深度遮挡证据有效 | 冻结快照实测通过；本轮未新增 Frame Debugger 同帧截图，不能以线框单独判 GPU 可见 |
+| C4 突隐根因 | C3 | 快照可列 GPU 剔除的 CPU 候选及世界盒位置 | 同上 | 山脊同机位 Y=160° 在 Both 与 Terrain-only 下树线无明显变化；另机位 HZB 剔除 6 个候选，但尚未证明误剔或真遮挡 | **未关闭**：三张图的具体树木未锁定候选 ID，同帧深度对照不足，不能宣称根因已修 |
+| C5 总门与交付 | C1–C4 | AGENTS / README 已同步；临时验收入口和其 `.meta` 已删，包内 AppleDouble 已清 | 临时入口移除后 Unity Tundra 再次成功（日志 9738 行，1.93 秒）；Unity 6.6 Managed DLL 编译 0 warning、0 error；`git diff --check` 通过 | 宿主 Scene 与 Renderer 资产 SHA-256 与测试前一致；现有 Editor 后段无法取得截图，最终 UI 恢复状态未确认 | **验收未关闭**；按用户最新要求将已核验代码与本待办一同提交 `main`，不把提交当作 C4 / C5 通过 |
+
+集中验收入口仅在 Play 内改变相机与 Feature 值并按结束逻辑恢复；运行中切换后，Unity UI 截图服务失效，未能确认最后一次山脊 hold 的恢复命令及 Play 退出。用户确认桌面已解锁后，UI 截图仍返回 `Screenshot unavailable`，系统 `screencapture` 也返回 `could not create image from display`。磁盘上 `Scene_PBR.unity` 和 `UniversalRenderer.asset` 的 SHA-256 与测试前相同，故没有保存临时相机或 Feature 值；再次操作 Editor 时应先退出 Play 或重新载入磁盘场景。临时入口已删，宿主 `.csproj` 最初尚保留旧编译条目，离线终编曾用一次性 `/private/tmp` MSBuild Remove target 排除；随后 Editor 自动刷新项目文件并完成 Tundra 成功导入，旧条目已消失，临时 target 和编译输出均已删。最终 UI 状态限制不记为验收通过。
+
 ## 2026-09-27 当前验收结论
 
 此节是当前任务板；下方按日期保留的阶段记录只解释发现与修复过程，其中「待验」和「FD 阻塞」均为当时状态。唯一现有 `Scene_PBR` Editor 已完成集中 Play，Frame Debugger 已关闭。没有建立分支、新增 Terrain、启动第二个 Editor、batchmode 或 Player build。

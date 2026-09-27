@@ -1,4 +1,5 @@
 using UnityEditor;
+using UnityEngine;
 
 namespace Landscape.FoliagePipeline.Editor
 {
@@ -22,6 +23,7 @@ namespace Landscape.FoliagePipeline.Editor
         public override void OnInspectorGUI()
         {
             base.OnInspectorGUI();
+            EditorGUILayout.HelpBox("Cell bounds: green/red show CPU frustum and distance only. Page bounds: green means at least one grass species has the detail page resident; yellow means base layer only. Lines keep scene depth.", MessageType.Info);
 
             serializedObject.Update();
 

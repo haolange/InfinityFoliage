@@ -390,7 +390,7 @@ namespace Landscape.FoliagePipeline
             return Geometry.ComputeBoundsScreenRadiusSquared(radius, center, origin, projection);
         }
 
-        int TerrainOccludes(Aabb box)
+        public int TerrainOccludes(Aabb box)
         {
             float3 min = box.min;
             float3 max = box.max;
