@@ -1,4 +1,8 @@
 using System;
+using System.Collections.Generic;
+using Unity.Collections;
+using Unity.Mathematics;
+using UnityEngine;
 
 namespace Landscape.FoliagePipeline
 {
@@ -12,7 +16,10 @@ namespace Landscape.FoliagePipeline
             s_Evaluated = true;
             AssertGrassLayout();
             AssertGrassRuns();
-            AssertGrassUploadPick();
+            AssertAssetPages();
+            AssertGrassDensityScale();
+            AssertResidencyBudget();
+            AssertGrassResidencyDemand();
             AssertTreeLod();
             AssertTreeDrawCount();
             AssertVisibilityIr();
@@ -52,6 +59,165 @@ namespace Landscape.FoliagePipeline
             if (!FoliageLogic.BreaksRun(0, 4) || FoliageLogic.BreaksRun(0, 0) || FoliageLogic.BreaksRun(1, 4))
             {
                 Fail("only count>0 && visible==0 breaks a run");
+            }
+        }
+
+        static void AssertAssetPages()
+        {
+            const int resolution = 8;
+            const int numSection = 8;
+            byte[] source = new byte[resolution * resolution];
+            byte[] baseDensity = new byte[source.Length];
+            byte[] reconstructed = new byte[source.Length];
+            for (int y = 0; y < resolution; ++y)
+            {
+                for (int x = 0; x < resolution; ++x)
+                {
+                    int index = (y * resolution) + x;
+                    source[index] = (byte)(1 + ((x + (2 * y)) % 9));
+                    baseDensity[index] = FoliageAssetCodec.BaseDensity(source[index], x, y, 2);
+                    reconstructed[index] = baseDensity[index];
+                }
+            }
+
+            GrassDensityPage basePage = FoliageAssetCodec.CreateGrassPage(2, resolution, numSection, -1, -1, baseDensity);
+            GrassDensityPage restoredBase = FoliageAssetCodec.DecodeGrass(FoliageAssetCodec.EncodeGrass(basePage), 2, resolution, numSection, -1, -1);
+            if (restoredBase.density.Length != source.Length) { Fail("base grass asset must cover its Terrain"); }
+
+            for (int pageX = 0; pageX < FoliageAssetCodec.PageAxis; ++pageX)
+            {
+                for (int pageY = 0; pageY < FoliageAssetCodec.PageAxis; ++pageY)
+                {
+                    byte[] detailDensity = new byte[4];
+                    for (int y = 0; y < 2; ++y)
+                    {
+                        for (int x = 0; x < 2; ++x)
+                        {
+                            int globalX = (pageX * 2) + x;
+                            int globalY = (pageY * 2) + y;
+                            int globalIndex = (globalY * resolution) + globalX;
+                            detailDensity[(y * 2) + x] = (byte)(source[globalIndex] - baseDensity[globalIndex]);
+                        }
+                    }
+                    GrassDensityPage page = FoliageAssetCodec.CreateGrassPage(2, resolution, numSection, pageX, pageY, detailDensity);
+                    GrassDensityPage restored = FoliageAssetCodec.DecodeGrass(FoliageAssetCodec.EncodeGrass(page), 2, resolution, numSection, pageX, pageY);
+                    int offset = 0;
+                    for (int i = 0; i < restored.cellIndices.Length; ++i)
+                    {
+                        if (restored.cellOffsets[i] != offset) { Fail("detail page offsets must be page-local packed prefixes"); }
+                        offset += restored.cellCounts[i];
+                    }
+                    int densityTotal = 0;
+                    for (int i = 0; i < restored.density.Length; ++i) { densityTotal += restored.density[i]; }
+                    if (densityTotal != offset) { Fail("detail page cell counts must match density"); }
+                    for (int y = 0; y < 2; ++y)
+                    {
+                        for (int x = 0; x < 2; ++x)
+                        {
+                            int globalIndex = (((pageY * 2) + y) * resolution) + (pageX * 2) + x;
+                            reconstructed[globalIndex] += restored.density[(y * 2) + x];
+                        }
+                    }
+                }
+            }
+            for (int i = 0; i < source.Length; ++i)
+            {
+                if (source[i] != reconstructed[i]) { Fail("base plus detail pages must reconstruct source density"); }
+            }
+
+            List<InstanceTransform> candidates = new List<InstanceTransform>();
+            candidates.Add(new InstanceTransform(new float3(3, 4, 5), new float3(0, 1, 0), new float3(2, 3, 2)));
+            List<InstanceTransform> restoredTrees = FoliageAssetCodec.DecodeTree(FoliageAssetCodec.EncodeTree(1, candidates), 1);
+            if (restoredTrees.Count != 1 || !restoredTrees[0].position.Equals(candidates[0].position) || !restoredTrees[0].scale.Equals(candidates[0].scale))
+            {
+                Fail("tree candidate asset must round-trip transforms");
+            }
+        }
+
+        static void AssertGrassDensityScale()
+        {
+            for (byte density = 0; density < 16; ++density)
+            {
+                int previous = 0;
+                for (int step = 0; step <= 8; ++step)
+                {
+                    float scale = step / 8f;
+                    int count = FoliageLogic.ScaleGrassCount(density, scale, 7, 3, 2, 1);
+                    if (count < previous || count > density) { Fail("grass density count must grow monotonically with quality"); }
+                    previous = count;
+                }
+                if (previous != density) { Fail("full grass quality must reach baked density"); }
+            }
+        }
+
+        static void AssertResidencyBudget()
+        {
+            FoliageResidency.PageLease[] leases = new FoliageResidency.PageLease[FoliageResidency.DetailPageBudget];
+            for (int i = 0; i < leases.Length; ++i)
+            {
+                if (!FoliageResidency.TryAcquireDetailPageSlot(ulong.MaxValue, out leases[i])) { Fail("detail page pool must admit its full budget"); }
+            }
+            if (!FoliageResidency.TryAcquireDetailPageSlot(ulong.MaxValue - 1, out FoliageResidency.PageLease otherSpecies))
+            {
+                Fail("different grass species must have independent page budgets");
+            }
+            if (FoliageResidency.TryAcquireDetailPageSlot(ulong.MaxValue, out FoliageResidency.PageLease excess))
+            {
+                FoliageResidency.ReleaseDetailPageSlot(excess);
+                Fail("detail page pool must reject a ninth page per grass species");
+            }
+            FoliageResidency.ReleaseDetailPageSlot(leases[0]);
+            if (!FoliageResidency.TryAcquireDetailPageSlot(ulong.MaxValue, out FoliageResidency.PageLease replacement))
+            {
+                Fail("released page slot must allow reload");
+            }
+            FoliageResidency.ReleaseDetailPageSlot(replacement);
+            FoliageResidency.ReleaseDetailPageSlot(otherSpecies);
+            for (int i = 1; i < leases.Length; ++i) { FoliageResidency.ReleaseDetailPageSlot(leases[i]); }
+        }
+
+        static void AssertGrassResidencyDemand()
+        {
+            if (!FoliageResidency.IsResidentCameraType(CameraType.Game) || !FoliageResidency.IsResidentCameraType(CameraType.VR) ||
+                FoliageResidency.IsResidentCameraType(CameraType.SceneView) || FoliageResidency.IsResidentCameraType(CameraType.Preview) ||
+                FoliageResidency.IsResidentCameraType(CameraType.Reflection))
+            {
+                Fail("only runtime rendering cameras may consume foliage residency");
+            }
+
+            const int numSection = 4;
+            BoundSection[] bounds = new BoundSection[numSection * numSection];
+            GrassSection[] sections = new GrassSection[bounds.Length];
+            for (int x = 0; x < numSection; ++x)
+            {
+                for (int y = 0; y < numSection; ++y)
+                {
+                    int index = FoliageLogic.CellIndex(x, y, numSection);
+                    bounds[index].boundBox = new Aabb(new float3(x, 0f, y), new float3(1f, 1f, 1f));
+                    sections[index] = new GrassSection();
+                    sections[index].count = 1;
+                }
+            }
+            float3 origin = new float3(0f, 0.5f, 0f);
+            Plane[] broad = { new Plane(Vector3.right, 100f) };
+            if (!FoliageResidency.PageDemand(bounds, sections, numSection, 0, 0, origin, broad, 2f, out bool visible, out float distance) ||
+                !visible || distance != 0f)
+            {
+                Fail("near grass page must be visible and eligible");
+            }
+            if (FoliageResidency.PageDemand(bounds, sections, numSection, 3, 3, origin, broad, 2f, out _, out _))
+            {
+                Fail("grass page beyond draw distance must not consume residency");
+            }
+            Plane[] clipped = { new Plane(Vector3.right, -2f) };
+            if (!FoliageResidency.PageDemand(bounds, sections, numSection, 1, 0, origin, clipped, 2f, out visible, out _) || visible)
+            {
+                Fail("near clipped grass page may prefetch but cannot outrank visible pages");
+            }
+            sections[0].count = 0;
+            if (FoliageResidency.PageDemand(bounds, sections, numSection, 0, 0, origin, broad, 2f, out _, out _))
+            {
+                Fail("empty grass page must not consume residency");
             }
         }
 
@@ -101,74 +267,24 @@ namespace Landscape.FoliagePipeline
             }
         }
 
-        static void AssertGrassUploadPick()
-        {
-            int[] counts = { 1, 1, 1, 1 };
-            float[] pivotX = { 100, 0, 10, 20 };
-            float[] pivotZ = { 0, 0, 0, 0 };
-            byte[] uploaded = { 0, 0, 0, 0 };
-            byte[] visible = { 1, 0, 0, 0 };
-            int[] picked = new int[4];
-            int pickedCount = FoliageLogic.PickUploadCells(uploaded, visible, counts, pivotX, pivotZ, 0, 0, 1, picked);
-            if (pickedCount != 1 || picked[0] != 0)
-            {
-                Fail("visible cells must upload before a nearer culled cell");
-            }
-
-            int n = 32;
-            counts = new int[n];
-            uploaded = new byte[n];
-            visible = new byte[n];
-            pivotX = new float[n];
-            pivotZ = new float[n];
-            picked = new int[n];
-            for (int i = 0; i < n; ++i)
-            {
-                counts[i] = 3;
-                visible[i] = 1;
-                pivotX[i] = i;
-            }
-            pickedCount = FoliageLogic.PickUploadCells(uploaded, visible, counts, pivotX, pivotZ, 0, 0, FoliageLogic.GrassSetupBatch, picked);
-            if (pickedCount != FoliageLogic.GrassSetupBatch)
-            {
-                Fail("upload budget must stay 16 when every cell is visible and pending");
-            }
-
-            int[] offsets = new int[n];
-            FoliageLogic.PrefixOffsets(counts, offsets);
-            if (FoliageLogic.PackedDestOffset(offsets, 16) == 0)
-            {
-                Fail("destOffset for cell 16 must be sections[i].offset, not 0");
-            }
-
-            int[] mergePicked = { 2, 0, 1 };
-            DrawRun[] runs = new DrawRun[4];
-            int runCount = FoliageLogic.MergeUploadRuns(mergePicked, 3, offsets, counts, runs);
-            if (runCount != 1 || runs[0].start != 0 || runs[0].count != 9)
-            {
-                Fail("picked {0,1,2} must merge into one packed upload run");
-            }
-
-            int[] splitPicked = { 0, 3 };
-            runCount = FoliageLogic.MergeUploadRuns(splitPicked, 2, offsets, counts, runs);
-            if (runCount != 2)
-            {
-                Fail("picked cells with instances between them must stay multiple upload runs");
-            }
-
-            int[] mixedCounts = { 4, 0, 4, 0, 2 };
-            int[] mixedOffsets = new int[5];
-            FoliageLogic.PrefixOffsets(mixedCounts, mixedOffsets);
-            int[] bridgePicked = { 0, 2 };
-            runCount = FoliageLogic.MergeUploadRuns(bridgePicked, 2, mixedOffsets, mixedCounts, runs);
-            if (runCount != 1 || runs[0].start != 0 || runs[0].count != 8)
-            {
-                Fail("empty cells must bridge one upload run");
-            }
-        }
-
         static void AssertTreeLod()
         {
+            float4x4 cameraProjection = Geometry.GetProjectionMatrix(60f, 1920f, 1080f, 0.2f, 1024f);
+            if (math.abs(cameraProjection.c1.y - 1.7320508f) > 0.001f ||
+                math.abs(cameraProjection.c0.x - 0.9742786f) > 0.001f)
+            {
+                Fail("tree LOD projection must use vertical field of view in degrees and the camera aspect ratio");
+            }
+
+            float4x4 orthographicProjection = new float4x4(new float4(0.05f, 0f, 0f, 0f),
+                new float4(0f, 0.05f, 0f, 0f), new float4(0f, 0f, 1f, 0f), new float4(0f, 0f, 0f, 1f));
+            float nearRadius = Geometry.ComputeBoundsScreenRadiusSquared(1f, new float3(0f, 0f, 5f), float3.zero, orthographicProjection);
+            float farRadius = Geometry.ComputeBoundsScreenRadiusSquared(1f, new float3(0f, 0f, 50f), float3.zero, orthographicProjection);
+            if (math.abs(nearRadius - 0.000625f) > 0.000001f || math.abs(nearRadius - farRadius) > 0.000001f)
+            {
+                Fail("orthographic tree LOD screen size must not vary with camera distance");
+            }
+
             if (FoliageLogic.ClassifyLod(0, 2, 0) != (int)LodBucket.None)
             {
                 Fail("|lod0-lod1|>1 must not keep the old lod");
@@ -192,6 +308,43 @@ namespace Landscape.FoliagePipeline
             if (FoliageLogic.ClassifyLod(1, 1, 1) != (int)LodBucket.Stable)
             {
                 Fail("equal lods are stable");
+            }
+
+            NativeArray<float> screenSizes = new NativeArray<float>(3, Allocator.Temp);
+            try
+            {
+                screenSizes[0] = 0.8f;
+                screenSizes[1] = 0.4f;
+                screenSizes[2] = 0.1f;
+                if (FoliageLogic.ComputeLodIndexHysteresis(0.19f * 0.19f, screenSizes, 0, 0.08f) != 0 ||
+                    FoliageLogic.ComputeLodIndexHysteresis(0.18f * 0.18f, screenSizes, 0, 0.08f) != 1)
+                {
+                    Fail("coarsening LOD must cross the lower screen threshold");
+                }
+                if (FoliageLogic.ComputeLodIndexHysteresis(0.21f * 0.21f, screenSizes, 1, 0.08f) != 1 ||
+                    FoliageLogic.ComputeLodIndexHysteresis(0.22f * 0.22f, screenSizes, 1, 0.08f) != 0)
+                {
+                    Fail("refining LOD must cross the upper screen threshold");
+                }
+                if (FoliageLogic.ComputeLodIndexHysteresis(0.01f * 0.01f, screenSizes, 0, 0.08f) != 2)
+                {
+                    Fail("a large screen-size jump must reach the final LOD");
+                }
+            }
+            finally
+            {
+                screenSizes.Dispose();
+            }
+
+            float4x4 projection = float4x4.identity;
+            float4x4 changedProjection = float4x4.identity;
+            changedProjection.c0.x = 1.2f;
+            if (FoliageLogic.ViewDiscontinuous(new float3(0), new float3(7, 0, 0), projection, projection, 512f) ||
+                !FoliageLogic.ViewDiscontinuous(new float3(0), new float3(10, 0, 0), projection, projection, 512f) ||
+                !FoliageLogic.ViewDiscontinuous(new float3(0), new float3(100, 0, 0), projection, projection, 512f) ||
+                !FoliageLogic.ViewDiscontinuous(new float3(0), new float3(0), projection, changedProjection, 100f))
+            {
+                Fail("teleport and projection changes must hard-cut the LOD view");
             }
 
             int[] lodNow = { -1, -1, -1, -1 };
@@ -260,6 +413,12 @@ namespace Landscape.FoliagePipeline
             {
                 Fail("ExpandMasksToIndex must walk chunks in candidate order");
             }
+            masks[1] = ulong.MaxValue;
+            written = FoliageLogic.ExpandMasksToIndex(masks, 2, 66, dest);
+            if (written != 6 || dest[5] != 65)
+            {
+                Fail("tail chunk mask must ignore bits beyond candidate count");
+            }
 
             int[] ids = { 10, 11, 12, 20, 21 };
             VisibilityRun[] runs = new VisibilityRun[4];
@@ -290,6 +449,10 @@ namespace Landscape.FoliagePipeline
             if (FoliageLogic.PickVisibilityCodec(64, 1, 1, 1) != (int)VisibilityCodec.RunTransfer)
             {
                 Fail("one dense run on GPU must pick RunTransfer");
+            }
+            if (FoliageLogic.PickVisibilityCodec(32, 1, 32, 1) != (int)VisibilityCodec.BitMaskTransfer)
+            {
+                Fail("fragmented dense chunk on GPU must pick BitMaskTransfer");
             }
             if (FoliageLogic.PickVisibilityCodec(1, 1, 1, 1) != (int)VisibilityCodec.CompactIndex)
             {

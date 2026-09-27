@@ -31,34 +31,6 @@ Shader "Landscape/TreeLeave"
 		Texture2D _AlbedoTexture, _NomralTexture;
     	SamplerState sampler_AlbedoTexture, sampler_NomralTexture;
 
-float4 _FoliageSHAr, _FoliageSHAg, _FoliageSHAb;
-		float4 _FoliageSHBr, _FoliageSHBg, _FoliageSHBb, _FoliageSHC;
-
-		float3 SampleFoliageSH(float3 normalWS)
-		{
-			float3 irradiance = SHEvalLinearL0L1(normalWS, _FoliageSHAr, _FoliageSHAg, _FoliageSHAb);
-			irradiance += SHEvalLinearL2(normalWS, _FoliageSHBr, _FoliageSHBg, _FoliageSHBb, _FoliageSHC);
-#ifdef UNITY_COLORSPACE_GAMMA
-			irradiance = LinearToSRGB(irradiance);
-#endif
-			return max(irradiance, 0.0);
-		}
-
-		float3 TransformFoliageNormal(float4x4 matrixWorld, float3 normalOS)
-		{
-			float3 x = matrixWorld._m00_m10_m20;
-			float3 y = matrixWorld._m01_m11_m21;
-			float3 z = matrixWorld._m02_m12_m22;
-			float3 normalWS = cross(y, z) * normalOS.x + cross(z, x) * normalOS.y + cross(x, y) * normalOS.z;
-			return normalize(normalWS * (dot(x, cross(y, z)) < 0.0 ? -1.0 : 1.0));
-		}
-
-		float LODCrossDither(uint2 fadeMaskSeed, float ditherFactor)
-		{
-			float p = GenerateHashedRandomFloat(fadeMaskSeed);
-			return (ditherFactor - CopySign(p, ditherFactor));
-			//clip(f);
-		}
 	ENDHLSL
 
     SubShader
@@ -113,7 +85,7 @@ float4 _FoliageSHAr, _FoliageSHAg, _FoliageSHAb;
 				UNITY_TRANSFER_INSTANCE_ID(input, output);
 
 				output.uv0 = input.uv0;
-				output.normalWS = normalize(mul((float3x3)UNITY_MATRIX_M, input.normalOS));
+				output.normalWS = TransformObjectToWorldNormal(input.normalOS);
 				output.vertexWS = mul(UNITY_MATRIX_M, input.vertexOS);
 				output.vertexCS = mul(UNITY_MATRIX_VP, output.vertexWS);
 				//output.vertexCS.z = output.vertexCS.w;
@@ -278,20 +250,11 @@ float4 _FoliageSHAr, _FoliageSHAg, _FoliageSHAb;
 				UNITY_VERTEX_INPUT_INSTANCE_ID
 			};
 
-			float3 ApplyShadowBias(float depthBias, float normalBias, float3 positionWS, float3 normalWS, float3 lightDirection)
-			{
-				float invNdotL = 1.0 - saturate(dot(lightDirection, normalWS));
-				float scale = invNdotL * normalBias;
-
-				// normal bias is negative since we want to apply an inset normal offset
-				positionWS = lightDirection * depthBias + positionWS;
-				positionWS = normalWS * scale.xxx + positionWS;
-				return positionWS;
-			}
+			float3 _LightDirection;
 
             float4 UnityWorldToClipPos(float3 positionWS, float3 normalWS)
             {
-				float3 vertexWS_Bias = ApplyShadowBias(-0.05, -0, positionWS, normalWS, normalize(_MainLightPosition.xyz));
+				float3 vertexWS_Bias = ApplyShadowBias(positionWS, normalWS, _LightDirection);
 				float4 positionCS = mul(UNITY_MATRIX_VP, float4(vertexWS_Bias, 1));
 				
 				#if UNITY_REVERSED_Z
@@ -313,7 +276,7 @@ float4 _FoliageSHAr, _FoliageSHAg, _FoliageSHAb;
 
 				output.uv0 = input.uv0;
 				output.color = input.color;
-				output.normalWS = normalize(mul((float3x3)UNITY_MATRIX_M, input.normalOS));
+				output.normalWS = TransformObjectToWorldNormal(input.normalOS);
 				output.vertexWS = mul(UNITY_MATRIX_M, input.vertexOS);
 				output.vertexCS = UnityWorldToClipPos(output.vertexWS.xyz, output.normalWS);
 				return output;
@@ -335,5 +298,60 @@ float4 _FoliageSHAr, _FoliageSHAg, _FoliageSHAb;
 			}
             ENDHLSL
         }	
+
+        Pass
+        {
+            Name "FoliageShadow"
+            Tags { "LightMode" = "FoliageShadow" }
+            Cull Off ZTest LEqual ZWrite On
+
+            HLSLPROGRAM
+            #pragma target 4.5
+            #pragma vertex vert
+            #pragma fragment frag
+
+            #include "Include/Foliage.hlsl"
+
+            float3 _LightDirection;
+
+            struct Attributes
+            {
+                uint InstanceId : SV_InstanceID;
+                float2 uv0 : TEXCOORD0;
+                float3 normalOS : NORMAL;
+                float4 vertexOS : POSITION;
+            };
+
+            struct Varyings
+            {
+                float2 uv0 : TEXCOORD0;
+                float4 vertexCS : SV_POSITION;
+            };
+
+            Varyings vert(Attributes input)
+            {
+                Varyings output;
+                uint index = _TreeIndexBuffer[input.InstanceId];
+                TreeElement element = _TreeElementBuffer[index];
+                float3 positionWS = mul(element.matrix_World, input.vertexOS).xyz;
+                float3 normalWS = TransformFoliageNormal(element.matrix_World, input.normalOS);
+                output.uv0 = input.uv0;
+                output.vertexCS = mul(UNITY_MATRIX_VP, float4(ApplyShadowBias(positionWS, normalWS, _LightDirection), 1));
+                output.vertexCS = ApplyShadowClamping(output.vertexCS);
+                return output;
+            }
+
+            float4 frag(Varyings input) : SV_Target
+            {
+                float4 baseColor = _AlbedoTexture.Sample(sampler_AlbedoTexture, input.uv0);
+                clip(baseColor.a - _AlphaThreshold);
+                if (_LodFadeEnable > 0.5)
+                {
+                    LODDitheringTransition(input.vertexCS.xy, _LODFactor);
+                }
+                return 0;
+            }
+            ENDHLSL
+        }
     }
 }

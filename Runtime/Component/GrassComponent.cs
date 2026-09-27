@@ -12,6 +12,8 @@ namespace Landscape.FoliagePipeline
     {
         [Header("Setting")]
         public int numSection = 16;
+        [HideInInspector]
+        public string assetKey;
 
 #if UNITY_EDITOR
         [Header("Debug")]
@@ -45,89 +47,94 @@ namespace Landscape.FoliagePipeline
         [HideInInspector]
         public GrassSector[] grassSectors;
 
-        private int m_Counter;
-        private int m_UploadNeed;
-        private int m_LastUploadFrame;
-        private bool m_BuildScheduled;
-        private bool m_BuildCompleted;
-        private JobHandle m_BuildHandle;
-        private float3 m_ViewOrigin;
+        private bool m_RuntimeReady;
+        private bool m_Resident;
+        private bool[] m_DetailResident;
+        private int[] m_PageLastUsed;
+        private int[] m_PageLastVisible;
+        private byte[] m_Visible;
+        private float m_DensityScale;
         private float m_DrawDistance;
         private MaterialPropertyBlock m_PropertyBlock;
-        private int[] m_Offsets;
-        private int[] m_Counts;
-        private int[] m_TypeCounts;
-        private int[] m_Picked;
-        private float[] m_PivotX;
-        private float[] m_PivotZ;
-        private byte[] m_Visible;
-        private byte[] m_Uploaded;
-        private DrawRun[] m_Runs;
+
+        internal float drawDistance { get { return m_DrawDistance; } }
 
         protected override void OnRegiste()
         {
-            m_Counter = 0;
-            m_LastUploadFrame = -1;
-            m_BuildScheduled = false;
-            m_BuildCompleted = false;
-            m_BuildHandle = default;
             terrain = GetComponent<Terrain>();
             foliageType = EFoliageType.Grass;
             terrainData = terrain.terrainData;
-            m_DrawDistance = terrain.detailObjectDistance;
-            terrain.detailObjectDistance = 0;
-
-            boundSector.BuildNativeCollection();
-            int sectionCount = boundSector.sections.Length;
-            m_Offsets = new int[sectionCount];
-            m_Counts = new int[sectionCount];
-            m_TypeCounts = new int[sectionCount];
-            m_Picked = new int[sectionCount];
-            m_PivotX = new float[sectionCount];
-            m_PivotZ = new float[sectionCount];
-            m_Visible = new byte[sectionCount];
-            m_Uploaded = new byte[sectionCount];
-            m_Runs = new DrawRun[sectionCount];
-            m_UploadNeed = 0;
-            m_ViewOrigin = float3.zero;
-
-            m_PropertyBlock = new MaterialPropertyBlock();
-            m_PropertyBlock.SetInt(GrassShaderID.TerrainSize, sectorSize);
-            m_PropertyBlock.SetTexture(GrassShaderID.TerrainNormalmap, terrain.normalmapTexture);
-            m_PropertyBlock.SetTexture(GrassShaderID.TerrainHeightmap, terrainData.heightmapTexture);
-            m_PropertyBlock.SetVector(GrassShaderID.TerrainPivotScaleY, new float4(transform.position, terrainScaleY));
-
+            if (!Application.isPlaying) { return; }
+            if (string.IsNullOrEmpty(assetKey) || boundSector == null || boundSector.sections == null)
+            {
+                Debug.LogError("Grass Terrain has no current streamed asset. Rebake this Terrain.", this);
+                return;
+            }
             if (grassSectors != null)
             {
+                DetailPrototype[] prototypes = terrainData.detailPrototypes;
                 foreach (GrassSector grassSector in grassSectors)
                 {
-                    grassSector.Init(terrainData);
-                    grassSector.BindPivots(boundSector.sections);
+                    if (grassSector == null || grassSector.grassIndex < 0 || grassSector.grassIndex >= prototypes.Length ||
+                        prototypes[grassSector.grassIndex].prototype == null)
+                    {
+                        Debug.LogError("Grass Terrain has an invalid detail prototype. Rebake this Terrain.", this);
+                        return;
+                    }
                 }
             }
-
-            CollectCellCounts();
-            if (Application.isPlaying)
+            m_DrawDistance = terrain.detailObjectDistance;
+            try
             {
-                ScheduleBuild();
+                terrain.detailObjectDistance = 0;
+                boundSector.BuildNativeCollection();
+                m_PropertyBlock = new MaterialPropertyBlock();
+                m_PropertyBlock.SetInt(GrassShaderID.TerrainSize, sectorSize);
+                m_PropertyBlock.SetTexture(GrassShaderID.TerrainNormalmap, terrain.normalmapTexture);
+                m_PropertyBlock.SetTexture(GrassShaderID.TerrainHeightmap, terrainData.heightmapTexture);
+                m_PropertyBlock.SetVector(GrassShaderID.TerrainPivotScaleY, new float4(transform.position, terrainScaleY));
+
+                m_DensityScale = Mathf.Clamp01(terrain.detailObjectDensity);
+                if (grassSectors != null)
+                {
+                    foreach (GrassSector grassSector in grassSectors)
+                    {
+                        grassSector.Init(terrainData, assetKey, numSection, transform.position);
+                        grassSector.SetDensityScale(m_DensityScale);
+                    }
+                }
+                m_DetailResident = new bool[(grassSectors == null ? 0 : grassSectors.Length) * FoliageAssetCodec.PageAxis * FoliageAssetCodec.PageAxis];
+                m_PageLastUsed = new int[m_DetailResident.Length];
+                m_PageLastVisible = new int[m_DetailResident.Length];
+                for (int i = 0; i < m_PageLastVisible.Length; ++i) { m_PageLastVisible[i] = -1; }
+                m_Visible = new byte[boundSector.sections.Length];
+                m_RuntimeReady = true;
+                FoliageResidency.Register(terrain, this);
+            }
+            catch (System.Exception exception)
+            {
+                m_RuntimeReady = false;
+                if (grassSectors != null)
+                {
+                    foreach (GrassSector grassSector in grassSectors) { grassSector?.Release(); }
+                }
+                boundSector.ReleaseNativeCollection();
+                terrain.detailObjectDistance = m_DrawDistance;
+                Debug.LogException(exception, this);
             }
         }
 
         protected override void UnRegiste()
         {
-            if (m_BuildScheduled && !m_BuildCompleted)
-            {
-                m_BuildHandle.Complete();
-                m_BuildCompleted = true;
-            }
-
+            if (!m_RuntimeReady) { return; }
+            FoliageResidency.Unregister(terrain, this);
             boundSector.ReleaseNativeCollection();
             terrain.detailObjectDistance = m_DrawDistance;
-            if (grassSectors == null) { return; }
-            foreach (GrassSector grassSector in grassSectors)
+            if (grassSectors != null)
             {
-                grassSector.Release();
+                foreach (GrassSector grassSector in grassSectors) { grassSector.Release(); }
             }
+            m_RuntimeReady = false;
         }
 
 #if UNITY_EDITOR
@@ -182,7 +189,7 @@ namespace Landscape.FoliagePipeline
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public override void InitView(in float3 viewOrigin, in float4x4 matrixProj, in FrustumPlane* planes, in NativeList<JobHandle> taskHandles)
         {
-            m_ViewOrigin = viewOrigin;
+            if (!m_RuntimeReady || !m_Resident) { return; }
             taskHandles.Add(boundSector.InitView(m_DrawDistance, new float4(viewOrigin, 1), planes));
         }
 
@@ -191,118 +198,96 @@ namespace Landscape.FoliagePipeline
         {
         }
 
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        void CollectCellCounts()
+        public void SetDensityScale(in float scale)
         {
-            m_UploadNeed = 0;
-            int sectionCount = boundSector.sections.Length;
-            for (int i = 0; i < sectionCount; ++i)
-            {
-                int count = 0;
-                if (grassSectors != null)
-                {
-                    for (int j = 0; j < grassSectors.Length; ++j)
-                    {
-                        count += grassSectors[j].sections[i].count;
-                    }
-                }
-                m_Counts[i] = count;
-                m_PivotX[i] = boundSector.sections[i].pivotPosition.x;
-                m_PivotZ[i] = boundSector.sections[i].pivotPosition.y;
-                if (count > 0) { ++m_UploadNeed; }
-            }
+            if (terrain == null) { terrain = GetComponent<Terrain>(); }
+            terrain.detailObjectDensity = Mathf.Clamp01(scale);
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        void ScheduleBuild()
+        internal void SetResident(in bool resident)
         {
-            if (grassSectors == null || m_BuildScheduled) { return; }
-
-            float densityScale = terrain.detailObjectDensity;
-            JobHandle combined = default;
-            bool any = false;
-            for (int i = 0; i < grassSectors.Length; ++i)
-            {
-                JobHandle handle = grassSectors[i].ScheduleBuild(sectionSize, densityScale);
-                if (handle.Equals(default(JobHandle))) { continue; }
-                if (!any)
-                {
-                    combined = handle;
-                    any = true;
-                }
-                else
-                {
-                    combined = JobHandle.CombineDependencies(combined, handle);
-                }
-            }
-
-            m_BuildHandle = combined;
-            m_BuildScheduled = true;
-            m_BuildCompleted = !any;
+            if (!m_RuntimeReady || m_Resident == resident) { return; }
+            m_Resident = resident;
+            if (grassSectors == null) { return; }
+            for (int i = 0; i < grassSectors.Length; ++i) { grassSectors[i].SetResident(resident); }
+            if (!resident && m_DetailResident != null) { System.Array.Clear(m_DetailResident, 0, m_DetailResident.Length); }
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public override void FlushPendingUploads()
+        internal bool IsDetailResident(in int species, in int x, in int y)
         {
-            if (grassSectors == null || !m_BuildScheduled) { return; }
-            if (!m_BuildCompleted)
-            {
-                if (!m_BuildHandle.IsCompleted) { return; }
-                m_BuildHandle.Complete();
-                m_BuildCompleted = true;
-            }
+            int index = (species * FoliageAssetCodec.PageAxis * FoliageAssetCodec.PageAxis) + x * FoliageAssetCodec.PageAxis + y;
+            return m_DetailResident != null && m_DetailResident[index];
+        }
 
-            int frame = Time.frameCount;
-            if (frame == m_LastUploadFrame) { return; }
-            if (m_Counter >= m_UploadNeed) { return; }
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        internal bool IsDetailEmpty(in int species, in int x, in int y)
+        {
+            return grassSectors != null && grassSectors[species].IsDetailEmpty(x, y);
+        }
 
-            int sectionCount = boundSector.sections.Length;
-            for (int i = 0; i < sectionCount; ++i)
-            {
-                m_Visible[i] = boundSector.visibleMap[i];
-            }
+        internal int ResidentDetailPageCount()
+        {
+            if (m_DetailResident == null) { return 0; }
+            int count = 0;
+            for (int i = 0; i < m_DetailResident.Length; ++i) { if (m_DetailResident[i]) { ++count; } }
+            return count;
+        }
 
-            int pickedCount = FoliageLogic.PickUploadCells(m_Uploaded, m_Visible, m_Counts, m_PivotX, m_PivotZ, m_ViewOrigin.x, m_ViewOrigin.z, FoliageLogic.GrassSetupBatch, m_Picked);
-            if (pickedCount <= 0) { return; }
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        internal int PageLastUsed(in int species, in int x, in int y)
+        {
+            int index = (species * FoliageAssetCodec.PageAxis * FoliageAssetCodec.PageAxis) + x * FoliageAssetCodec.PageAxis + y;
+            return m_PageLastUsed == null ? 0 : m_PageLastUsed[index];
+        }
 
-            for (int i = 0; i < grassSectors.Length; ++i)
-            {
-                grassSectors[i].CollectDraw(m_Offsets, m_TypeCounts);
-                int runCount = FoliageLogic.MergeUploadRuns(m_Picked, pickedCount, m_Offsets, m_TypeCounts, m_Runs);
-                grassSectors[i].FlushUploadRuns(m_Runs, runCount);
-            }
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        internal int PageLastVisible(in int species, in int x, in int y)
+        {
+            int index = (species * FoliageAssetCodec.PageAxis * FoliageAssetCodec.PageAxis) + x * FoliageAssetCodec.PageAxis + y;
+            return m_PageLastVisible == null ? -1 : m_PageLastVisible[index];
+        }
 
-            for (int i = 0; i < pickedCount; ++i)
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        internal void MarkPageVisible(in int species, in int x, in int y, in int frame)
+        {
+            int index = (species * FoliageAssetCodec.PageAxis * FoliageAssetCodec.PageAxis) + x * FoliageAssetCodec.PageAxis + y;
+            m_PageLastVisible[index] = frame;
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        internal void SetDetailResident(in int species, in int x, in int y, in bool resident, in int frame)
+        {
+            if (!m_RuntimeReady || !m_Resident || grassSectors == null) { return; }
+            int index = (species * FoliageAssetCodec.PageAxis * FoliageAssetCodec.PageAxis) + x * FoliageAssetCodec.PageAxis + y;
+            bool changed = m_DetailResident[index] != resident;
+            if (changed) { m_DetailResident[index] = resident; }
+            if (changed || resident) { grassSectors[species].SetDetailResident(x, y, resident); }
+            if (resident) { m_PageLastUsed[index] = frame; }
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public override void FlushPendingUploads(CommandBuffer cmdBuffer, RTHandle cameraDepth, in Vector4 zParams)
+        {
+            if (!m_RuntimeReady || !m_Resident || grassSectors == null) { return; }
+            float scale = Mathf.Clamp01(terrain.detailObjectDensity);
+            if (scale != m_DensityScale)
             {
-                m_Uploaded[m_Picked[i]] = 1;
+                m_DensityScale = scale;
+                for (int i = 0; i < grassSectors.Length; ++i) { grassSectors[i].SetDensityScale(scale); }
             }
-            m_Counter += pickedCount;
-            m_LastUploadFrame = frame;
-            if (m_Counter >= m_UploadNeed)
-            {
-                for (int i = 0; i < grassSectors.Length; ++i)
-                {
-                    grassSectors[i].ReleaseScatterScratch();
-                }
-            }
+            for (int i = 0; i < grassSectors.Length; ++i) { grassSectors[i].Flush(); }
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public override void DispatchDraw(CommandBuffer cmdBuffer, in int passIndex)
         {
-            if (grassSectors == null) { return; }
-            int sectionCount = boundSector.sections.Length;
-            for (int i = 0; i < sectionCount; ++i)
-            {
-                m_Visible[i] = (m_Uploaded[i] != 0) ? boundSector.visibleMap[i] : (byte)0;
-            }
-
+            if (!m_RuntimeReady || !m_Resident || grassSectors == null) { return; }
+            for (int i = 0; i < m_Visible.Length; ++i) { m_Visible[i] = boundSector.visibleMap[i]; }
             for (int j = 0; j < grassSectors.Length; ++j)
             {
-                GrassSector grassSector = grassSectors[j];
-                grassSector.CollectDraw(m_Offsets, m_TypeCounts);
-                int runCount = FoliageLogic.MergeVisibleRuns(m_Offsets, m_TypeCounts, m_Visible, numSection, m_Runs);
-                grassSector.DrawRuns(cmdBuffer, m_PropertyBlock, m_Runs, runCount, passIndex);
+                grassSectors[j].Draw(cmdBuffer, m_PropertyBlock, m_Visible, numSection, passIndex);
             }
         }
     }

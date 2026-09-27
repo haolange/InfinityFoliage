@@ -20,7 +20,7 @@ namespace Landscape.FoliagePipeline
     public struct UpdateTreeTask : ITask
     {
         public int length;
-        public float2 size;
+        public float3 size;
         public float3 terrainPosition;
         public TreePrototype treePrototype;
         public TreeInstance[] treeInstances;
@@ -38,31 +38,9 @@ namespace Landscape.FoliagePipeline
                 if (searchTreePrototype.Equals(treePrototype))
                 {
                     transform.rotation = new float3(0, treeInstance.rotation, 0);
-                    transform.position = (treeInstance.position * new float3(size.x, size.y, size.x)) + terrainPosition;
+                    transform.position = (treeInstance.position * size) + terrainPosition;
                     transform.scale = new float3(treeInstance.widthScale, treeInstance.heightScale, treeInstance.widthScale);
                     treeTransfroms.Add(transform);
-                }
-            }
-        }
-    }
-
-    public struct UpdateGrassTask : ITask
-    {
-        public int length;
-        public byte[] dscDensity;
-        public int[,] srcDensity;
-        public float[,] srcHeight;
-        public GrassSection grassSection;
-
-        public void Execute()
-        {
-            for (int j = 0; j < length; ++j)
-            {
-                for (int k = 0; k < length; ++k)
-                {
-                    int densityIndex = j * length + k;
-                    dscDensity[densityIndex] = (byte)srcDensity[j, k];
-                    grassSection.count += srcDensity[j, k];
                 }
             }
         }
@@ -82,81 +60,95 @@ namespace Landscape.FoliagePipeline
 #endif
 
     [BurstCompile]
-    public unsafe struct GrassScatterJob : IJobParallelFor
+    public unsafe struct GrassPageScatterJob : IJobParallelFor
     {
         [ReadOnly]
-        public int split;
+        public int pageX;
 
         [ReadOnly]
-        public float densityScale;
+        public int pageY;
+
+        [ReadOnly]
+        public int pageWidth;
+
+        [ReadOnly]
+        public int grassIndex;
+
+        [ReadOnly]
+        public int layer;
+
+        [ReadOnly]
+        public float2 pixelSize;
+
+        [ReadOnly]
+        public float2 terrainOrigin;
+
+        [ReadOnly]
+        public int scaleQ;
 
         [ReadOnly]
         public float4 widthScale;
 
         [ReadOnly]
-        public NativeArray<byte> flatDensity;
+        public NativeArray<byte> density;
 
         [ReadOnly]
-        public NativeArray<int> densityStarts;
+        public NativeArray<int> cellX;
 
         [ReadOnly]
-        public NativeArray<int> destOffsets;
+        public NativeArray<int> cellY;
 
         [ReadOnly]
-        public NativeArray<int> slotCounts;
+        public NativeArray<int> cellWidth;
 
         [ReadOnly]
-        public NativeArray<float3> sectionPivots;
+        public NativeArray<int> cellHeight;
+
+        [ReadOnly]
+        public NativeArray<int> offsets;
+
+        [ReadOnly]
+        public NativeArray<int> counts;
 
         [NativeDisableParallelForRestriction]
         public NativeArray<GrassElement> packedElements;
 
         public void Execute(int sectionIndex)
         {
-            int slotCount = slotCounts[sectionIndex];
+            int slotCount = counts[sectionIndex];
             if (slotCount <= 0) { return; }
 
-            int destOffset = destOffsets[sectionIndex];
-            float uniqueValue = 1.0f + (randomFloat((float)(sectionIndex + 1)) * 15.0f);
-            float3 sectionPivot = sectionPivots[sectionIndex];
-            int densityStart = densityStarts[sectionIndex];
-            int densityLength = densityStarts[sectionIndex + 1] - densityStart;
+            int destOffset = offsets[sectionIndex];
+            float uniqueValue = 1.0f + (randomFloat((float)(sectionIndex + 1 + grassIndex * 997 + layer * 131)) * 15.0f);
 
             int written = 0;
             GrassElement grassElement;
             grassElement.matrix_World = float4x4.identity;
 
-            for (int i = 0; i < densityLength && written < slotCount; ++i)
+            for (int y = cellY[sectionIndex]; y < cellY[sectionIndex] + cellHeight[sectionIndex]; ++y)
             {
-                float scale = densityScale;
-                if (scale <= 0.0001f) { break; }
-                int density = (int)((float)flatDensity[densityStart + i] / scale);
-                if (density == 0) { continue; }
-
-                float3 position = sectionPivot + new float3(i % split, 0, i / split);
-                for (int j = 0; j < density && written < slotCount; ++j)
+                for (int x = cellX[sectionIndex]; x < cellX[sectionIndex] + cellWidth[sectionIndex]; ++x)
                 {
-                    float multiplier = (j + 1) * uniqueValue;
-                    float2 randomPoint = randomFloat2(new float2(position.x * multiplier, position.z * multiplier));
-                    float3 newPosition = position + new float3(randomPoint.x, 0, randomPoint.y);
+                    byte sample = density[(y - pageY) * pageWidth + x - pageX];
+                    int instances = FoliageLogic.ScaleGrassCount(sample, scaleQ, x, y, grassIndex, layer);
+                    float3 position = new float3(terrainOrigin.x + x * pixelSize.x, 0, terrainOrigin.y + y * pixelSize.y);
+                    for (int j = 0; j < instances; ++j)
+                    {
+                        float multiplier = (j + 1) * uniqueValue;
+                        float2 randomPoint = randomFloat2(new float2(position.x * multiplier, position.z * multiplier));
+                        float3 newPosition = position + new float3(randomPoint.x * pixelSize.x, 0, randomPoint.y * pixelSize.y);
 
-                    float randomRotate = randomFloat(newPosition.x - newPosition.y * multiplier);
-                    float randomScale = randomFloat((newPosition.x + newPosition.z) * multiplier);
-                    float yScale = widthScale.z + ((widthScale.w - widthScale.z) * randomScale);
-                    float xzScale = widthScale.x + ((widthScale.y - widthScale.x) * randomScale);
-                    float3 instanceScale = new float3(xzScale, yScale, xzScale);
+                        float randomRotate = randomFloat(newPosition.x - newPosition.y * multiplier);
+                        float randomScale = randomFloat((newPosition.x + newPosition.z) * multiplier);
+                        float yScale = widthScale.z + ((widthScale.w - widthScale.z) * randomScale);
+                        float xzScale = widthScale.x + ((widthScale.y - widthScale.x) * randomScale);
+                        float3 instanceScale = new float3(xzScale, yScale, xzScale);
 
-                    grassElement.matrix_World = float4x4.TRS(newPosition, quaternion.AxisAngle(new float3(0, 1, 0), math.radians(randomRotate * 360)), instanceScale);
-                    packedElements[destOffset + written] = grassElement;
-                    ++written;
+                        grassElement.matrix_World = float4x4.TRS(newPosition, quaternion.AxisAngle(new float3(0, 1, 0), math.radians(randomRotate * 360)), instanceScale);
+                        packedElements[destOffset + written] = grassElement;
+                        ++written;
+                    }
                 }
-            }
-
-            grassElement.matrix_World = float4x4.TRS(sectionPivot, quaternion.identity, float3.zero);
-            while (written < slotCount)
-            {
-                packedElements[destOffset + written] = grassElement;
-                ++written;
             }
         }
     }
@@ -266,16 +258,22 @@ namespace Landscape.FoliagePipeline
     [BurstCompile]
     public unsafe struct TreeCullLodJob : IJobParallelFor
     {
-        public int writeLod;
         public int heightRes;
         public float maxDistance;
         public float3 viewOrigin;
-        public float4x4 matrixProj;
+        public float3 lodHoldOrigin;
+        public float3 lodNowOrigin;
+        public float4x4 lodHoldProj;
+        public float4x4 lodNowProj;
+        public float lodHysteresis;
         public float3 terrainPos;
         public float3 terrainSize;
 
         [ReadOnly]
         public NativeArray<byte> cellVisible;
+
+        [ReadOnly]
+        public NativeArray<BoundSection> cellBounds;
 
         [ReadOnly]
         public NativeArray<int> instanceCell;
@@ -297,6 +295,12 @@ namespace Landscape.FoliagePipeline
         public NativeArray<ulong> chunkMasks;
 
         [NativeDisableParallelForRestriction]
+        public NativeArray<int> lodHold;
+
+        [ReadOnly]
+        public NativeArray<int> lodStable;
+
+        [NativeDisableParallelForRestriction]
         public NativeArray<int> lodNow;
 
         public void Execute(int chunk)
@@ -305,14 +309,51 @@ namespace Landscape.FoliagePipeline
             int remain = bounds.Length - candidateBase;
             int count = remain > 64 ? 64 : (remain < 0 ? 0 : remain);
             ulong mask = 0;
+            bool hasTerrainHeight = heightRes > 1 && heights.Length >= heightRes * heightRes;
+
+            if (count <= 0)
+            {
+                chunkMasks[chunk] = 0;
+                return;
+            }
+
+            int firstCell = instanceCell[candidateBase];
+            int lastCell = instanceCell[candidateBase + count - 1];
+            int activeCell = 0;
+            for (int cell = firstCell; cell <= lastCell; ++cell)
+            {
+                if (cellVisible[cell] == 0) { continue; }
+                if (hasTerrainHeight && TerrainOccludes(cellBounds[cell].boundBox) != 0) { continue; }
+                activeCell = 1;
+                break;
+            }
+            if (activeCell == 0)
+            {
+                for (int bit = 0; bit < count; ++bit)
+                {
+                    lodHold[candidateBase + bit] = -1;
+                    lodNow[candidateBase + bit] = -1;
+                }
+                chunkMasks[chunk] = 0;
+                return;
+            }
+
+            int currentCell = -1;
+            int currentCellVisible = 0;
 
             for (int bit = 0; bit < count; ++bit)
             {
                 int index = candidateBase + bit;
                 int cell = instanceCell[index];
-                if (cellVisible[cell] == 0)
+                if (cell != currentCell)
                 {
-                    if (writeLod != 0) { lodNow[index] = -1; }
+                    currentCell = cell;
+                    currentCellVisible = cellVisible[cell] != 0 && (!hasTerrainHeight || TerrainOccludes(cellBounds[cell].boundBox) == 0) ? 1 : 0;
+                }
+                if (currentCellVisible == 0)
+                {
+                    lodHold[index] = -1;
+                    lodNow[index] = -1;
                     continue;
                 }
 
@@ -327,73 +368,62 @@ namespace Landscape.FoliagePipeline
                     visible = math.select(visible, 0, distRadius.x + distRadius.y < 0);
                 }
                 visible = math.select(visible, 0, math.distance(viewOrigin, box.center) > maxDistance);
-                if (visible != 0 && heights.IsCreated && heightRes > 1)
-                {
-                    visible = math.select(visible, 0, TerrainOccludes(box) != 0);
-                }
                 if (visible == 0)
                 {
-                    if (writeLod != 0) { lodNow[index] = -1; }
+                    lodHold[index] = -1;
+                    lodNow[index] = -1;
                     continue;
                 }
 
                 mask |= 1UL << bit;
-                if (writeLod == 0) { continue; }
-
                 float radius = math.max(math.max(math.abs(box.extents.x), math.abs(box.extents.y)), math.abs(box.extents.z));
-                float distSqr = ((box.center.x - viewOrigin.x) * (box.center.x - viewOrigin.x)) + ((box.center.y - viewOrigin.y) * (box.center.y - viewOrigin.y)) + ((box.center.z - viewOrigin.z) * (box.center.z - viewOrigin.z));
-                distSqr *= matrixProj.c2.z;
-                float screenMultiple = math.max(0.5f * matrixProj.c0.x, 0.5f * matrixProj.c1.y) * radius;
-                float screenRadiusSqr = (screenMultiple * screenMultiple) / math.max(1, distSqr);
-
-                int lod = 0;
-                int last = lodScreenSizes.Length - 1;
-                for (int lodIndex = last; lodIndex >= 0; --lodIndex)
-                {
-                    float threshold = lodScreenSizes[lodIndex] * 0.5f;
-                    if ((threshold * threshold) >= screenRadiusSqr)
-                    {
-                        lod = lodIndex;
-                        break;
-                    }
-                }
-                lodNow[index] = lod;
+                int previous = lodStable[index];
+                lodHold[index] = FoliageLogic.ComputeLodIndexHysteresis(ScreenRadiusSqr(box.center, radius, lodHoldOrigin, lodHoldProj), lodScreenSizes, previous, lodHysteresis);
+                lodNow[index] = FoliageLogic.ComputeLodIndexHysteresis(ScreenRadiusSqr(box.center, radius, lodNowOrigin, lodNowProj), lodScreenSizes, previous, lodHysteresis);
             }
 
             chunkMasks[chunk] = mask;
+        }
+
+        float ScreenRadiusSqr(float3 center, float radius, float3 origin, float4x4 projection)
+        {
+            return Geometry.ComputeBoundsScreenRadiusSquared(radius, center, origin, projection);
         }
 
         int TerrainOccludes(Aabb box)
         {
             float3 min = box.min;
             float3 max = box.max;
-            float centerX = (min.x + max.x) * 0.5f;
-            float centerZ = (min.z + max.z) * 0.5f;
-            float dx = centerX - viewOrigin.x;
-            float dz = centerZ - viewOrigin.z;
-            float boxDist = math.sqrt((dx * dx) + (dz * dz));
-            if (boxDist < 0.5f) { return 0; }
-
-            float boxTopSlope = (max.y - viewOrigin.y) / boxDist;
-            for (int s = 1; s < 8; ++s)
+            for (int corner = 0; corner < 5; ++corner)
             {
-                float t = s / 8.0f;
-                if (t > 0.85f) { break; }
-                float dist = boxDist * t;
-                if (dist < 1f) { continue; }
-                float height = SampleHeight(viewOrigin.x + (dx * t), viewOrigin.z + (dz * t));
-                float terrainSlope = (height - viewOrigin.y) / dist;
-                if (terrainSlope > boxTopSlope + 0.05f) { return 1; }
+                float targetX = corner == 4 ? (min.x + max.x) * 0.5f : ((corner & 1) == 0 ? min.x : max.x);
+                float targetZ = corner == 4 ? (min.z + max.z) * 0.5f : ((corner & 2) == 0 ? min.z : max.z);
+                float dx = targetX - viewOrigin.x;
+                float dz = targetZ - viewOrigin.z;
+                float boxDist = math.sqrt((dx * dx) + (dz * dz));
+                if (boxDist < 0.5f) { return 0; }
+
+                float boxTopSlope = (max.y - viewOrigin.y) / boxDist;
+                int blocked = 0;
+                for (int s = 1; s < 8; ++s)
+                {
+                    float t = s / 8.0f;
+                    float dist = boxDist * t;
+                    if (dist < 1f) { continue; }
+                    float height = SampleHeight(viewOrigin.x + (dx * t), viewOrigin.z + (dz * t));
+                    float terrainSlope = (height - viewOrigin.y) / dist;
+                    if (terrainSlope > boxTopSlope + 0.1f) { blocked = 1; break; }
+                }
+                if (blocked == 0) { return 0; }
             }
-            return 0;
+            return 1;
         }
 
         float SampleHeight(float worldX, float worldZ)
         {
             float u = terrainSize.x > 0.0001f ? (worldX - terrainPos.x) / terrainSize.x : 0f;
             float v = terrainSize.z > 0.0001f ? (worldZ - terrainPos.z) / terrainSize.z : 0f;
-            u = math.clamp(u, 0f, 1f);
-            v = math.clamp(v, 0f, 1f);
+            if (u < 0f || u > 1f || v < 0f || v > 1f) { return -float.MaxValue; }
             float fx = u * (heightRes - 1);
             float fz = v * (heightRes - 1);
             int x0 = (int)fx;
@@ -428,6 +458,9 @@ namespace Landscape.FoliagePipeline
         [ReadOnly]
         public NativeArray<int> lodNow;
 
+        [ReadOnly]
+        public NativeArray<byte> lodDither;
+
         public NativeArray<ulong> stableMask;
         public NativeArray<ulong> fadeOutMask;
         public NativeArray<ulong> fadeInMask;
@@ -458,7 +491,7 @@ namespace Landscape.FoliagePipeline
                     if (hold < 0) { hold = now; }
 
                     int bucket;
-                    if (ditherEnabled == 0)
+                    if (ditherEnabled == 0 || hold < 0 || hold >= lodDither.Length || now >= lodDither.Length || lodDither[hold] == 0 || lodDither[now] == 0)
                     {
                         bucket = now == meshIndex ? (int)LodBucket.Stable : (int)LodBucket.None;
                     }

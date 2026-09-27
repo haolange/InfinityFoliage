@@ -352,10 +352,11 @@ namespace Landscape.FoliagePipeline
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static float4x4 GetProjectionMatrix(in float halfFOV, in float width, in float height, in float minZ, in float maxZ)
+        public static float4x4 GetProjectionMatrix(in float fieldOfView, in float width, in float height, in float minZ, in float maxZ)
         {
-            float4 column0 = new float4(1.0f / math.tan(halfFOV), 0.0f, 0.0f, 0.0f);
-            float4 column1 = new float4(0.0f, width / math.tan(halfFOV) / height, 0.0f, 0.0f);
+            float vertical = 1.0f / math.tan(math.radians(fieldOfView) * 0.5f);
+            float4 column0 = new float4(vertical * height / width, 0.0f, 0.0f, 0.0f);
+            float4 column1 = new float4(0.0f, vertical, 0.0f, 0.0f);
             float4 column2 = new float4(0.0f, 0.0f, minZ == maxZ ? 1.0f : maxZ / (maxZ - minZ), 1.0f);
             float4 column3 = new float4(0.0f, 0.0f, -minZ * (minZ == maxZ ? 1.0f : maxZ / (maxZ - minZ)), 0.0f);
 
@@ -363,25 +364,34 @@ namespace Landscape.FoliagePipeline
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static float4x4 GetLodProjectionMatrix(Camera camera)
+        {
+            if (!camera.orthographic)
+            {
+                return GetProjectionMatrix(camera.fieldOfView, camera.pixelWidth, camera.pixelHeight, camera.nearClipPlane, camera.farClipPlane);
+            }
+            float vertical = 1f / math.max(camera.orthographicSize, 0.0001f);
+            float horizontal = vertical * camera.pixelHeight / math.max(camera.pixelWidth, 1);
+            return new float4x4(new float4(horizontal, 0f, 0f, 0f), new float4(0f, vertical, 0f, 0f),
+                new float4(0f, 0f, 1f, 0f), new float4(0f, 0f, 0f, 1f));
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static float ComputeBoundsScreenRadiusSquared(in float sphereRadius, in float3 boundOrigin, in float3 viewOrigin, in Matrix4x4 projMatrix)
         {
-            float DistSqr = DistSquared(boundOrigin, viewOrigin) * projMatrix.m23;
+            float DistSqr = DistSquared(boundOrigin, viewOrigin);
+            float ScreenMultiple = 0.5f * projMatrix.m11 * sphereRadius;
 
-            float ScreenMultiple = math.max(0.5f * projMatrix.m00, 0.5f * projMatrix.m11);
-            ScreenMultiple *= sphereRadius;
-
-            return (ScreenMultiple * ScreenMultiple) / math.max(1, DistSqr);
+            return (ScreenMultiple * ScreenMultiple) / (projMatrix.m33 > 0.5f ? 1f : math.max(1f, DistSqr));
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static float ComputeBoundsScreenRadiusSquared(in float sphereRadius, in float3 boundOrigin, in float3 viewOrigin, in float4x4 projMatrix)
         {
-            float DistSqr = DistSquared(boundOrigin, viewOrigin) * projMatrix.c2.z;
+            float DistSqr = DistSquared(boundOrigin, viewOrigin);
+            float ScreenMultiple = 0.5f * projMatrix.c1.y * sphereRadius;
 
-            float ScreenMultiple = math.max(0.5f * projMatrix.c0.x, 0.5f * projMatrix.c1.y);
-            ScreenMultiple *= sphereRadius;
-
-            return (ScreenMultiple * ScreenMultiple) / math.max(1, DistSqr);
+            return (ScreenMultiple * ScreenMultiple) / (projMatrix.c3.w > 0.5f ? 1f : math.max(1f, DistSqr));
         }
 
 

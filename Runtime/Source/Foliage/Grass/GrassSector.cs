@@ -21,19 +21,338 @@ namespace Landscape.FoliagePipeline
         public bool hasPackedBound;
 
         public float4 widthScale { get { return m_WidthScale; } }
+        internal ulong speciesKey { get { return m_SpeciesKey; } }
 
         private float4 m_WidthScale;
-        private ComputeBuffer m_PackedBuffer;
-        private NativeArray<GrassElement> m_PackedCpu;
-        private NativeArray<byte> m_FlatDensity;
-        private NativeArray<int> m_DensityStarts;
-        private NativeArray<int> m_DestOffsets;
-        private NativeArray<int> m_SlotCounts;
-        private NativeArray<float3> m_SectionPivots;
+        private ulong m_SpeciesKey;
+        private GrassPage m_Base;
+        private GrassPage[] m_Details;
+        private bool m_Resident;
+        private DrawRun[] m_Runs;
+
+        private class GrassPage
+        {
+            private readonly GrassSector m_Owner;
+            private readonly int m_PageX;
+            private readonly int m_PageY;
+            private readonly int m_Resolution;
+            private readonly int m_NumSection;
+            private readonly float2 m_TerrainOrigin;
+            private readonly float2 m_PixelSize;
+            private readonly string m_Path;
+            private GrassDensityPage m_Density;
+            private ComputeBuffer m_Buffer;
+            private int[] m_Offsets;
+            private int[] m_Counts;
+            private int[] m_NextOffsets;
+            private int[] m_NextCounts;
+            private NativeArray<byte> m_NativeDensity;
+            private NativeArray<int> m_CellX;
+            private NativeArray<int> m_CellY;
+            private NativeArray<int> m_CellWidth;
+            private NativeArray<int> m_CellHeight;
+            private NativeArray<int> m_NativeOffsets;
+            private NativeArray<int> m_NativeCounts;
+            private NativeArray<GrassElement> m_Elements;
+            private JobHandle m_BuildHandle;
+            private bool m_Building;
+            private bool m_Resident;
+            private bool m_KnownEmpty;
+            private bool m_LoadPending;
+            private FoliageResidency.PageLease m_PageLease;
+            private bool m_Failed;
+            private int m_Generation;
+            private float m_BuildScale;
+            private float m_DesiredScale;
+
+            internal bool IsKnownEmpty { get { return m_KnownEmpty; } }
+
+            internal GrassPage(GrassSector owner, string path, in int pageX, in int pageY, in int resolution, in int numSection, in float2 terrainOrigin, in float2 pixelSize)
+            {
+                m_Owner = owner;
+                m_Path = path;
+                m_PageX = pageX;
+                m_PageY = pageY;
+                m_Resolution = resolution;
+                m_NumSection = numSection;
+                m_TerrainOrigin = terrainOrigin;
+                m_PixelSize = pixelSize;
+            }
+
+            internal void SetResident(in bool resident)
+            {
+                if (m_Resident == resident)
+                {
+                    if (resident && m_Density == null && !m_LoadPending && !m_Failed) { BeginLoad(); }
+                    return;
+                }
+                m_Resident = resident;
+                ++m_Generation;
+                if (!resident)
+                {
+                    Release();
+                    return;
+                }
+                m_Failed = false;
+                BeginLoad();
+            }
+
+            private void BeginLoad()
+            {
+                FoliageResidency.PageLease lease = null;
+                if (m_PageX >= 0 && !FoliageResidency.TryAcquireDetailPageSlot(m_Owner.m_SpeciesKey, out lease)) { return; }
+                m_PageLease = lease;
+                m_LoadPending = true;
+                int generation = m_Generation;
+                ResourceRequest request;
+                try { request = Resources.LoadAsync<TextAsset>(m_Path); }
+                catch
+                {
+                    m_LoadPending = false;
+                    m_Failed = true;
+                    FoliageResidency.ReleaseDetailPageSlot(lease);
+                    m_PageLease = null;
+                    throw;
+                }
+                request.completed += operation =>
+                {
+                    TextAsset asset = request.asset as TextAsset;
+                    if (generation != m_Generation || !m_Resident)
+                    {
+                        if (asset != null) { Resources.UnloadAsset(asset); }
+                        FoliageResidency.ReleaseDetailPageSlot(lease);
+                        return;
+                    }
+                    m_LoadPending = false;
+                    if (asset == null)
+                    {
+                        m_Failed = true;
+                        FoliageResidency.ReleaseDetailPageSlot(lease);
+                        m_PageLease = null;
+                        Debug.LogError("Missing foliage grass asset " + m_Path + ". Rebake this Terrain.");
+                        return;
+                    }
+                    try
+                    {
+                        m_Density = FoliageAssetCodec.DecodeGrass(asset.bytes, m_Owner.grassIndex, m_Resolution, m_NumSection, m_PageX, m_PageY);
+                        m_KnownEmpty = m_Density.cellIndices.Length == 0;
+                        StartBuild(m_DesiredScale);
+                    }
+                    catch (Exception exception)
+                    {
+                        Release();
+                        m_Failed = true;
+                        Debug.LogException(exception);
+                    }
+                    finally
+                    {
+                        Resources.UnloadAsset(asset);
+                    }
+                };
+            }
+
+            internal void SetDensityScale(in float scale)
+            {
+                if (m_DesiredScale == scale) { return; }
+                m_DesiredScale = scale;
+                if (m_Density == null || m_Building) { return; }
+                try { StartBuild(scale); }
+                catch (Exception exception)
+                {
+                    Release();
+                    m_Failed = true;
+                    Debug.LogException(exception);
+                }
+            }
+
+            private void StartBuild(in float scale)
+            {
+                if (m_Density == null || m_Building) { return; }
+                m_BuildScale = scale;
+                int scaleQ = scale <= 0f ? 0 : scale >= 1f ? 65536 : (int)(scale * 65536f + 0.5f);
+                int cellCount = m_NumSection * m_NumSection;
+                m_NextOffsets = new int[cellCount];
+                m_NextCounts = new int[cellCount];
+                int[] xStart = new int[cellCount];
+                int[] yStart = new int[cellCount];
+                int[] widths = new int[cellCount];
+                int[] heights = new int[cellCount];
+                int cellSize = m_Resolution / m_NumSection;
+                int pageEndX = m_Density.xStart + m_Density.width;
+                int pageEndY = m_Density.yStart + m_Density.height;
+                int total = 0;
+                for (int cellX = 0; cellX < m_NumSection; ++cellX)
+                {
+                    for (int cellY = 0; cellY < m_NumSection; ++cellY)
+                    {
+                        int index = FoliageLogic.CellIndex(cellX, cellY, m_NumSection);
+                        int x0 = Math.Max(m_Density.xStart, cellX * cellSize);
+                        int y0 = Math.Max(m_Density.yStart, cellY * cellSize);
+                        int x1 = Math.Min(pageEndX, (cellX + 1) * cellSize);
+                        int y1 = Math.Min(pageEndY, (cellY + 1) * cellSize);
+                        xStart[index] = x0;
+                        yStart[index] = y0;
+                        widths[index] = Math.Max(0, x1 - x0);
+                        heights[index] = Math.Max(0, y1 - y0);
+                        m_NextOffsets[index] = total;
+                        for (int y = y0; y < y1; ++y)
+                        {
+                            for (int x = x0; x < x1; ++x)
+                            {
+                                byte density = m_Density.density[(y - m_Density.yStart) * m_Density.width + x - m_Density.xStart];
+                                m_NextCounts[index] += FoliageLogic.ScaleGrassCount(density, scaleQ, x, y, m_Owner.grassIndex, m_PageX < 0 ? 0 : 1);
+                            }
+                        }
+                        total += m_NextCounts[index];
+                    }
+                }
+
+                if (total == 0)
+                {
+                    if (m_Buffer != null) { m_Buffer.Dispose(); m_Buffer = null; }
+                    m_Offsets = m_NextOffsets;
+                    m_Counts = m_NextCounts;
+                    m_NextOffsets = null;
+                    m_NextCounts = null;
+                    return;
+                }
+
+                m_NativeDensity = new NativeArray<byte>(m_Density.density, Allocator.Persistent);
+                m_CellX = new NativeArray<int>(xStart, Allocator.Persistent);
+                m_CellY = new NativeArray<int>(yStart, Allocator.Persistent);
+                m_CellWidth = new NativeArray<int>(widths, Allocator.Persistent);
+                m_CellHeight = new NativeArray<int>(heights, Allocator.Persistent);
+                m_NativeOffsets = new NativeArray<int>(m_NextOffsets, Allocator.Persistent);
+                m_NativeCounts = new NativeArray<int>(m_NextCounts, Allocator.Persistent);
+                m_Elements = new NativeArray<GrassElement>(total, Allocator.Persistent);
+
+                var scatterJob = new GrassPageScatterJob();
+                {
+                    scatterJob.pageX = m_Density.xStart;
+                    scatterJob.pageY = m_Density.yStart;
+                    scatterJob.pageWidth = m_Density.width;
+                    scatterJob.grassIndex = m_Owner.grassIndex;
+                    scatterJob.layer = m_PageX < 0 ? 0 : 1;
+                    scatterJob.pixelSize = m_PixelSize;
+                    scatterJob.terrainOrigin = m_TerrainOrigin;
+                    scatterJob.scaleQ = scaleQ;
+                    scatterJob.widthScale = m_Owner.m_WidthScale;
+                    scatterJob.density = m_NativeDensity;
+                    scatterJob.cellX = m_CellX;
+                    scatterJob.cellY = m_CellY;
+                    scatterJob.cellWidth = m_CellWidth;
+                    scatterJob.cellHeight = m_CellHeight;
+                    scatterJob.offsets = m_NativeOffsets;
+                    scatterJob.counts = m_NativeCounts;
+                    scatterJob.packedElements = m_Elements;
+                }
+                m_BuildHandle = scatterJob.Schedule(cellCount, 8);
+                m_Building = true;
+            }
+
+            internal void Flush()
+            {
+                if (!m_Building || !m_BuildHandle.IsCompleted) { return; }
+                try
+                {
+                    m_BuildHandle.Complete();
+                    m_Building = false;
+                    if (m_DesiredScale != m_BuildScale)
+                    {
+                        ReleaseScratch();
+                        m_NextOffsets = null;
+                        m_NextCounts = null;
+                        StartBuild(m_DesiredScale);
+                        return;
+                    }
+                    ComputeBuffer next = new ComputeBuffer(m_Elements.Length, Marshal.SizeOf(typeof(GrassElement)));
+                    try { next.SetData(m_Elements); }
+                    catch
+                    {
+                        next.Dispose();
+                        throw;
+                    }
+                    ComputeBuffer previous = m_Buffer;
+                    m_Buffer = next;
+                    m_Offsets = m_NextOffsets;
+                    m_Counts = m_NextCounts;
+                    m_NextOffsets = null;
+                    m_NextCounts = null;
+                    ReleaseScratch();
+                    if (previous != null) { previous.Dispose(); }
+                }
+                catch (Exception exception)
+                {
+                    Release();
+                    m_Failed = true;
+                    Debug.LogException(exception);
+                }
+            }
+
+            internal void Draw(CommandBuffer cmdBuffer, MaterialPropertyBlock block, byte[] visibleMap, DrawRun[] runs, in int numSection, in int passIndex)
+            {
+                if (m_Buffer == null || m_Counts == null) { return; }
+                int count = FoliageLogic.MergeVisibleRuns(m_Offsets, m_Counts, visibleMap, numSection, runs);
+                if (count == 0) { return; }
+                FoliageAmbientSH.Bind(block);
+                block.SetBuffer(GrassShaderID.ElementBuffer, m_Buffer);
+                Mesh mesh = m_Owner.grass.meshes[0];
+                Material material = m_Owner.grass.materials[0];
+                for (int i = 0; i < count; ++i)
+                {
+                    block.SetInt(GrassShaderID.InstanceOffset, runs[i].start);
+                    cmdBuffer.DrawMeshInstancedProcedural(mesh, 0, material, passIndex, runs[i].count, block);
+                }
+            }
+
+            private void ReleaseScratch()
+            {
+                if (m_NativeDensity.IsCreated) { m_NativeDensity.Dispose(); }
+                if (m_CellX.IsCreated) { m_CellX.Dispose(); }
+                if (m_CellY.IsCreated) { m_CellY.Dispose(); }
+                if (m_CellWidth.IsCreated) { m_CellWidth.Dispose(); }
+                if (m_CellHeight.IsCreated) { m_CellHeight.Dispose(); }
+                if (m_NativeOffsets.IsCreated) { m_NativeOffsets.Dispose(); }
+                if (m_NativeCounts.IsCreated) { m_NativeCounts.Dispose(); }
+                if (m_Elements.IsCreated) { m_Elements.Dispose(); }
+            }
+
+            private void RetireScratch(in JobHandle dependency)
+            {
+                if (m_NativeDensity.IsCreated) { m_NativeDensity.Dispose(dependency); }
+                if (m_CellX.IsCreated) { m_CellX.Dispose(dependency); }
+                if (m_CellY.IsCreated) { m_CellY.Dispose(dependency); }
+                if (m_CellWidth.IsCreated) { m_CellWidth.Dispose(dependency); }
+                if (m_CellHeight.IsCreated) { m_CellHeight.Dispose(dependency); }
+                if (m_NativeOffsets.IsCreated) { m_NativeOffsets.Dispose(dependency); }
+                if (m_NativeCounts.IsCreated) { m_NativeCounts.Dispose(dependency); }
+                if (m_Elements.IsCreated) { m_Elements.Dispose(dependency); }
+                JobHandle.ScheduleBatchedJobs();
+            }
+
+            internal void Release()
+            {
+                FoliageResidency.ReleaseDetailPageSlot(m_PageLease);
+                m_PageLease = null;
+                m_LoadPending = false;
+                if (m_Building)
+                {
+                    RetireScratch(m_BuildHandle);
+                    m_Building = false;
+                }
+                else { ReleaseScratch(); }
+                if (m_Buffer != null) { m_Buffer.Dispose(); m_Buffer = null; }
+                m_Density = null;
+                m_Offsets = null;
+                m_Counts = null;
+                m_NextOffsets = null;
+                m_NextCounts = null;
+            }
+        }
 
         public GrassSector(in int length)
         {
-            this.sections = new GrassSection[length];
+            sections = new GrassSection[length];
         }
 
         public int PackedCount
@@ -51,15 +370,9 @@ namespace Landscape.FoliagePipeline
             if (sections == null) { return; }
             int[] counts = new int[sections.Length];
             int[] offsets = new int[sections.Length];
-            for (int i = 0; i < sections.Length; ++i)
-            {
-                counts[i] = sections[i] != null ? sections[i].count : 0;
-            }
+            for (int i = 0; i < sections.Length; ++i) { counts[i] = sections[i] != null ? sections[i].count : 0; }
             FoliageLogic.PrefixOffsets(counts, offsets);
-            for (int i = 0; i < sections.Length; ++i)
-            {
-                sections[i].offset = offsets[i];
-            }
+            for (int i = 0; i < sections.Length; ++i) { sections[i].offset = offsets[i]; }
         }
 
         public void BuildTightBound(BoundSector spatial)
@@ -69,153 +382,87 @@ namespace Landscape.FoliagePipeline
             for (int i = 0; i < sections.Length; ++i)
             {
                 if (sections[i] == null || sections[i].count <= 0) { continue; }
-                if (!hasPackedBound)
-                {
-                    packedBound = spatial.sections[i].boundBox;
-                    hasPackedBound = true;
-                }
-                else
-                {
-                    packedBound.Encapsulate(spatial.sections[i].boundBox);
-                }
+                if (!hasPackedBound) { packedBound = spatial.sections[i].boundBox; hasPackedBound = true; }
+                else { packedBound.Encapsulate(spatial.sections[i].boundBox); }
             }
         }
 
-        public void Init(TerrainData terrainData)
+        public void Init(TerrainData terrainData, string assetKey, in int numSection, in Vector3 terrainPosition)
         {
             DetailPrototype detailPrototype = terrainData.detailPrototypes[grassIndex];
             m_WidthScale = new float4(detailPrototype.minWidth, detailPrototype.maxWidth, detailPrototype.minHeight, detailPrototype.maxHeight);
-
-            int packedCount = PackedCount;
-            if (packedCount <= 0) { return; }
-
-            int sectionCount = sections.Length;
-            int densityTotal = 0;
-            for (int i = 0; i < sectionCount; ++i)
+            m_SpeciesKey = EntityId.ToULong(detailPrototype.prototype.GetEntityId());
+            int resolution = terrainData.detailResolution;
+            float2 origin = new float2(terrainPosition.x, terrainPosition.z);
+            float2 pixelSize = new float2(terrainData.size.x / resolution, terrainData.size.z / resolution);
+            m_Base = new GrassPage(this, FoliageAssetCodec.GrassBasePath(assetKey, grassIndex), -1, -1, resolution, numSection, origin, pixelSize);
+            m_Details = new GrassPage[FoliageAssetCodec.PageAxis * FoliageAssetCodec.PageAxis];
+            for (int x = 0; x < FoliageAssetCodec.PageAxis; ++x)
             {
-                GrassSection section = sections[i];
-                if (section == null || section.densityMap == null) { continue; }
-                densityTotal += section.densityMap.Length;
+                for (int y = 0; y < FoliageAssetCodec.PageAxis; ++y)
+                {
+                    int index = x * FoliageAssetCodec.PageAxis + y;
+                    m_Details[index] = new GrassPage(this, FoliageAssetCodec.GrassPagePath(assetKey, grassIndex, x, y), x, y, resolution, numSection, origin, pixelSize);
+                }
             }
-
-            m_PackedCpu = new NativeArray<GrassElement>(packedCount, Allocator.Persistent);
-            m_FlatDensity = new NativeArray<byte>(densityTotal, Allocator.Persistent);
-            m_DensityStarts = new NativeArray<int>(sectionCount + 1, Allocator.Persistent);
-            m_DestOffsets = new NativeArray<int>(sectionCount, Allocator.Persistent);
-            m_SlotCounts = new NativeArray<int>(sectionCount, Allocator.Persistent);
-            m_SectionPivots = new NativeArray<float3>(sectionCount, Allocator.Persistent);
-
-            int cursor = 0;
-            for (int i = 0; i < sectionCount; ++i)
-            {
-                GrassSection section = sections[i];
-                m_DensityStarts[i] = cursor;
-                m_DestOffsets[i] = section != null ? section.offset : 0;
-                m_SlotCounts[i] = section != null ? section.count : 0;
-                if (section == null || section.densityMap == null || section.densityMap.Length == 0) { continue; }
-                NativeArray<byte>.Copy(section.densityMap, 0, m_FlatDensity, cursor, section.densityMap.Length);
-                cursor += section.densityMap.Length;
-            }
-            m_DensityStarts[sectionCount] = cursor;
+            m_Runs = new DrawRun[numSection * numSection];
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public void BindPivots(BoundSection[] boundSections)
+        public void SetResident(in bool resident)
         {
-            if (!m_SectionPivots.IsCreated || boundSections == null) { return; }
-            int sectionCount = sections.Length;
-            for (int i = 0; i < sectionCount; ++i)
+            if (m_Resident == resident) { return; }
+            m_Resident = resident;
+            if (m_Base != null) { m_Base.SetResident(resident); }
+            if (!resident && m_Details != null)
             {
-                float2 pivot = boundSections[i].pivotPosition;
-                m_SectionPivots[i] = new float3(pivot.x, 0, pivot.y);
+                for (int i = 0; i < m_Details.Length; ++i) { m_Details[i].SetResident(false); }
             }
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public JobHandle ScheduleBuild(in int split, in float densityScale)
+        public void SetDetailResident(in int pageX, in int pageY, in bool resident)
         {
-            if (!m_PackedCpu.IsCreated || !m_FlatDensity.IsCreated) { return default; }
-
-            var scatterJob = new GrassScatterJob();
-            {
-                scatterJob.split = split;
-                scatterJob.densityScale = densityScale;
-                scatterJob.widthScale = m_WidthScale;
-                scatterJob.flatDensity = m_FlatDensity;
-                scatterJob.densityStarts = m_DensityStarts;
-                scatterJob.destOffsets = m_DestOffsets;
-                scatterJob.slotCounts = m_SlotCounts;
-                scatterJob.sectionPivots = m_SectionPivots;
-                scatterJob.packedElements = m_PackedCpu;
-            }
-            return scatterJob.Schedule(sections.Length, 8);
+            if (!m_Resident || m_Details == null) { return; }
+            m_Details[pageX * FoliageAssetCodec.PageAxis + pageY].SetResident(resident);
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public void EnsurePackedBuffer()
+        public bool IsDetailEmpty(in int pageX, in int pageY)
         {
-            if (m_PackedBuffer != null || !m_PackedCpu.IsCreated) { return; }
-            m_PackedBuffer = new ComputeBuffer(m_PackedCpu.Length, Marshal.SizeOf(typeof(GrassElement)));
+            return m_Details != null && m_Details[pageX * FoliageAssetCodec.PageAxis + pageY].IsKnownEmpty;
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public void FlushUploadRuns(DrawRun[] runs, in int runCount)
+        public void SetDensityScale(in float scale)
         {
-            if (!m_PackedCpu.IsCreated || runCount <= 0) { return; }
-            EnsurePackedBuffer();
-            if (m_PackedBuffer == null) { return; }
-            for (int i = 0; i < runCount; ++i)
-            {
-                if (runs[i].count <= 0) { continue; }
-                m_PackedBuffer.SetData(m_PackedCpu, runs[i].start, runs[i].start, runs[i].count);
-            }
-        }
-
-        public void ReleaseScatterScratch()
-        {
-            if (m_FlatDensity.IsCreated) { m_FlatDensity.Dispose(); }
-            if (m_DensityStarts.IsCreated) { m_DensityStarts.Dispose(); }
-            if (m_DestOffsets.IsCreated) { m_DestOffsets.Dispose(); }
-            if (m_SlotCounts.IsCreated) { m_SlotCounts.Dispose(); }
-            if (m_SectionPivots.IsCreated) { m_SectionPivots.Dispose(); }
-            if (m_PackedCpu.IsCreated) { m_PackedCpu.Dispose(); }
+            if (m_Base != null) { m_Base.SetDensityScale(scale); }
+            if (m_Details == null) { return; }
+            for (int i = 0; i < m_Details.Length; ++i) { m_Details[i].SetDensityScale(scale); }
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public void CollectDraw(int[] offsets, int[] counts)
+        public void Flush()
         {
-            for (int i = 0; i < sections.Length; ++i)
-            {
-                offsets[i] = sections[i].offset;
-                counts[i] = sections[i].count;
-            }
+            if (!m_Resident) { return; }
+            m_Base.Flush();
+            for (int i = 0; i < m_Details.Length; ++i) { m_Details[i].Flush(); }
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public void DrawRuns(CommandBuffer cmdBuffer, MaterialPropertyBlock propertyBlock, DrawRun[] runs, in int runCount, in int passIndex)
+        public void Draw(CommandBuffer cmdBuffer, MaterialPropertyBlock block, byte[] visibleMap, in int numSection, in int passIndex)
         {
-            if (m_PackedBuffer == null) { return; }
-            Mesh mesh = grass.meshes[0];
-            Material material = grass.materials[0];
-
-            FoliageAmbientSH.Bind(propertyBlock);
-            propertyBlock.SetBuffer(GrassShaderID.ElementBuffer, m_PackedBuffer);
-            for (int i = 0; i < runCount; ++i)
-            {
-                if (runs[i].count <= 0) { continue; }
-                propertyBlock.SetInt(GrassShaderID.InstanceOffset, runs[i].start);
-                cmdBuffer.DrawMeshInstancedProcedural(mesh, 0, material, passIndex, runs[i].count, propertyBlock);
-            }
+            if (!m_Resident) { return; }
+            m_Base.Draw(cmdBuffer, block, visibleMap, m_Runs, numSection, passIndex);
+            for (int i = 0; i < m_Details.Length; ++i) { m_Details[i].Draw(cmdBuffer, block, visibleMap, m_Runs, numSection, passIndex); }
         }
 
         public void Release()
         {
-            ReleaseScatterScratch();
-            if (m_PackedBuffer != null)
-            {
-                m_PackedBuffer.Dispose();
-                m_PackedBuffer = null;
-            }
+            SetResident(false);
+            m_Base = null;
+            m_Details = null;
+            m_Runs = null;
         }
     }
 }

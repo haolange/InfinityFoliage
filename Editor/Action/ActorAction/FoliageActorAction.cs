@@ -2,7 +2,6 @@ using System;
 using Unity.Jobs;
 using UnityEditor;
 using UnityEngine;
-using Unity.Mathematics;
 using System.Collections.Generic;
 using System.Runtime.InteropServices;
 
@@ -55,7 +54,7 @@ namespace Landscape.FoliagePipeline.Editor
                         Renderer renderer = lod.renderers[0];
                         MeshFilter meshFilter = renderer.gameObject.GetComponent<MeshFilter>();
 
-                        meshes.AddUnique(meshFilter.sharedMesh);
+                        meshes.Add(meshFilter.sharedMesh);
                         for (int k = 0; k < renderer.sharedMaterials.Length; ++k)
                         {
                             materials.AddUnique(renderer.sharedMaterials[k]);
@@ -69,7 +68,7 @@ namespace Landscape.FoliagePipeline.Editor
                         ref MeshLodInfo lodInfo = ref lodInfos[l];
                         Renderer renderer = lod.renderers[0];
 
-                        lodInfo.screenSize = 1 - (l * 0.03125f);
+                        lodInfo.screenSize = l == 0 ? 1f : lods[l - 1].screenRelativeTransitionHeight;
                         lodInfo.materialSlot = new int[renderer.sharedMaterials.Length];
 
                         for (int m = 0; m < renderer.sharedMaterials.Length; ++m)
@@ -118,7 +117,7 @@ namespace Landscape.FoliagePipeline.Editor
                         var updateTreeTask = new UpdateTreeTask();
                         {
                             updateTreeTask.length = terrainData.treeInstanceCount;
-                            updateTreeTask.size = new float2(terrainData.heightmapResolution - 1, terrainData.heightmapScale.y);
+                            updateTreeTask.size = terrainData.size;
                             updateTreeTask.treePrototype = treePrototype;
                             updateTreeTask.treeInstances = terrainData.treeInstances;
                             updateTreeTask.treePrototypes = terrainData.treePrototypes;
@@ -146,12 +145,31 @@ namespace Landscape.FoliagePipeline.Editor
                 GCHandle.FromIntPtr((IntPtr)tasksPtr[j]).Free();
             }
 
+            List<FoliageAssetWriter.Request> treeRequests = new List<FoliageAssetWriter.Request>(selectObjects.Length);
+            List<TreeComponent> bakedTrees = new List<TreeComponent>(selectObjects.Length);
             foreach (var selectObject in selectObjects)
             {
                 var treeComponent = selectObject.GetComponent<TreeComponent>();
                 if (treeComponent == null) { continue; }
                 treeComponent.BakeAfterTransforms();
-                EditorUtility.SetDirty(selectObject);
+                string assetKey = FoliageAssetWriter.AssetKey(selectObject);
+                List<FoliageAssetWriter.Entry> entries = new List<FoliageAssetWriter.Entry>(treeComponent.treeSectors.Length);
+                for (int i = 0; i < treeComponent.treeSectors.Length; ++i)
+                {
+                    TreeSector sector = treeComponent.treeSectors[i];
+                    if (sector == null || sector.transforms == null) { throw new InvalidOperationException("Tree candidates were not generated."); }
+                    entries.Add(new FoliageAssetWriter.Entry("tree_" + sector.treeIndex, FoliageAssetCodec.EncodeTree(sector.treeIndex, sector.transforms)));
+                }
+                treeRequests.Add(new FoliageAssetWriter.Request(assetKey, "tree_", entries));
+                bakedTrees.Add(treeComponent);
+            }
+            FoliageAssetWriter.CommitBatch(treeRequests);
+            for (int i = 0; i < bakedTrees.Count; ++i)
+            {
+                TreeComponent treeComponent = bakedTrees[i];
+                treeComponent.assetKey = treeRequests[i].assetKey;
+                for (int j = 0; j < treeComponent.treeSectors.Length; ++j) { treeComponent.treeSectors[j].transforms = null; }
+                EditorUtility.SetDirty(treeComponent);
             }
         }
         #endregion
@@ -231,10 +249,10 @@ namespace Landscape.FoliagePipeline.Editor
         [MenuItem("GameObject/EntityAction/Landscape/UpdateTerrainGrass", false, 12)]
         public static void UpdateTerrainGrass(MenuCommand menuCommand)
         {
-            var tasksPtr = new List<long>(32);
-            var jobsHandle = new List<JobHandle>(32);
             GameObject[] selectObjects = Selection.gameObjects;
-
+            List<FoliageAssetWriter.Request> grassRequests = new List<FoliageAssetWriter.Request>(selectObjects.Length);
+            List<GrassComponent> bakedGrass = new List<GrassComponent>(selectObjects.Length);
+            List<int[][]> bakedCounts = new List<int[][]>(selectObjects.Length);
             foreach (GameObject selectObject in selectObjects)
             {
                 Terrain terrain = selectObject.GetComponent<Terrain>();
@@ -246,83 +264,89 @@ namespace Landscape.FoliagePipeline.Editor
 
                 TerrainData terrainData = terrain.terrainData;
                 GrassComponent grassComponent = selectObject.GetComponent<GrassComponent>();
-                grassComponent.terrain = terrain;
-                grassComponent.terrainData = terrainData;
-
-                BoundSector boundSector = grassComponent.boundSector;
+                if (grassComponent == null || grassComponent.grassSectors == null) { continue; }
+                int resolution = terrainData.detailResolution;
+                int numSection = grassComponent.numSection;
+                if (resolution <= 0 || numSection <= 0 || resolution % numSection != 0)
+                {
+                    throw new InvalidOperationException("Grass detail resolution must divide the fixed section grid.");
+                }
+                string assetKey = FoliageAssetWriter.AssetKey(selectObject);
+                List<FoliageAssetWriter.Entry> entries = new List<FoliageAssetWriter.Entry>(grassComponent.grassSectors.Length * 17);
+                int[][] speciesCounts = new int[grassComponent.grassSectors.Length][];
                 for (int index = 0; index < grassComponent.grassSectors.Length; ++index)
                 {
                     GrassSector grassSector = grassComponent.grassSectors[index];
                     int grassIndex = grassSector.grassIndex;
+                    byte[] baseDensity = new byte[resolution * resolution];
+                    int[] sectionCounts = new int[grassSector.sections.Length];
+                    speciesCounts[index] = sectionCounts;
 
-                    for (int i = 0; i < grassSector.sections.Length; ++i)
+                    for (int pageX = 0; pageX < FoliageAssetCodec.PageAxis; ++pageX)
                     {
-                        GrassSection grassSection = grassSector.sections[i];
-                        BoundSection boundSection = boundSector.sections[grassSection.boundIndex];
-                        grassSection.count = 0;
-                        grassSection.offset = 0;
-                        grassSection.densityMap = new byte[grassComponent.sectionSize * grassComponent.sectionSize];
-
-                        int2 sampleUV = (int2)boundSection.pivotPosition - new int2((int)selectObject.transform.position.x, (int)selectObject.transform.position.z);
-                        int[,] densityMap = terrainData.GetDetailLayer(sampleUV.x, sampleUV.y, grassComponent.sectionSize, grassComponent.sectionSize, grassIndex);
-                        float[,] heightMap = terrainData.GetHeights(sampleUV.x, sampleUV.y, grassComponent.sectionSize, grassComponent.sectionSize);
-
-                        var updategrassTask = new UpdateGrassTask();
+                        int xStart = (pageX * resolution) / FoliageAssetCodec.PageAxis;
+                        int xEnd = ((pageX + 1) * resolution) / FoliageAssetCodec.PageAxis;
+                        for (int pageY = 0; pageY < FoliageAssetCodec.PageAxis; ++pageY)
                         {
-                            updategrassTask.length = grassComponent.sectionSize;
-                            updategrassTask.srcHeight = heightMap;
-                            updategrassTask.srcDensity = densityMap;
-                            updategrassTask.grassSection = grassSection;
-                            updategrassTask.dscDensity = grassSection.densityMap;
+                            int yStart = (pageY * resolution) / FoliageAssetCodec.PageAxis;
+                            int yEnd = ((pageY + 1) * resolution) / FoliageAssetCodec.PageAxis;
+                            int width = xEnd - xStart;
+                            int height = yEnd - yStart;
+                            int[,] source = terrainData.GetDetailLayer(xStart, yStart, width, height, grassIndex);
+                            byte[] detailDensity = new byte[width * height];
+                            for (int y = 0; y < height; ++y)
+                            {
+                                int cellY = ((yStart + y) * numSection) / resolution;
+                                for (int x = 0; x < width; ++x)
+                                {
+                                    int density = source[x, y];
+                                    if (density < 0 || density > byte.MaxValue)
+                                    {
+                                        throw new InvalidOperationException("Grass density exceeds the compact byte asset format.");
+                                    }
+                                    int globalX = xStart + x;
+                                    int globalY = yStart + y;
+                                    byte sample = (byte)density;
+                                    byte baseSample = FoliageAssetCodec.BaseDensity(sample, globalX, globalY, grassIndex);
+                                    baseDensity[(globalY * resolution) + globalX] = baseSample;
+                                    detailDensity[(y * width) + x] = (byte)(sample - baseSample);
+                                    int cellX = (globalX * numSection) / resolution;
+                                    sectionCounts[(cellX * numSection) + cellY] += density;
+                                }
+                            }
+                            GrassDensityPage detailPage = FoliageAssetCodec.CreateGrassPage(grassIndex, resolution, numSection, pageX, pageY, detailDensity);
+                            string name = "grass_" + grassIndex + "_page_" + pageX + "_" + pageY;
+                            entries.Add(new FoliageAssetWriter.Entry(name, FoliageAssetCodec.EncodeGrass(detailPage)));
                         }
-                        GCHandle taskHandle = GCHandle.Alloc(updategrassTask);
-                        long taskPtr = ((IntPtr)taskHandle).ToInt64();
-                        tasksPtr.Add(taskPtr);
-
-                        var updateGrassJob = new UpdateFoliageJob();
-                        {
-                            updateGrassJob.taskPtr = taskPtr;
-                        }
-                        jobsHandle.Add(updateGrassJob.Schedule());
                     }
+
+                    GrassDensityPage basePage = FoliageAssetCodec.CreateGrassPage(grassIndex, resolution, numSection, -1, -1, baseDensity);
+                    entries.Add(new FoliageAssetWriter.Entry("grass_" + grassIndex + "_base", FoliageAssetCodec.EncodeGrass(basePage)));
                 }
-
-                EditorUtility.SetDirty(selectObject);
+                grassRequests.Add(new FoliageAssetWriter.Request(assetKey, "grass_", entries));
+                bakedGrass.Add(grassComponent);
+                bakedCounts.Add(speciesCounts);
             }
-
-            for (var j = 0; j < tasksPtr.Count; ++j)
+            FoliageAssetWriter.CommitBatch(grassRequests);
+            for (int i = 0; i < bakedGrass.Count; ++i)
             {
-                jobsHandle[j].Complete();
-                GCHandle.FromIntPtr((IntPtr)tasksPtr[j]).Free();
-            }
-
-            foreach (GameObject selectObject in selectObjects)
-            {
-                Terrain terrain = selectObject.GetComponent<Terrain>();
-                if (!terrain)
+                GrassComponent grassComponent = bakedGrass[i];
+                grassComponent.terrain = grassComponent.GetComponent<Terrain>();
+                grassComponent.terrainData = grassComponent.terrain.terrainData;
+                int[][] speciesCounts = bakedCounts[i];
+                for (int species = 0; species < speciesCounts.Length; ++species)
                 {
-                    Debug.LogWarning(selectObject.name + " doesn't have terrain component");
-                    continue;
-                }
-
-                GrassComponent grassComponent = selectObject.GetComponent<GrassComponent>();
-                if (grassComponent == null) { continue; }
-
-                for (int index = 0; index < grassComponent.grassSectors.Length; ++index)
-                {
-                    GrassSector grassSector = grassComponent.grassSectors[index];
+                    GrassSector grassSector = grassComponent.grassSectors[species];
+                    int[] sectionCounts = speciesCounts[species];
+                    for (int section = 0; section < sectionCounts.Length; ++section)
+                    {
+                        grassSector.sections[section].count = sectionCounts[section];
+                    }
                     grassSector.BuildPackedOffsets();
                     grassSector.BuildTightBound(grassComponent.boundSector);
-                    for (int i = 0; i < grassSector.sections.Length; ++i)
-                    {
-                        GrassSection grassSection = grassSector.sections[i];
-                        if (grassSection.count == 0)
-                        {
-                            grassSection.densityMap = null;
-                        }
-                    }
                 }
-                EditorUtility.SetDirty(selectObject);
+                grassComponent.assetKey = grassRequests[i].assetKey;
+                EditorUtility.SetDirty(grassComponent);
             }
         }
         #endregion

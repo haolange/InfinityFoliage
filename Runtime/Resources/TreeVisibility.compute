@@ -1,5 +1,6 @@
 #pragma kernel BuildHzb
 #pragma kernel BuildHzbMip
+#pragma kernel CullCells
 #pragma kernel ExpandMaskToIndex
 #pragma kernel ExpandRunToIndex
 #pragma kernel FilterIndexHzb
@@ -33,8 +34,9 @@ StructuredBuffer<GpuChunk> _Chunks;
 StructuredBuffer<GpuRun> _Runs;
 StructuredBuffer<uint> _SrcIndices;
 StructuredBuffer<GpuAabb> _Bounds;
+StructuredBuffer<GpuAabb> _CellBounds;
 StructuredBuffer<int> _InstanceCell;
-StructuredBuffer<uint> _CellVisible;
+RWStructuredBuffer<uint> _CellVisible;
 StructuredBuffer<float4> _Planes;
 RWStructuredBuffer<GpuChunk> _RwChunks;
 RWStructuredBuffer<uint> _Indices;
@@ -49,20 +51,27 @@ float4 _HzbSize;
 float4x4 _ViewProj;
 float3 _ViewOrigin;
 float _MaxDistance;
+float _NearClip;
 int _ChunkCount;
 int _RunCount;
 int _SrcCount;
 int _EnableHzb;
 int _HzbWidth;
 int _HzbHeight;
+int _CellCount;
 
-bool MaskBit(GpuChunk chunk, uint bit)
+uint MaskBit(GpuChunk chunk, uint bit)
 {
+    uint result = 0u;
     if (bit < 32)
     {
-        return (chunk.maskLo & (1u << bit)) != 0;
+        result = (chunk.maskLo >> bit) & 1u;
     }
-    return (chunk.maskHi & (1u << (bit - 32))) != 0;
+    else
+    {
+        result = (chunk.maskHi >> (bit - 32u)) & 1u;
+    }
+    return result;
 }
 
 float LinearEye(float raw)
@@ -70,81 +79,84 @@ float LinearEye(float raw)
     return 1.0 / (_ZBufferParams.z * raw + _ZBufferParams.w);
 }
 
-bool FrustumDistance(GpuAabb box)
+uint FrustumDistance(GpuAabb box)
 {
+    uint visible = 1u;
     [unroll]
     for (int i = 0; i < 6; ++i)
     {
         float4 plane = _Planes[i];
         float dist = dot(plane.xyz, box.center) + plane.w;
         float radius = dot(abs(plane.xyz), box.extents);
-        if (dist + radius < 0)
-        {
-            return false;
-        }
+        visible &= (dist + radius >= 0.0) ? 1u : 0u;
     }
     float3 delta = box.center - _ViewOrigin;
-    return dot(delta, delta) <= (_MaxDistance * _MaxDistance);
+    visible &= (dot(delta, delta) <= (_MaxDistance * _MaxDistance)) ? 1u : 0u;
+    return visible;
 }
 
-bool HzbOccluded(GpuAabb box)
+uint HzbOccluded(GpuAabb box)
 {
-    if (_EnableHzb == 0)
+    uint occluded = 0u;
+    if (_EnableHzb != 0 && _HzbWidth > 0 && _HzbHeight > 0)
     {
-        return false;
-    }
+        float3 ext = box.extents;
+        float3 center = box.center;
+        float3 nearCorner = center - ext;
+        float3 farCorner = center + ext;
+        uint valid = (all(_ViewOrigin >= nearCorner) && all(_ViewOrigin <= farCorner)) ? 0u : 1u;
+        float2 screenMin = float2(10.0, 10.0);
+        float2 screenMax = float2(-10.0, -10.0);
+        float closest = 1e10;
 
-    float3 ext = box.extents;
-    float3 center = box.center;
-    float2 screenMin = float2(10, 10);
-    float2 screenMax = float2(-10, -10);
-    float closest = 1e10;
-    int behind = 0;
-
-    [unroll]
-    for (int i = 0; i < 8; ++i)
-    {
-        float3 corner = center + ext * float3((i & 1) ? 1.0 : -1.0, (i & 2) ? 1.0 : -1.0, (i & 4) ? 1.0 : -1.0);
-        float4 clip = mul(_ViewProj, float4(corner, 1.0));
-        if (clip.w <= 0.0001)
+        [unroll]
+        for (uint i = 0u; i < 8u; ++i)
         {
-            behind += 1;
-            continue;
+            float3 corner = center + ext * float3((i & 1u) != 0u ? 1.0 : -1.0, (i & 2u) != 0u ? 1.0 : -1.0, (i & 4u) != 0u ? 1.0 : -1.0);
+            float4 clip = mul(_ViewProj, float4(corner, 1.0));
+            uint cornerValid = (clip.w > _NearClip + 0.001 && all(abs(clip) < 1e9)) ? 1u : 0u;
+            valid &= cornerValid;
+            if (cornerValid != 0u)
+            {
+                float2 uv = (clip.xy / clip.w) * 0.5 + 0.5;
+                screenMin = min(screenMin, uv);
+                screenMax = max(screenMax, uv);
+                closest = min(closest, clip.w);
+            }
         }
-        float2 uv = (clip.xy / clip.w) * 0.5 + 0.5;
-        screenMin = min(screenMin, uv);
-        screenMax = max(screenMax, uv);
-        closest = min(closest, clip.w);
+
+        valid &= (screenMax.x >= 0.0 && screenMax.y >= 0.0 && screenMin.x <= 1.0 && screenMin.y <= 1.0) ? 1u : 0u;
+        if (valid != 0u)
+        {
+            screenMin = saturate(screenMin);
+            screenMax = saturate(screenMax);
+
+            int mip = 0;
+            float2 rect = max(screenMax - screenMin, float2(1.0 / _HzbWidth, 1.0 / _HzbHeight));
+            if (max(rect.x * _HzbWidth, rect.y * _HzbHeight) > 2.0) { mip = 1; }
+
+            int w = max(_HzbWidth >> mip, 1);
+            int h = max(_HzbHeight >> mip, 1);
+            int offset = mip == 0 ? 0 : (_HzbWidth * _HzbHeight);
+            int x0 = clamp((int)floor(screenMin.x * w) - 1, 0, w - 1);
+            int y0 = clamp((int)floor(screenMin.y * h) - 1, 0, h - 1);
+            int x1 = clamp((int)ceil(screenMax.x * w), 0, w - 1);
+            int y1 = clamp((int)ceil(screenMax.y * h), 0, h - 1);
+
+            float farthest = 0.0;
+            [loop]
+            for (int y = y0; y <= y1; ++y)
+            {
+                [loop]
+                for (int x = x0; x <= x1; ++x)
+                {
+                    farthest = max(farthest, _Hzb[offset + y * w + x]);
+                }
+            }
+            occluded = (farthest > 0.0 && farthest + 0.08 < closest) ? 1u : 0u;
+        }
     }
-
-    if (behind == 8)
-    {
-        return true;
-    }
-
-    screenMin = saturate(screenMin);
-    screenMax = saturate(screenMax);
-
-    int mip = 0;
-    float2 rect = max(screenMax - screenMin, float2(1.0 / _HzbWidth, 1.0 / _HzbHeight));
-    if (max(rect.x * _HzbWidth, rect.y * _HzbHeight) > 2.0)
-    {
-        mip = 1;
-    }
-
-    int w = max(_HzbWidth >> mip, 1);
-    int h = max(_HzbHeight >> mip, 1);
-    int offset = mip == 0 ? 0 : (_HzbWidth * _HzbHeight);
-    int x0 = clamp((int)(screenMin.x * w), 0, w - 1);
-    int y0 = clamp((int)(screenMin.y * h), 0, h - 1);
-    int x1 = clamp((int)(screenMax.x * w), 0, w - 1);
-    int y1 = clamp((int)(screenMax.y * h), 0, h - 1);
-
-    float occ = _Hzb[offset + y0 * w + x0];
-    occ = min(occ, _Hzb[offset + y0 * w + x1]);
-    occ = min(occ, _Hzb[offset + y1 * w + x0]);
-    occ = min(occ, _Hzb[offset + y1 * w + x1]);
-    return (occ + 0.08) < closest;
+    return occluded;
 }
 
 void AppendIndex(uint instanceId)
@@ -162,45 +174,48 @@ void BuildHzb(uint3 id : SV_DispatchThreadID)
         return;
     }
 
-    int depthWidth = (int)_HzbSize.z;
-    int depthHeight = (int)_HzbSize.w;
-    int x0 = (int)(id.x * depthWidth / _HzbWidth);
-    int y0 = (int)(id.y * depthHeight / _HzbHeight);
-    int x1 = (int)((id.x + 1) * depthWidth / _HzbWidth);
-    int y1 = (int)((id.y + 1) * depthHeight / _HzbHeight);
-    float closest = 1e10;
+    uint depthWidth = (uint)_HzbSize.z;
+    uint depthHeight = (uint)_HzbSize.w;
+    uint x0 = id.x * depthWidth / (uint)_HzbWidth;
+    uint y0 = id.y * depthHeight / (uint)_HzbHeight;
+    uint x1 = min(((id.x + 1u) * depthWidth + (uint)_HzbWidth - 1u) / (uint)_HzbWidth, depthWidth);
+    uint y1 = min(((id.y + 1u) * depthHeight + (uint)_HzbHeight - 1u) / (uint)_HzbHeight, depthHeight);
+    float farthest = 0.0;
 
     [loop]
-    for (int y = y0; y < y1; y += 2)
+    for (uint y = y0; y < y1; ++y)
     {
         [loop]
-        for (int x = x0; x < x1; x += 2)
+        for (uint x = x0; x < x1; ++x)
         {
-            float raw = _CameraDepthTexture.Load(int3(x, y, 0)).r;
-            closest = min(closest, LinearEye(raw));
+            float raw = _CameraDepthTexture.Load(int3((int)x, (int)y, 0)).r;
+            float eye = (raw == raw && raw >= 0.0 && raw <= 1.0) ? LinearEye(raw) : 1e10;
+            farthest = max(farthest, eye > 0.0 && eye < 1e9 ? eye : 1e10);
         }
     }
 
-    _Hzb[id.y * _HzbWidth + id.x] = closest;
+    _Hzb[id.y * _HzbWidth + id.x] = farthest;
 }
 
 [numthreads(8, 8, 1)]
 void BuildHzbMip(uint3 id : SV_DispatchThreadID)
 {
-    int w = max(_HzbWidth / 2, 1);
-    int h = max(_HzbHeight / 2, 1);
-    if (id.x >= (uint)w || id.y >= (uint)h)
+    uint w = max((uint)_HzbWidth >> 1u, 1u);
+    uint h = max((uint)_HzbHeight >> 1u, 1u);
+    if (id.x >= w || id.y >= h)
     {
         return;
     }
 
-    int x = id.x * 2;
-    int y = id.y * 2;
-    float occ = _Hzb[y * _HzbWidth + x];
-    occ = min(occ, _Hzb[y * _HzbWidth + min(x + 1, _HzbWidth - 1)]);
-    occ = min(occ, _Hzb[min(y + 1, _HzbHeight - 1) * _HzbWidth + x]);
-    occ = min(occ, _Hzb[min(y + 1, _HzbHeight - 1) * _HzbWidth + min(x + 1, _HzbWidth - 1)]);
-    _Hzb[(_HzbWidth * _HzbHeight) + id.y * w + id.x] = occ;
+    uint x = id.x << 1u;
+    uint y = id.y << 1u;
+    uint srcWidth = (uint)_HzbWidth;
+    uint srcHeight = (uint)_HzbHeight;
+    float farthest = _Hzb[y * srcWidth + x];
+    farthest = max(farthest, _Hzb[y * srcWidth + min(x + 1u, srcWidth - 1u)]);
+    farthest = max(farthest, _Hzb[min(y + 1u, srcHeight - 1u) * srcWidth + x]);
+    farthest = max(farthest, _Hzb[min(y + 1u, srcHeight - 1u) * srcWidth + min(x + 1u, srcWidth - 1u)]);
+    _Hzb[(srcWidth * srcHeight) + id.y * w + id.x] = farthest;
 }
 
 [numthreads(64, 1, 1)]
@@ -217,13 +232,13 @@ void ExpandMaskToIndex(uint3 groupId : SV_GroupID, uint threadIndex : SV_GroupIn
     {
         return;
     }
-    if (!MaskBit(packed, threadIndex))
+    if (MaskBit(packed, threadIndex) == 0u)
     {
         return;
     }
 
     uint instanceId = (uint)(packed.candidateBase + threadIndex);
-    if (HzbOccluded(_Bounds[instanceId]))
+    if (_CellVisible[_InstanceCell[instanceId]] == 0u || HzbOccluded(_Bounds[instanceId]) != 0u)
     {
         return;
     }
@@ -244,7 +259,7 @@ void ExpandRunToIndex(uint3 groupId : SV_GroupID, uint threadIndex : SV_GroupInd
     for (uint i = threadIndex; i < (uint)packed.count; i += 64)
     {
         uint instanceId = (uint)(packed.start + i);
-        if (HzbOccluded(_Bounds[instanceId]))
+        if (_CellVisible[_InstanceCell[instanceId]] == 0u || HzbOccluded(_Bounds[instanceId]) != 0u)
         {
             continue;
         }
@@ -261,7 +276,7 @@ void FilterIndexHzb(uint3 id : SV_DispatchThreadID)
     }
 
     uint instanceId = _SrcIndices[id.x];
-    if (HzbOccluded(_Bounds[instanceId]))
+    if (_CellVisible[_InstanceCell[instanceId]] == 0u || HzbOccluded(_Bounds[instanceId]) != 0u)
     {
         return;
     }
@@ -270,6 +285,23 @@ void FilterIndexHzb(uint3 id : SV_DispatchThreadID)
 
 groupshared uint gsMaskLo;
 groupshared uint gsMaskHi;
+
+[numthreads(64, 1, 1)]
+void CullCells(uint3 id : SV_DispatchThreadID)
+{
+    if (id.x >= (uint)_CellCount)
+    {
+        return;
+    }
+
+    uint visible = _CellVisible[id.x];
+    if (visible != 0u)
+    {
+        GpuAabb box = _CellBounds[id.x];
+        visible = HzbOccluded(box) == 0u ? 1u : 0u;
+    }
+    _CellVisible[id.x] = visible;
+}
 
 [numthreads(64, 1, 1)]
 void CullInstances(uint3 groupId : SV_GroupID, uint threadIndex : SV_GroupIndex)
@@ -288,13 +320,13 @@ void CullInstances(uint3 groupId : SV_GroupID, uint threadIndex : SV_GroupIndex)
     }
     GroupMemoryBarrierWithGroupSync();
 
-    if (threadIndex < (uint)packed.count && MaskBit(packed, threadIndex))
+    if (threadIndex < (uint)packed.count && MaskBit(packed, threadIndex) != 0u)
     {
         uint instanceId = (uint)(packed.candidateBase + threadIndex);
         int cell = _InstanceCell[instanceId];
         uint cellVisible = _CellVisible[cell];
         GpuAabb box = _Bounds[instanceId];
-        bool keep = cellVisible != 0 && FrustumDistance(box) && !HzbOccluded(box);
+        bool keep = cellVisible != 0u && FrustumDistance(box) != 0u;
         if (!keep)
         {
             if (threadIndex < 32)

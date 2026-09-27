@@ -1,5 +1,7 @@
 using System;
 using System.Runtime.CompilerServices;
+using Unity.Collections;
+using Unity.Mathematics;
 
 namespace Landscape.FoliagePipeline
 {
@@ -39,7 +41,6 @@ namespace Landscape.FoliagePipeline
 
     public static class FoliageLogic
     {
-        public const int GrassSetupBatch = 16;
         public const int VisibilityChunkWidth = 64;
         public const int VisibilityIndexBytes = 4;
         public const int VisibilityRunBytes = 8;
@@ -51,6 +52,26 @@ namespace Landscape.FoliagePipeline
         public static int CellIndex(int x, int y, int numSection)
         {
             return (x * numSection) + y;
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static int ScaleGrassCount(in byte density, in float scale, in int x, in int y, in int grassIndex, in int layer)
+        {
+            int scaleQ = scale <= 0f ? 0 : scale >= 1f ? 65536 : (int)(scale * 65536f + 0.5f);
+            return ScaleGrassCount(density, scaleQ, x, y, grassIndex, layer);
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static int ScaleGrassCount(in byte density, in int scaleQ, in int x, in int y, in int grassIndex, in int layer)
+        {
+            if (scaleQ <= 0 || density == 0) { return 0; }
+            if (scaleQ >= 65536) { return density; }
+            int scaled = density * scaleQ;
+            int whole = scaled >> 16;
+            uint hash = (uint)x * 73856093u ^ (uint)y * 19349663u ^ (uint)grassIndex * 83492791u ^ (uint)layer * 2654435761u;
+            hash ^= hash >> 16;
+            hash *= 2246822519u;
+            return whole + ((hash & 0xFFFFu) < (uint)(scaled & 0xFFFF) ? 1 : 0);
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -75,129 +96,6 @@ namespace Landscape.FoliagePipeline
                 if (count < 0) { count = 0; }
                 offsets[i] = running;
                 running += count;
-            }
-        }
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static int PickUploadCells(byte[] uploaded, byte[] visible, int[] counts, float[] pivotX, float[] pivotZ, float viewX, float viewZ, int budget, int[] picked)
-        {
-            int pickedCount = PickNearestUploadCells(uploaded, visible, counts, pivotX, pivotZ, viewX, viewZ, budget, picked, 0, 1);
-            if (pickedCount < budget)
-            {
-                pickedCount = PickNearestUploadCells(uploaded, visible, counts, pivotX, pivotZ, viewX, viewZ, budget, picked, pickedCount, 0);
-            }
-            return pickedCount;
-        }
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        static int PickNearestUploadCells(byte[] uploaded, byte[] visible, int[] counts, float[] pivotX, float[] pivotZ, float viewX, float viewZ, int budget, int[] picked, int pickedCount, byte requireVisible)
-        {
-            int n = counts.Length;
-            while (pickedCount < budget)
-            {
-                int best = -1;
-                float bestD = float.MaxValue;
-                for (int i = 0; i < n; ++i)
-                {
-                    if (uploaded[i] != 0 || counts[i] <= 0) { continue; }
-                    if (requireVisible != 0 && visible[i] == 0) { continue; }
-                    if (requireVisible == 0 && visible[i] != 0) { continue; }
-                    if (ContainsIndex(picked, pickedCount, i)) { continue; }
-                    float dx = pivotX[i] - viewX;
-                    float dz = pivotZ[i] - viewZ;
-                    float d = (dx * dx) + (dz * dz);
-                    if (d < bestD)
-                    {
-                        bestD = d;
-                        best = i;
-                    }
-                }
-                if (best < 0) { break; }
-                picked[pickedCount] = best;
-                ++pickedCount;
-            }
-            return pickedCount;
-        }
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        static bool ContainsIndex(int[] picked, int pickedCount, int index)
-        {
-            for (int i = 0; i < pickedCount; ++i)
-            {
-                if (picked[i] == index) { return true; }
-            }
-            return false;
-        }
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static int MergeUploadRuns(int[] picked, int pickedCount, int[] offsets, int[] counts, DrawRun[] runs)
-        {
-            if (pickedCount <= 0) { return 0; }
-            SortInts(picked, pickedCount);
-
-            int runCount = 0;
-            int first = picked[0];
-            int last = picked[0];
-            for (int i = 1; i < pickedCount; ++i)
-            {
-                int cell = picked[i];
-                if (CanBridgeUpload(last, cell, counts))
-                {
-                    last = cell;
-                    continue;
-                }
-
-                if (EmitUploadRun(offsets, counts, first, last, runs, runCount))
-                {
-                    ++runCount;
-                }
-                first = cell;
-                last = cell;
-            }
-
-            if (EmitUploadRun(offsets, counts, first, last, runs, runCount))
-            {
-                ++runCount;
-            }
-            return runCount;
-        }
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        static bool CanBridgeUpload(int from, int to, int[] counts)
-        {
-            if (to <= from) { return false; }
-            for (int i = from + 1; i < to; ++i)
-            {
-                if (counts[i] > 0) { return false; }
-            }
-            return true;
-        }
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        static bool EmitUploadRun(int[] offsets, int[] counts, int first, int last, DrawRun[] runs, int runCount)
-        {
-            int destStart;
-            int destCount;
-            PackedUploadRange(offsets[first], offsets[last], counts[last], out destStart, out destCount);
-            if (destCount <= 0) { return false; }
-            runs[runCount].start = destStart;
-            runs[runCount].count = destCount;
-            return true;
-        }
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        static void SortInts(int[] values, int length)
-        {
-            for (int i = 1; i < length; ++i)
-            {
-                int key = values[i];
-                int j = i - 1;
-                while (j >= 0 && values[j] > key)
-                {
-                    values[j + 1] = values[j];
-                    --j;
-                }
-                values[j + 1] = key;
             }
         }
 
@@ -232,25 +130,6 @@ namespace Landscape.FoliagePipeline
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static int PackedDestOffset(int[] offsets, int sectionIndex)
-        {
-            return offsets[sectionIndex];
-        }
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static void PackedUploadRange(int firstOffset, int lastOffset, int lastCount, out int destStart, out int destCount)
-        {
-            destStart = firstOffset;
-            destCount = (lastOffset + lastCount) - destStart;
-        }
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static void PackedUploadRange(int[] offsets, int[] counts, int begin, int end, out int destStart, out int destCount)
-        {
-            PackedUploadRange(offsets[begin], offsets[end - 1], counts[end - 1], out destStart, out destCount);
-        }
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static bool IsRunStart(byte visible, int count)
         {
             return visible != 0 && count > 0;
@@ -275,15 +154,53 @@ namespace Landscape.FoliagePipeline
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static int ComputeLodIndex(float screenRadiusSqr, float[] lodScreenSizes)
+        public static int ComputeLodIndex(float screenRadiusSqr, NativeArray<float> lodScreenSizes)
         {
             int last = lodScreenSizes.Length - 1;
-            for (int lodIndex = last; lodIndex >= 0; --lodIndex)
+            for (int lodIndex = last; lodIndex >= 1; --lodIndex)
             {
                 float threshold = lodScreenSizes[lodIndex] * 0.5f;
                 if ((threshold * threshold) >= screenRadiusSqr) { return lodIndex; }
             }
             return 0;
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static int ComputeLodIndexHysteresis(float screenRadiusSqr, NativeArray<float> lodScreenSizes, int previousLod, float ratio)
+        {
+            int raw = ComputeLodIndex(screenRadiusSqr, lodScreenSizes);
+            if (previousLod < 0 || previousLod >= lodScreenSizes.Length) { return raw; }
+
+            ratio = math.clamp(ratio, 0f, 0.49f);
+            if (raw > previousLod)
+            {
+                for (int lod = previousLod + 1; lod <= raw; ++lod)
+                {
+                    float edge = lodScreenSizes[lod] * 0.5f * (1f - ratio);
+                    if (screenRadiusSqr > edge * edge) { return lod - 1; }
+                }
+            }
+            else
+            {
+                for (int lod = previousLod; lod > raw; --lod)
+                {
+                    float edge = lodScreenSizes[lod] * 0.5f * (1f + ratio);
+                    if (screenRadiusSqr < edge * edge) { return lod; }
+                }
+            }
+            return raw;
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static bool ViewDiscontinuous(float3 previousOrigin, float3 origin, float4x4 previousProj, float4x4 matrixProj, float cullDistance)
+        {
+            float teleport = math.clamp(cullDistance * 0.25f, 1f, 8f);
+            if (math.distancesq(previousOrigin, origin) > teleport * teleport) { return true; }
+            float4x4 delta = previousProj - matrixProj;
+            return math.cmax(math.abs(delta.c0)) > 0.1f ||
+                   math.cmax(math.abs(delta.c1)) > 0.1f ||
+                   math.cmax(math.abs(delta.c2)) > 0.1f ||
+                   math.cmax(math.abs(delta.c3)) > 0.1f;
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]

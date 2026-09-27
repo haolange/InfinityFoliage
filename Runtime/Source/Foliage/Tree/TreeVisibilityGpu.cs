@@ -2,6 +2,7 @@ using System.Runtime.InteropServices;
 using Unity.Collections;
 using Unity.Mathematics;
 using UnityEngine;
+using UnityEngine.Rendering;
 
 namespace Landscape.FoliagePipeline
 {
@@ -35,6 +36,7 @@ namespace Landscape.FoliagePipeline
         private ComputeShader m_Shader;
         private int m_BuildHzb;
         private int m_BuildHzbMip;
+        private int m_CullCells;
         private int m_ExpandMask;
         private int m_ExpandRun;
         private int m_FilterIndex;
@@ -48,10 +50,15 @@ namespace Landscape.FoliagePipeline
         private ComputeBuffer m_Bounds;
         private ComputeBuffer m_InstanceCell;
         private ComputeBuffer m_CellVisible;
+        private ComputeBuffer m_CellBounds;
         private ComputeBuffer m_Planes;
         private GpuVisibilityChunk[] m_ChunkScratch;
+        private uint[] m_CellScratch;
+        private CommandBuffer m_CmdBuffer;
         private bool m_Ready;
         private bool m_HasHzb;
+        private Matrix4x4 m_DepthViewProj;
+        private static bool s_WarnedUnsupported;
 
         public bool IsReady
         {
@@ -72,13 +79,37 @@ namespace Landscape.FoliagePipeline
                 return;
             }
 
+            if (!m_Shader.HasKernel("BuildHzb") || !m_Shader.HasKernel("BuildHzbMip") ||
+                !m_Shader.HasKernel("CullCells") || !m_Shader.HasKernel("CullInstances") ||
+                !m_Shader.HasKernel("ExpandMaskToIndex") || !m_Shader.HasKernel("ExpandRunToIndex") ||
+                !m_Shader.HasKernel("FilterIndexHzb") || !m_Shader.HasKernel("CopyArgsCount"))
+            {
+                m_Ready = false;
+                return;
+            }
+
             m_BuildHzb = m_Shader.FindKernel("BuildHzb");
             m_BuildHzbMip = m_Shader.FindKernel("BuildHzbMip");
+            m_CullCells = m_Shader.FindKernel("CullCells");
             m_ExpandMask = m_Shader.FindKernel("ExpandMaskToIndex");
             m_ExpandRun = m_Shader.FindKernel("ExpandRunToIndex");
             m_FilterIndex = m_Shader.FindKernel("FilterIndexHzb");
             m_CullInstances = m_Shader.FindKernel("CullInstances");
             m_CopyArgs = m_Shader.FindKernel("CopyArgsCount");
+            if (!SystemInfo.supportsComputeShaders ||
+                !m_Shader.IsSupported(m_BuildHzb) || !m_Shader.IsSupported(m_BuildHzbMip) ||
+                !m_Shader.IsSupported(m_CullCells) || !m_Shader.IsSupported(m_CullInstances) ||
+                !m_Shader.IsSupported(m_ExpandMask) || !m_Shader.IsSupported(m_ExpandRun) ||
+                !m_Shader.IsSupported(m_FilterIndex) || !m_Shader.IsSupported(m_CopyArgs))
+            {
+                if (!s_WarnedUnsupported)
+                {
+                    Debug.LogWarning("TreeVisibility compute is unavailable; tree visibility is using the CPU path.");
+                    s_WarnedUnsupported = true;
+                }
+                m_Ready = false;
+                return;
+            }
 
             int n = math.max(instanceCount, 1);
             int chunks = math.max(chunkCount, 1);
@@ -91,8 +122,10 @@ namespace Landscape.FoliagePipeline
             m_Bounds = new ComputeBuffer(n, Marshal.SizeOf(typeof(GpuAabb)));
             m_InstanceCell = new ComputeBuffer(n, sizeof(int));
             m_CellVisible = new ComputeBuffer(cells, sizeof(uint));
+            m_CellBounds = new ComputeBuffer(cells, Marshal.SizeOf(typeof(GpuAabb)));
             m_Planes = new ComputeBuffer(6, sizeof(float) * 4);
             m_ChunkScratch = new GpuVisibilityChunk[chunks];
+            m_CellScratch = new uint[cells];
             m_Ready = true;
             m_HasHzb = false;
         }
@@ -117,27 +150,42 @@ namespace Landscape.FoliagePipeline
             m_InstanceCell.SetData(cells);
         }
 
-        public void BuildHzb(Camera camera)
+        public void UploadCells(NativeArray<BoundSection> cells)
         {
+            if (!m_Ready || cells.Length == 0) { return; }
+            GpuAabb[] packed = new GpuAabb[cells.Length];
+            for (int i = 0; i < cells.Length; ++i)
+            {
+                Aabb box = cells[i].boundBox;
+                packed[i].centerX = box.center.x;
+                packed[i].centerY = box.center.y;
+                packed[i].centerZ = box.center.z;
+                packed[i].extentsX = box.extents.x;
+                packed[i].extentsY = box.extents.y;
+                packed[i].extentsZ = box.extents.z;
+            }
+            m_CellBounds.SetData(packed);
+        }
+
+        public void BuildHzb(CommandBuffer cmdBuffer, Camera camera, RTHandle depth, in Vector4 zParams, in Matrix4x4 depthViewProj)
+        {
+            m_CmdBuffer = cmdBuffer;
             m_HasHzb = false;
-            if (!m_Ready || camera == null) { return; }
+            m_DepthViewProj = depthViewProj;
+            if (!m_Ready || cmdBuffer == null || camera == null || camera.orthographic || depth == null || depth.rt == null || depth.rt.antiAliasing > 1 || zParams == Vector4.zero) { return; }
 
-            Texture depth = Shader.GetGlobalTexture("_CameraDepthTexture");
-            Vector4 zParams = Shader.GetGlobalVector("_ZBufferParams");
-            if (depth == null || zParams == Vector4.zero) { return; }
-
-            Matrix4x4 viewProj = GL.GetGPUProjectionMatrix(camera.projectionMatrix, false) * camera.worldToCameraMatrix;
-            m_Shader.SetInt("_EnableHzb", 1);
-            m_Shader.SetInt("_HzbWidth", HzbWidth);
-            m_Shader.SetInt("_HzbHeight", HzbHeight);
-            m_Shader.SetVector("_ZBufferParams", zParams);
-            m_Shader.SetVector("_HzbSize", new Vector4(HzbWidth, HzbHeight, depth.width, depth.height));
-            m_Shader.SetMatrix("_ViewProj", viewProj);
-            m_Shader.SetTexture(m_BuildHzb, "_CameraDepthTexture", depth);
-            m_Shader.SetBuffer(m_BuildHzb, "_Hzb", m_Hzb);
-            m_Shader.Dispatch(m_BuildHzb, (HzbWidth + 7) / 8, (HzbHeight + 7) / 8, 1);
-            m_Shader.SetBuffer(m_BuildHzbMip, "_Hzb", m_Hzb);
-            m_Shader.Dispatch(m_BuildHzbMip, ((HzbWidth / 2) + 7) / 8, ((HzbHeight / 2) + 7) / 8, 1);
+            cmdBuffer.SetComputeIntParam(m_Shader, "_EnableHzb", 1);
+            cmdBuffer.SetComputeIntParam(m_Shader, "_HzbWidth", HzbWidth);
+            cmdBuffer.SetComputeIntParam(m_Shader, "_HzbHeight", HzbHeight);
+            cmdBuffer.SetComputeFloatParam(m_Shader, "_NearClip", camera.nearClipPlane);
+            cmdBuffer.SetComputeVectorParam(m_Shader, "_ZBufferParams", zParams);
+            cmdBuffer.SetComputeVectorParam(m_Shader, "_HzbSize", new Vector4(HzbWidth, HzbHeight, depth.rt.width, depth.rt.height));
+            cmdBuffer.SetComputeMatrixParam(m_Shader, "_ViewProj", m_DepthViewProj);
+            cmdBuffer.SetComputeTextureParam(m_Shader, m_BuildHzb, "_CameraDepthTexture", depth);
+            cmdBuffer.SetComputeBufferParam(m_Shader, m_BuildHzb, "_Hzb", m_Hzb);
+            cmdBuffer.DispatchCompute(m_Shader, m_BuildHzb, (HzbWidth + 7) / 8, (HzbHeight + 7) / 8, 1);
+            cmdBuffer.SetComputeBufferParam(m_Shader, m_BuildHzbMip, "_Hzb", m_Hzb);
+            cmdBuffer.DispatchCompute(m_Shader, m_BuildHzbMip, ((HzbWidth / 2) + 7) / 8, ((HzbHeight / 2) + 7) / 8, 1);
             m_HasHzb = true;
         }
 
@@ -146,14 +194,14 @@ namespace Landscape.FoliagePipeline
             if (!m_Ready) { return; }
             int enable = m_HasHzb ? 1 : 0;
             float3 origin = camera != null ? (float3)camera.transform.position : float3.zero;
-            m_Shader.SetInt("_EnableHzb", enable);
-            m_Shader.SetInt("_HzbWidth", HzbWidth);
-            m_Shader.SetInt("_HzbHeight", HzbHeight);
-            m_Shader.SetFloat("_MaxDistance", maxDistance);
-            m_Shader.SetVector("_ViewOrigin", new Vector4(origin.x, origin.y, origin.z, 0));
+            m_CmdBuffer.SetComputeIntParam(m_Shader, "_EnableHzb", enable);
+            m_CmdBuffer.SetComputeIntParam(m_Shader, "_HzbWidth", HzbWidth);
+            m_CmdBuffer.SetComputeIntParam(m_Shader, "_HzbHeight", HzbHeight);
+            m_CmdBuffer.SetComputeFloatParam(m_Shader, "_MaxDistance", maxDistance);
+            m_CmdBuffer.SetComputeVectorParam(m_Shader, "_ViewOrigin", new Vector4(origin.x, origin.y, origin.z, 0));
             if (camera != null)
             {
-                m_Shader.SetMatrix("_ViewProj", GL.GetGPUProjectionMatrix(camera.projectionMatrix, false) * camera.worldToCameraMatrix);
+                m_CmdBuffer.SetComputeMatrixParam(m_Shader, "_ViewProj", m_DepthViewProj);
             }
             BindHzb(m_ExpandMask, indexBuffer, argsBuffer);
             BindHzb(m_ExpandRun, indexBuffer, argsBuffer);
@@ -168,76 +216,71 @@ namespace Landscape.FoliagePipeline
             if (useCulled == 0)
             {
                 PackChunks(masks, chunkCount, instanceCount);
-                m_Chunks.SetData(m_ChunkScratch, 0, 0, chunkCount);
+                m_CmdBuffer.SetBufferData(m_Chunks, m_ChunkScratch, 0, 0, chunkCount);
             }
             else
             {
                 source = m_RwChunks;
             }
-            m_Shader.SetInt("_ChunkCount", chunkCount);
-            m_Shader.SetBuffer(m_ExpandMask, "_Chunks", source);
-            m_Shader.SetBuffer(m_ExpandMask, "_Bounds", m_Bounds);
-            m_Shader.SetBuffer(m_ExpandMask, "_Indices", indexBuffer);
-            m_Shader.SetBuffer(m_ExpandMask, "_Args", argsBuffer);
-            m_Shader.Dispatch(m_ExpandMask, math.max(chunkCount, 1), 1, 1);
+            m_CmdBuffer.SetComputeIntParam(m_Shader, "_ChunkCount", chunkCount);
+            m_CmdBuffer.SetComputeBufferParam(m_Shader, m_ExpandMask, "_Chunks", source);
+            m_CmdBuffer.DispatchCompute(m_Shader, m_ExpandMask, math.max(chunkCount, 1), 1, 1);
         }
 
         public void ExpandRun(VisibilityRun[] runs, int runCount, ComputeBuffer indexBuffer, ComputeBuffer argsBuffer)
         {
             if (!m_Ready || runCount <= 0) { return; }
-            m_Runs.SetData(runs, 0, 0, runCount);
-            m_Shader.SetInt("_RunCount", runCount);
-            m_Shader.SetBuffer(m_ExpandRun, "_Runs", m_Runs);
-            m_Shader.SetBuffer(m_ExpandRun, "_Bounds", m_Bounds);
-            m_Shader.SetBuffer(m_ExpandRun, "_Indices", indexBuffer);
-            m_Shader.SetBuffer(m_ExpandRun, "_Args", argsBuffer);
-            m_Shader.Dispatch(m_ExpandRun, runCount, 1, 1);
+            m_CmdBuffer.SetBufferData(m_Runs, runs, 0, 0, runCount);
+            m_CmdBuffer.SetComputeIntParam(m_Shader, "_RunCount", runCount);
+            m_CmdBuffer.SetComputeBufferParam(m_Shader, m_ExpandRun, "_Runs", m_Runs);
+            m_CmdBuffer.DispatchCompute(m_Shader, m_ExpandRun, runCount, 1, 1);
         }
 
         public void FilterIndex(int[] indices, int count, ComputeBuffer indexBuffer, ComputeBuffer argsBuffer)
         {
             if (!m_Ready || count <= 0) { return; }
-            m_SrcIndex.SetData(indices, 0, 0, count);
-            m_Shader.SetInt("_SrcCount", count);
-            m_Shader.SetBuffer(m_FilterIndex, "_SrcIndices", m_SrcIndex);
-            m_Shader.SetBuffer(m_FilterIndex, "_Bounds", m_Bounds);
-            m_Shader.SetBuffer(m_FilterIndex, "_Indices", indexBuffer);
-            m_Shader.SetBuffer(m_FilterIndex, "_Args", argsBuffer);
-            m_Shader.Dispatch(m_FilterIndex, (count + 63) / 64, 1, 1);
+            m_CmdBuffer.SetBufferData(m_SrcIndex, indices, 0, 0, count);
+            m_CmdBuffer.SetComputeIntParam(m_Shader, "_SrcCount", count);
+            m_CmdBuffer.SetComputeBufferParam(m_Shader, m_FilterIndex, "_SrcIndices", m_SrcIndex);
+            m_CmdBuffer.DispatchCompute(m_Shader, m_FilterIndex, (count + 63) / 64, 1, 1);
         }
 
-        public void CullChunks(ulong[] masks, int chunkCount, int instanceCount, NativeArray<byte> cellVisible, Vector4[] planes, ComputeBuffer indexBuffer, ComputeBuffer argsBuffer)
+        public void CullCells(NativeArray<byte> cellVisible, Vector4[] planes, Camera camera, in float maxDistance)
+        {
+            if (!m_Ready || m_CmdBuffer == null || cellVisible.Length == 0) { return; }
+            for (int i = 0; i < cellVisible.Length; ++i) { m_CellScratch[i] = cellVisible[i]; }
+            m_CmdBuffer.SetBufferData(m_CellVisible, m_CellScratch, 0, 0, cellVisible.Length);
+            m_CmdBuffer.SetBufferData(m_Planes, planes);
+            float3 origin = camera != null ? (float3)camera.transform.position : float3.zero;
+            m_CmdBuffer.SetComputeIntParam(m_Shader, "_EnableHzb", m_HasHzb ? 1 : 0);
+            m_CmdBuffer.SetComputeIntParam(m_Shader, "_CellCount", cellVisible.Length);
+            m_CmdBuffer.SetComputeFloatParam(m_Shader, "_MaxDistance", maxDistance);
+            m_CmdBuffer.SetComputeVectorParam(m_Shader, "_ViewOrigin", new Vector4(origin.x, origin.y, origin.z, 0));
+            m_CmdBuffer.SetComputeBufferParam(m_Shader, m_CullCells, "_CellVisible", m_CellVisible);
+            m_CmdBuffer.SetComputeBufferParam(m_Shader, m_CullCells, "_CellBounds", m_CellBounds);
+            m_CmdBuffer.SetComputeBufferParam(m_Shader, m_CullCells, "_Planes", m_Planes);
+            m_CmdBuffer.SetComputeBufferParam(m_Shader, m_CullCells, "_Hzb", m_Hzb);
+            m_CmdBuffer.DispatchCompute(m_Shader, m_CullCells, (cellVisible.Length + 63) / 64, 1, 1);
+        }
+
+        public void CullChunks(ulong[] masks, int chunkCount, int instanceCount)
         {
             if (!m_Ready) { return; }
             PackChunks(masks, chunkCount, instanceCount);
-            m_RwChunks.SetData(m_ChunkScratch, 0, 0, chunkCount);
+            m_CmdBuffer.SetBufferData(m_RwChunks, m_ChunkScratch, 0, 0, chunkCount);
 
-            uint[] cells = new uint[cellVisible.Length];
-            for (int i = 0; i < cellVisible.Length; ++i)
-            {
-                cells[i] = cellVisible[i];
-            }
-            m_CellVisible.SetData(cells);
-            m_Planes.SetData(planes);
-
-            m_Shader.SetInt("_ChunkCount", chunkCount);
-            m_Shader.SetBuffer(m_CullInstances, "_RwChunks", m_RwChunks);
-            m_Shader.SetBuffer(m_CullInstances, "_Bounds", m_Bounds);
-            m_Shader.SetBuffer(m_CullInstances, "_InstanceCell", m_InstanceCell);
-            m_Shader.SetBuffer(m_CullInstances, "_CellVisible", m_CellVisible);
-            m_Shader.SetBuffer(m_CullInstances, "_Planes", m_Planes);
-            m_Shader.SetBuffer(m_CullInstances, "_Hzb", m_Hzb);
-            m_Shader.SetBuffer(m_CullInstances, "_Indices", indexBuffer);
-            m_Shader.SetBuffer(m_CullInstances, "_Args", argsBuffer);
-            m_Shader.Dispatch(m_CullInstances, math.max(chunkCount, 1), 1, 1);
+            m_CmdBuffer.SetComputeIntParam(m_Shader, "_ChunkCount", chunkCount);
+            m_CmdBuffer.SetComputeBufferParam(m_Shader, m_CullInstances, "_RwChunks", m_RwChunks);
+            m_CmdBuffer.SetComputeBufferParam(m_Shader, m_CullInstances, "_Planes", m_Planes);
+            m_CmdBuffer.DispatchCompute(m_Shader, m_CullInstances, math.max(chunkCount, 1), 1, 1);
         }
 
         public void CopyArgsInstanceCount(ComputeBuffer src, ComputeBuffer dst)
         {
             if (!m_Ready) { return; }
-            m_Shader.SetBuffer(m_CopyArgs, "_Args", src);
-            m_Shader.SetBuffer(m_CopyArgs, "_ArgsDst", dst);
-            m_Shader.Dispatch(m_CopyArgs, 1, 1, 1);
+            m_CmdBuffer.SetComputeBufferParam(m_Shader, m_CopyArgs, "_Args", src);
+            m_CmdBuffer.SetComputeBufferParam(m_Shader, m_CopyArgs, "_ArgsDst", dst);
+            m_CmdBuffer.DispatchCompute(m_Shader, m_CopyArgs, 1, 1, 1);
         }
 
         public void Release()
@@ -250,17 +293,21 @@ namespace Landscape.FoliagePipeline
             if (m_Bounds != null) { m_Bounds.Dispose(); }
             if (m_InstanceCell != null) { m_InstanceCell.Dispose(); }
             if (m_CellVisible != null) { m_CellVisible.Dispose(); }
+            if (m_CellBounds != null) { m_CellBounds.Dispose(); }
             if (m_Planes != null) { m_Planes.Dispose(); }
             m_Ready = false;
             m_HasHzb = false;
+            m_CmdBuffer = null;
         }
 
         void BindHzb(int kernel, ComputeBuffer indexBuffer, ComputeBuffer argsBuffer)
         {
-            m_Shader.SetBuffer(kernel, "_Hzb", m_Hzb);
-            m_Shader.SetBuffer(kernel, "_Bounds", m_Bounds);
-            m_Shader.SetBuffer(kernel, "_Indices", indexBuffer);
-            m_Shader.SetBuffer(kernel, "_Args", argsBuffer);
+            m_CmdBuffer.SetComputeBufferParam(m_Shader, kernel, "_Hzb", m_Hzb);
+            m_CmdBuffer.SetComputeBufferParam(m_Shader, kernel, "_Bounds", m_Bounds);
+            m_CmdBuffer.SetComputeBufferParam(m_Shader, kernel, "_InstanceCell", m_InstanceCell);
+            m_CmdBuffer.SetComputeBufferParam(m_Shader, kernel, "_CellVisible", m_CellVisible);
+            m_CmdBuffer.SetComputeBufferParam(m_Shader, kernel, "_Indices", indexBuffer);
+            m_CmdBuffer.SetComputeBufferParam(m_Shader, kernel, "_Args", argsBuffer);
         }
 
         void PackChunks(ulong[] masks, int chunkCount, int instanceCount)

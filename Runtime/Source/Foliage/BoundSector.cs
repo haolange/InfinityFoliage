@@ -13,7 +13,9 @@ namespace Landscape.FoliagePipeline
     {
         public Aabb bound;
         public BoundSection[] sections;
+        [NonSerialized]
         public NativeArray<byte> visibleMap;
+        [NonSerialized]
         public NativeArray<BoundSection> nativeSections;
 
         public BoundSector(in int numSection, in int sectorSize, in int sectionSize, in float3 sectorPivotPosition, in Aabb sectorBound, in bool needSections = true)

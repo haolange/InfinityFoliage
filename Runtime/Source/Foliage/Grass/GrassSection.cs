@@ -47,6 +47,5 @@ namespace Landscape.FoliagePipeline
         public int offset;
         [HideInInspector]
         public int count;
-        public byte[] densityMap;
     }
 }

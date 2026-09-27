@@ -49,7 +49,9 @@ namespace Landscape.FoliagePipeline
             this.materials = materials;
             this.lODInfos = lODInfos;
             this.numLOD = meshes.Length;
-            this.boundBox = meshes[0].bounds;
+            Bounds bound = meshes[0].bounds;
+            for (int i = 1; i < meshes.Length; ++i) { bound.Encapsulate(meshes[i].bounds); }
+            this.boundBox = bound;
             this.numSections = new int[meshes.Length];
 
             for (int i = 0; i < numSections.Length; ++i)
@@ -117,7 +119,7 @@ namespace Landscape.FoliagePipeline
                 Renderer renderer = lod.renderers[0];
                 MeshFilter meshFilter = renderer.gameObject.GetComponent<MeshFilter>();
 
-                meshList.AddUnique(meshFilter.sharedMesh);
+                meshList.Add(meshFilter.sharedMesh);
                 for (int k = 0; k < renderer.sharedMaterials.Length; ++k)
                 {
                     materialList.AddUnique(renderer.sharedMaterials[k]);
@@ -131,7 +133,7 @@ namespace Landscape.FoliagePipeline
                 ref MeshLodInfo lodInfo = ref lodInfos[l];
                 Renderer renderer = lod.renderers[0];
 
-                lodInfo.screenSize = 1 - (l * 0.125f);
+                lodInfo.screenSize = l == 0 ? 1f : lods[l - 1].screenRelativeTransitionHeight;
                 lodInfo.materialSlot = new int[renderer.sharedMaterials.Length];
 
                 for (int m = 0; m < renderer.sharedMaterials.Length; ++m)

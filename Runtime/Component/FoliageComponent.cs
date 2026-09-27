@@ -61,7 +61,7 @@ namespace Landscape.FoliagePipeline
         public abstract void DispatchSetup(Camera camera, in float3 viewOrigin, in float4x4 matrixProj, in NativeList<JobHandle> taskHandles);
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public abstract void FlushPendingUploads();
+        public abstract void FlushPendingUploads(CommandBuffer cmdBuffer, RTHandle cameraDepth, in Vector4 zParams);
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public abstract void DispatchDraw(CommandBuffer cmdBuffer, in int passIndex);
