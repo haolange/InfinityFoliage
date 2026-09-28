@@ -13,10 +13,11 @@ struct TreeElement
 
 StructuredBuffer<uint> _TreeIndexBuffer;
 StructuredBuffer<TreeElement> _TreeElementBuffer;
+#if defined(FOLIAGE_LOD_WEIGHT)
 StructuredBuffer<float> _LodWeightBuffer;
+#endif
 float _LODFactor;
 float _LodFadeEnable;
-float _LodWeightEnable;
 
 struct GrassElement
 {

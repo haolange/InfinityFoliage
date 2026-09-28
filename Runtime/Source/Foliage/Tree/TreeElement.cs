@@ -30,6 +30,5 @@ namespace Landscape.FoliagePipeline
         internal static int LodFactor = UnityEngine.Shader.PropertyToID("_LODFactor");
         internal static int LodFadeEnable = UnityEngine.Shader.PropertyToID("_LodFadeEnable");
         internal static int LodWeightBuffer = UnityEngine.Shader.PropertyToID("_LodWeightBuffer");
-        internal static int LodWeightEnable = UnityEngine.Shader.PropertyToID("_LodWeightEnable");
     }
 }

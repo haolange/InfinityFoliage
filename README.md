@@ -20,4 +20,6 @@ URP Renderer 的 `FoliageRenderer / Settings` 给全场景提供默认值：草 
 
 选中组件并启用 `showBounds` 可看有真实深度遮挡的线框。草格红 / 绿只代表 CPU 视锥与距离；草页黄 / 绿表示仅基础层 / 有细节页驻留。树的实时线框也只代表 CPU 阶段。要判断 HZB 是否剔除了树，在 `TreeComponent` 指定 `debugCamera`（空值使用 Main Camera），点击 **Capture Visibility Snapshot**；冻结结果显示相机、帧号、CPU 候选与最终 GPU index 数，并按阶段给格和实例上色。可填写 `debugTreeIndex` 与 `debugCandidateIndex` 查看单个候选，随后点击 **Clear Visibility Snapshot** 恢复实时 CPU 线框。该读回只在 Editor 按需执行。
 
+距离模式的快照还列出最终 fade index／权重配对数与无效权重数；指定候选位于过渡带时显示该候选在两档中的权重。没有配对时，该机位可能没有树进入过渡带，需移动相机后重新捕获。
+
 树的颜色绘制由可见格、地形 / HZB 遮挡和当前淡化模式生成 Visibility IR，再 lowering 到 `_TreeIndexBuffer`。时间窗使用双视点与屏占比迟滞；距离互补使用单视点过渡带，fade 桶另带一条与 index 对齐的权重。主光 CSM 使用独立级联索引，不读这份权重。代码路径的编译、Play 画面和 Metal GPU 验收状态以 [交付记录](Docs/DELIVERY.md) 为准。

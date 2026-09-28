@@ -97,6 +97,9 @@ namespace Landscape.FoliagePipeline
         public float3 lastOrigin;
         public float4x4 lastProj;
         public bool hasLast;
+        public bool hasMode;
+        public bool allowFade;
+        public TreeLodFadeMode mode;
 
         public void Initialize(Camera camera, in int instanceCount)
         {
@@ -122,8 +125,12 @@ namespace Landscape.FoliagePipeline
     {
         internal class Bucket
         {
+            internal int lod;
+            internal int bucket;
+            internal bool weighted;
             internal uint[] args;
             internal int[] indices;
+            internal float[] weights;
         }
 
         internal Camera camera;
@@ -139,6 +146,8 @@ namespace Landscape.FoliagePipeline
         internal int[] lods;
         internal bool[] finalVisible;
         internal List<Bucket> buckets = new List<Bucket>();
+        internal int weightPairs;
+        internal int invalidWeights;
 
         internal void FinishRequest()
         {
@@ -149,12 +158,21 @@ namespace Landscape.FoliagePipeline
             for (int b = 0; b < buckets.Count; ++b)
             {
                 Bucket bucket = buckets[b];
-                if (bucket.args == null || bucket.indices == null) { failed = true; return; }
+                if (bucket.args == null || bucket.indices == null || bucket.weighted && bucket.weights == null)
+                {
+                    failed = true;
+                    return;
+                }
                 int count = math.min((int)bucket.args[1], bucket.indices.Length);
+                if (bucket.weighted && bucket.weights.Length < count) { failed = true; return; }
                 for (int i = 0; i < count; ++i)
                 {
                     int index = bucket.indices[i];
                     if (index >= 0 && index < finalVisible.Length) { finalVisible[index] = true; }
+                    if (!bucket.weighted) { continue; }
+                    ++weightPairs;
+                    float weight = bucket.weights[i];
+                    if (float.IsNaN(weight) || weight < 0f || weight > 1f) { ++invalidWeights; }
                 }
             }
         }
@@ -286,7 +304,6 @@ namespace Landscape.FoliagePipeline
         private bool m_DitherEnabled;
         private bool m_AllowFade = true;
         private TreeLodFadeMode m_FadeMode;
-        private bool m_FadeModeSet;
         private float m_FadeWidth = 0.2f;
         private TreeOcclusionMode m_OcclusionMode = TreeOcclusionMode.TerrainAndHzb;
         private int m_InstanceCount;
@@ -628,11 +645,8 @@ namespace Landscape.FoliagePipeline
 
             m_ActiveCamera = camera;
             m_DrawDistance = cullDistance;
-            bool fadeModeChanged = m_AllowFade != allowFade;
-            bool lodModeChanged = m_FadeModeSet && m_FadeMode != fadeMode;
             m_AllowFade = allowFade;
             m_FadeMode = fadeMode;
-            m_FadeModeSet = true;
             m_FadeWidth = FoliageLogic.ClampFadeWidth(fadeWidth);
             m_OcclusionMode = occlusionMode;
             for (int i = 0; i < 6; ++i)
@@ -643,20 +657,22 @@ namespace Landscape.FoliagePipeline
 
             m_ActiveFade = GetFade(camera);
             TreeCameraFade fade = m_ActiveFade;
+            bool fadeModeChanged = fade.hasMode && fade.allowFade != allowFade;
+            bool lodModeChanged = fade.hasMode && fade.mode != fadeMode;
+            fade.allowFade = allowFade;
+            fade.mode = fadeMode;
+            fade.hasMode = true;
             bool discontinuous = !fade.hasLast ||
                 FoliageLogic.ViewDiscontinuous(fade.lastOrigin, viewOrigin, fade.lastProj, matrixProj, cullDistance);
             if (m_FadeMode == TreeLodFadeMode.Distance)
             {
-                if (lodModeChanged || !allowFade)
-                {
-                    fade.holdOrigin = viewOrigin;
-                    fade.nowOrigin = viewOrigin;
-                    fade.holdProj = matrixProj;
-                    fade.nowProj = matrixProj;
-                    fade.alpha = 1f;
-                    fade.fading = false;
-                    fade.hardCut = false;
-                }
+                fade.holdOrigin = viewOrigin;
+                fade.nowOrigin = viewOrigin;
+                fade.holdProj = matrixProj;
+                fade.nowProj = matrixProj;
+                fade.alpha = 1f;
+                fade.fading = false;
+                fade.hardCut = false;
             }
             else
             {
@@ -743,8 +759,7 @@ namespace Landscape.FoliagePipeline
                         emitJob.bucketCounts = batch.bucketCounts;
                         emitJob.lodWeight = m_LodWeight;
                     }
-                    JobHandle handle = emitJob.Schedule();
-                    emitHandle = scheduled ? JobHandle.CombineDependencies(emitHandle, handle) : handle;
+                    emitHandle = emitJob.Schedule(emitHandle);
                     scheduled = true;
                 }
             }
@@ -993,27 +1008,29 @@ namespace Landscape.FoliagePipeline
             {
                 TreeLodBatch batch = m_Batches[i];
                 Mesh mesh = tree.meshes[batch.meshIndex];
-                DrawBucket(cmdBuffer, passIndex, propertyBlock, batch, mesh, (int)LodBucket.Stable, 0f, 0f, 0f, null, worldBounds);
+                DrawBucket(cmdBuffer, passIndex, propertyBlock, batch, mesh, (int)LodBucket.Stable, 0f, 0f, null, worldBounds);
                 if (m_FadeMode == TreeLodFadeMode.Distance && m_AllowFade)
                 {
-                    DrawBucket(cmdBuffer, passIndex, propertyBlock, batch, mesh, (int)LodBucket.FadeOut, 1f, 1f, 1f, batch.weightBuffers[0], worldBounds);
-                    DrawBucket(cmdBuffer, passIndex, propertyBlock, batch, mesh, (int)LodBucket.FadeIn, -1f, 1f, 1f, batch.weightBuffers[1], worldBounds);
+                    DrawBucket(cmdBuffer, passIndex, propertyBlock, batch, mesh, (int)LodBucket.FadeOut, 1f, 1f, batch.weightBuffers[0], worldBounds);
+                    DrawBucket(cmdBuffer, passIndex, propertyBlock, batch, mesh, (int)LodBucket.FadeIn, -1f, 1f, batch.weightBuffers[1], worldBounds);
                 }
                 else if (m_ActiveFade != null && m_ActiveFade.fading && m_DitherEnabled && m_AllowFade)
                 {
-                    DrawBucket(cmdBuffer, passIndex, propertyBlock, batch, mesh, (int)LodBucket.FadeOut, 1f - m_ActiveFade.alpha, 1f, 0f, null, worldBounds);
-                    DrawBucket(cmdBuffer, passIndex, propertyBlock, batch, mesh, (int)LodBucket.FadeIn, m_ActiveFade.alpha - 1f, 1f, 0f, null, worldBounds);
+                    DrawBucket(cmdBuffer, passIndex, propertyBlock, batch, mesh, (int)LodBucket.FadeOut, 1f - m_ActiveFade.alpha, 1f, null, worldBounds);
+                    DrawBucket(cmdBuffer, passIndex, propertyBlock, batch, mesh, (int)LodBucket.FadeIn, m_ActiveFade.alpha - 1f, 1f, null, worldBounds);
                 }
             }
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        void DrawBucket(CommandBuffer cmdBuffer, in int passIndex, MaterialPropertyBlock propertyBlock, TreeLodBatch batch, Mesh mesh, in int bucket, in float lodFactor, in float fadeEnable, in float weightEnable, ComputeBuffer weightBuffer, Bounds worldBounds)
+        void DrawBucket(CommandBuffer cmdBuffer, in int passIndex, MaterialPropertyBlock propertyBlock, TreeLodBatch batch, Mesh mesh, in int bucket, in float lodFactor, in float fadeEnable, ComputeBuffer weightBuffer, Bounds worldBounds)
         {
             int argsIndex = bucket == (int)LodBucket.FadeOut ? 1 : bucket == (int)LodBucket.FadeIn ? 2 : 0;
             if (!batch.gpuArgs[argsIndex] && batch.uploadedCount[argsIndex] <= 0) { return; }
 
             ComputeBuffer indexBuffer = batch.indexBuffers[argsIndex];
+            if (weightBuffer != null) { cmdBuffer.EnableShaderKeyword("FOLIAGE_LOD_WEIGHT"); }
+            else { cmdBuffer.DisableShaderKeyword("FOLIAGE_LOD_WEIGHT"); }
             for (int s = 0; s < batch.sectionIndexs.Length; ++s)
             {
                 int submesh = batch.sectionIndexs[s];
@@ -1025,10 +1042,10 @@ namespace Landscape.FoliagePipeline
                 propertyBlock.SetBuffer(TreeShaderID.ElementBuffer, m_MatrixBuffer);
                 propertyBlock.SetFloat(TreeShaderID.LodFactor, lodFactor);
                 propertyBlock.SetFloat(TreeShaderID.LodFadeEnable, fadeEnable);
-                propertyBlock.SetFloat(TreeShaderID.LodWeightEnable, weightEnable);
                 if (weightBuffer != null) { propertyBlock.SetBuffer(TreeShaderID.LodWeightBuffer, weightBuffer); }
                 cmdBuffer.DrawMeshInstancedIndirect(mesh, submesh, material, passIndex, argsBuffer, 0, propertyBlock);
             }
+            cmdBuffer.DisableShaderKeyword("FOLIAGE_LOD_WEIGHT");
         }
 
 #if UNITY_EDITOR
@@ -1084,6 +1101,9 @@ namespace Landscape.FoliagePipeline
                     int upperBound = batch.uploadedCount[bucketIndex];
                     if (upperBound <= 0) { continue; }
                     TreeVisibilitySnapshot.Bucket captured = new TreeVisibilitySnapshot.Bucket();
+                    captured.lod = batch.meshIndex;
+                    captured.bucket = bucketIndex;
+                    captured.weighted = m_FadeMode == TreeLodFadeMode.Distance && m_AllowFade && bucketIndex != 0;
                     snapshot.buckets.Add(captured);
                     snapshot.pending += 2;
                     cmdBuffer.RequestAsyncReadback(batch.argsBuffers[bucketIndex * batch.sectionIndexs.Length], request =>
@@ -1106,6 +1126,20 @@ namespace Landscape.FoliagePipeline
                         catch (Exception) { snapshot.failed = true; }
                         finally { snapshot.FinishRequest(); }
                     });
+                    if (captured.weighted)
+                    {
+                        ++snapshot.pending;
+                        cmdBuffer.RequestAsyncReadback(batch.weightBuffers[bucketIndex - 1], upperBound * sizeof(float), 0, request =>
+                        {
+                            try
+                            {
+                                if (request.hasError) { snapshot.failed = true; }
+                                else { captured.weights = request.GetData<float>().ToArray(); }
+                            }
+                            catch (Exception) { snapshot.failed = true; }
+                            finally { snapshot.FinishRequest(); }
+                        });
+                    }
                 }
             }
             if (snapshot.pending == 0) { snapshot.complete = true; }
@@ -1126,8 +1160,10 @@ namespace Landscape.FoliagePipeline
             if (snapshot.failed) { return source + " frame " + snapshot.frame + ": GPU readback failed."; }
             int cpuCount = 0;
             for (int i = 0; i < snapshot.cpuMasks.Length; ++i) { cpuCount += FoliageLogic.PopCount(snapshot.cpuMasks[i]); }
+            string weights = snapshot.weightPairs > 0 ? ", distance fade pairs " + snapshot.weightPairs +
+                ", invalid weights " + snapshot.invalidWeights : "";
             return source + " frame " + snapshot.frame + ": CPU candidates " + cpuCount +
-                ", final GPU indices " + snapshot.FinalCount() + ", HZB " + (snapshot.hzb ? "on" : "off") + ".";
+                ", final GPU indices " + snapshot.FinalCount() + ", HZB " + (snapshot.hzb ? "on" : "off") + weights + ".";
         }
 
         public string VisibilitySnapshotCandidate(in int index)
@@ -1138,10 +1174,23 @@ namespace Landscape.FoliagePipeline
             int cell = m_InstanceCell[index];
             bool cpu = (snapshot.cpuMasks[index >> 6] & (1UL << (index & 63))) != 0;
             string gpuCell = snapshot.gpuCells == null ? "unknown" : (snapshot.gpuCells[cell] != 0 ? "visible" : "rejected");
+            var pairs = new System.Text.StringBuilder();
+            for (int b = 0; b < snapshot.buckets.Count; ++b)
+            {
+                TreeVisibilitySnapshot.Bucket bucket = snapshot.buckets[b];
+                if (!bucket.weighted) { continue; }
+                int count = math.min((int)bucket.args[1], bucket.indices.Length);
+                for (int i = 0; i < count; ++i)
+                {
+                    if (bucket.indices[i] != index) { continue; }
+                    pairs.Append(" LOD ").Append(bucket.lod).Append(" bucket ").Append(bucket.bucket)
+                        .Append(" x ").Append(bucket.weights[i].ToString("F3"));
+                }
+            }
             return "Candidate " + index + ", cell " + cell + ": coarse " + snapshot.coarseCells[cell] +
                 ", terrain " + snapshot.terrainCells[cell] + ", CPU instance " + (cpu ? "visible" : "rejected") +
                 ", GPU cell " + gpuCell + ", final index " + (snapshot.finalVisible[index] ? "present" : "absent") +
-                ", LOD " + snapshot.lods[index] + ".";
+                ", LOD " + snapshot.lods[index] + pairs + ".";
         }
 
         public string VisibilitySnapshotGpuRejections(in int limit)
@@ -1262,7 +1311,6 @@ namespace Landscape.FoliagePipeline
                     propertyBlock.SetBuffer(TreeShaderID.IndexBuffer, shadowBatch.indexBuffer);
                     propertyBlock.SetBuffer(TreeShaderID.ElementBuffer, m_MatrixBuffer);
                     propertyBlock.SetFloat(TreeShaderID.LodFadeEnable, 0f);
-                    propertyBlock.SetFloat(TreeShaderID.LodWeightEnable, 0f);
                     cmdBuffer.DrawMeshInstancedIndirect(mesh, submesh, material, passIndex, argsBuffer, 0, propertyBlock);
                 }
             }

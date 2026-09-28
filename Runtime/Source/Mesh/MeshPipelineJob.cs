@@ -590,7 +590,6 @@ namespace Landscape.FoliagePipeline
         public NativeArray<ulong> fadeInMask;
         public NativeArray<int> bucketCounts;
 
-        [NativeDisableParallelForRestriction]
         public NativeArray<float> lodWeight;
 
         public void Execute()

@@ -1,5 +1,23 @@
 # Infinity Foliage 交付记录
 
+## 2026-09-29 树 LOD 双模式回归收尾
+
+基线：`main` 的 `ca4778cd`，本工程 Unity `6000.6.0f1`；进入本轮时工作树无未提交改动。现有 `Scene_PBR` 的 TreeComponent 有资产键和 15 个树种槽位。当前 Editor 日志第 1361、1364、1493、1494 行记录 Metal 因 `TreeLeave` / `TreeBrak` 缺 ComputeBuffer 而跳过 Draw；本轮须以修后新日志和 Game 画面重新判定。旧 C4 转镜头突隐仍是独立待办。
+
+| 任务 | 依赖 | 代码 | 编译／断言 | Play／GPU | 结论 |
+|---|---|---|---|---|---|
+| R0 基线与复现 | 无 | 已核对提交、场景资产键与 Shader 缓冲绑定链 | 本工程 6000.6.0f1 | 修前 Play：资源载入后树消失，Metal 缺缓冲警告与代码对应 | 通过 |
+| R1 默认树绘制恢复 | R0 | 实例 Forward 仅 Distance fade 变体声明权重；命令缓冲按桶开启并关闭关键词 | Unity 6.6 托管编译 0 警告／错误，Editor Tundra 和 ShaderImporter 成功 | 修后原相机 Temporal 与 fade 关闭树叶、树干可见；新日志无目标缺缓冲警告 | 通过 |
+| R2 双模式运行安全 | R1 | 距离 emit Job 按依赖串联；模式状态由每相机持有；快照按最终 index 槽读权重 | 托管编译与 Editor Tundra 成功；真实 Job 安全断言修后导入无异常 | 单相机 Play 中 Temporal→Distance→关闭 fade 树均可见；Distance 的 HZB 关／开各读到 2 条有效配对、0 条无效权重 | 本轮直接回归通过；两相机和卸载重入未实测 |
+| R3 画面与 GPU | R2 | 原 LOD 公式、三桶、独立阴影索引保留；仅距离 fade 桶要求权重 Shader 变体 | TreeLeave／TreeBrak 实例变体已在当前 Metal Editor 导入 | 默认 Temporal、fade 关闭、Distance 的 Game 画面均有树；宽度临时设 0.8 后 Tree 7 同机位 HZB off（frame 60833）与 on（frame 69045）均为 2 条配对、0 条无效权重；后者 15 树种均有 GPU 结果 | 无树回归与权重绑定通过；慢推拉连续像素、双相机、阴影单档与成本未取得本轮新证据，不能宣称完整 R3 通过 |
+| R4 交付与平台 | R3 | AGENTS／README 已补资源与状态不变式 | Unity 6000.6.0f1 工程 Editor csproj 托管终编 0 warning、0 error；`git diff --check` 通过 | Mac 仅确认本轮目标画面和读回；外平台见下 | 待完整 R3；不以本轮局部通过冒充全量交付 |
+
+首轮刷新后，新增断言在给 `lodDither` 赋值的循环中交替调度 Job，Unity 安全检查正确拒绝对正在读取的数组继续写入；把全部 dither 数据在调度前初始化后，第二次 Tundra 成功。首次 Play 仍使用旧 Shader，曾复现缺缓冲；执行 `Assets / Refresh` 后再次 Play，树叶和树干恢复，目标警告未在新日志重现。Unity 的 Component 菜单占用截图通道，取消菜单后截图恢复。最终 Play 已退出：组件覆盖回到 Temporal、fadeWidth 0.2、Terrain 遮挡，未保存临时设置。Console 中 `attempt to write a readonly database` 于退出 Play 后出现 29 次，是宿主既有错误，单列而不计入本包通过。
+
+跨平台交接：Windows D3D11／D3D12 尚未运行；若项目启用 Vulkan，也尚未运行。在对应平台用同一已 Bake 场景检查默认 Temporal 树叶与树干 Draw、关闭 fade、Distance 带内两桶的 index／weight 同序与有效范围、HZB 开关、Metal 等价的 Compute／Shader 资源告警，以及切模式后的画面。Mac 的托管编译和 Metal Play 不能替代这些平台的实测。用户要求加速并跳过不相关测试，因此本轮未扩展旧 C4、VT、草、性能基准；旧 C4「转镜头突隐」仍独立待办，本轮没有把它判为已修复。
+
+发布边界：按用户 2026-09-29 的明确要求，将已经通过 Mac 直接回归的修复提交到 `main`，同时保留上表中 R3／R4 未关闭的验收项。提交与推送只交付当前修复，不代表距离淡化全动作、跨平台或旧 C4 已验收。包内本轮 AppleDouble、临时脚本与 `/private/tmp/foliage-lod-repair` 编译输出已精确清理；没有删除 Unity 正在使用的 Library／ShaderCache 或宿主 Scene 资产。
+
 ## 2026-09-28 树 LOD 双模式
 
 颜色视口增加两种正式淡化。默认 `Temporal`，保持原来的双视点、共享 `alpha` 和 `fadeDuration`。`Distance` 按当前屏占比过渡带逐实例混合。`treeLodFade == false` 时两种都只画 stable。阴影仍硬切，不读主视口权重。

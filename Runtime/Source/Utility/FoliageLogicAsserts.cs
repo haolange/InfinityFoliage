@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using Unity.Collections;
+using Unity.Jobs;
 using Unity.Mathematics;
 using UnityEngine;
 
@@ -454,6 +455,82 @@ namespace Landscape.FoliagePipeline
             if (written != 3 || kept != 2 || keptIndex[0] != 0 || keptWeight[0] != 0.2f || keptIndex[1] != 2 || keptWeight[1] != 0.8f)
             {
                 Fail("dropping one instance must keep the remaining index and weight pairs aligned");
+            }
+            AssertDistanceJobChain();
+        }
+
+        static void AssertDistanceJobChain()
+        {
+            var chunkMasks = new NativeArray<ulong>(1, Allocator.TempJob);
+            var lodNow = new NativeArray<int>(2, Allocator.TempJob);
+            var screenSqr = new NativeArray<float>(2, Allocator.TempJob);
+            var screenSizes = new NativeArray<float>(3, Allocator.TempJob);
+            var dither = new NativeArray<byte>(3, Allocator.TempJob);
+            var weights = new NativeArray<float>(2, Allocator.TempJob);
+            var stable = new NativeArray<ulong>[3];
+            var fadeOut = new NativeArray<ulong>[3];
+            var fadeIn = new NativeArray<ulong>[3];
+            var counts = new NativeArray<int>[3];
+            JobHandle handle = default;
+            try
+            {
+                chunkMasks[0] = 3;
+                lodNow[0] = 0;
+                lodNow[1] = 1;
+                screenSqr[0] = 0.1f;
+                screenSqr[1] = 0.004f;
+                screenSizes[0] = 0.6f;
+                screenSizes[1] = 0.3f;
+                screenSizes[2] = 0.1f;
+                for (int i = 0; i < 3; ++i) { dither[i] = 1; }
+                for (int i = 0; i < 3; ++i)
+                {
+                    stable[i] = new NativeArray<ulong>(1, Allocator.TempJob);
+                    fadeOut[i] = new NativeArray<ulong>(1, Allocator.TempJob);
+                    fadeIn[i] = new NativeArray<ulong>(1, Allocator.TempJob);
+                    counts[i] = new NativeArray<int>(3, Allocator.TempJob);
+                    var job = new TreeEmitDistanceMasksJob();
+                    {
+                        job.meshIndex = i;
+                        job.ditherEnabled = 1;
+                        job.instanceCount = 2;
+                        job.fadeWidth = 0.2f;
+                        job.chunkMasks = chunkMasks;
+                        job.lodNow = lodNow;
+                        job.screenSqr = screenSqr;
+                        job.lodScreenSizes = screenSizes;
+                        job.lodDither = dither;
+                        job.stableMask = stable[i];
+                        job.fadeOutMask = fadeOut[i];
+                        job.fadeInMask = fadeIn[i];
+                        job.bucketCounts = counts[i];
+                        job.lodWeight = weights;
+                    }
+                    handle = job.Schedule(handle);
+                }
+                handle.Complete();
+                if (fadeOut[0][0] != 1 || fadeIn[1][0] != 1 || fadeOut[1][0] != 2 || fadeIn[2][0] != 2 ||
+                    weights[0] <= 0f || weights[0] >= 1f || weights[1] <= 0f || weights[1] >= 1f)
+                {
+                    Fail("distance LOD jobs must preserve adjacent masks and shared instance weights");
+                }
+            }
+            finally
+            {
+                handle.Complete();
+                for (int i = 0; i < 3; ++i)
+                {
+                    if (stable[i].IsCreated) { stable[i].Dispose(); }
+                    if (fadeOut[i].IsCreated) { fadeOut[i].Dispose(); }
+                    if (fadeIn[i].IsCreated) { fadeIn[i].Dispose(); }
+                    if (counts[i].IsCreated) { counts[i].Dispose(); }
+                }
+                chunkMasks.Dispose();
+                lodNow.Dispose();
+                screenSqr.Dispose();
+                screenSizes.Dispose();
+                dither.Dispose();
+                weights.Dispose();
             }
         }
 

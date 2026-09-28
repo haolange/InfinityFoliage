@@ -143,6 +143,7 @@ Shader "Landscape/TreeBrak"
 			#pragma multi_compile _ _SHADOWS_SOFT
 			#pragma multi_compile _ _MAIN_LIGHT_SHADOWS
 			#pragma multi_compile _ _MAIN_LIGHT_SHADOWS_CASCADE
+			#pragma multi_compile _ FOLIAGE_LOD_WEIGHT
 
 			#include "Packages/com.infinity.render-foliage/Shader/Foliage/Include/Foliage.hlsl"
 
@@ -178,10 +179,9 @@ Shader "Landscape/TreeBrak"
 				output.vertexWS = mul(treeElement.matrix_World, input.vertexOS);
 				output.vertexCS = mul(UNITY_MATRIX_VP, output.vertexWS);
 				output.lodFactor = _LODFactor;
-				if (_LodWeightEnable > 0.5)
-				{
+				#if defined(FOLIAGE_LOD_WEIGHT)
 					output.lodFactor = _LodWeightBuffer[input.InstanceId] * _LODFactor;
-				}
+				#endif
 				return output;
 			}
 

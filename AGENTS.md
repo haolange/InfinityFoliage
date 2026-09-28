@@ -33,6 +33,8 @@ Pass 相位：`FoliageResidency.UpdateView` → 组件盒粗剔 → `InitView` �
 
 设置权威：`FoliageRenderer.settings` 给绘制、遮挡、LOD 淡化模式、过渡带宽度、LOD 迟滞、主光投影和预算提供全局默认；`TreeComponent` 只覆盖本 Terrain 的遮挡、fade、淡化模式、过渡带宽度、迟滞、距离与主光投影，`GrassComponent` 只覆盖距离。`fadeDuration` 只驱动时间窗。草密度仍由 Terrain 管，主光阴影距离和级联仍由 URP 管。树的遮挡可独立关闭 CPU 地形与 GPU HZB；关闭 HZB 必须清除本视图的有效状态，不能消费上一帧深度。组件 `showBounds` 仍是 Editor 线框总开关且保留真实深度；实时线框只代表 CPU 阶段，按需冻结快照才能标记 GPU 格过滤和最终 VisibleIndex，快照必须绑定具体相机与帧。
 
+距离模式多 LOD emit Job 共写当帧权重数组，必须按 `JobHandle` 依赖顺序调度；每个渲染相机分别记录上次模式与淡化开关，切换时重置该相机的时间窗。树实例 Forward 的 `FOLIAGE_LOD_WEIGHT` 编译变体仅用于距离 fade 桶：绘制前绑定权重 buffer 并启用关键词，绘制后关闭；stable、Temporal、普通 Forward 与 ShadowCaster 不声明该资源。Editor 冻结快照的距离权重和 VisibleIndex 同槽读回，只在请求时执行。
+
 Bake：草密度、树 transforms 写完之后才算格归属，并生成带版本的流式资产；树 `meshes[i]` 与 `lODInfos[i]` 一一对应，重复引用同一 Mesh 的 LOD 仍各占一个槽，只有 Material 可去重；`OnSave` 只在 `numSection` 变化时重建空间格。Play 中禁止把空 `transforms` 写回。旧 Scene、MeshAsset 和旧密度布局必须重新 Build/Update；缺失或版本错误的资产不能静默走旧路径。
 
 GPU 资源一律 `ComputeBuffer`，不引入 `GraphicsBuffer`。
