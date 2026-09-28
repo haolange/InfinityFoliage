@@ -19,6 +19,12 @@ namespace Landscape.FoliagePipeline
         TerrainAndHzb = 3
     }
 
+    public enum TreeLodFadeMode
+    {
+        Temporal = 0,
+        Distance = 1
+    }
+
     [Serializable]
     public class FoliageRenderSettings
     {
@@ -32,6 +38,8 @@ namespace Landscape.FoliagePipeline
         [Header("Tree Visibility")]
         public TreeOcclusionMode treeOcclusion = TreeOcclusionMode.TerrainAndHzb;
         public bool treeLodFade = true;
+        public TreeLodFadeMode treeLodFadeMode = TreeLodFadeMode.Temporal;
+        [Range(0.01f, 0.99f)] public float treeFadeWidth = 0.2f;
         [Range(0f, 0.5f)] public float treeLodHysteresis = 0.08f;
 
         [Header("Residency")]

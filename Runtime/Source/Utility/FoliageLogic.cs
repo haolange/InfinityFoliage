@@ -13,6 +13,14 @@ namespace Landscape.FoliagePipeline
         FadeIn = 3
     }
 
+    public struct DistanceFade
+    {
+        public int lod;
+        public int fadeOutLod;
+        public int fadeInLod;
+        public float x;
+    }
+
     public struct DrawRun
     {
         public int start;
@@ -151,6 +159,176 @@ namespace Landscape.FoliagePipeline
             if (lodHold == meshIndex) { return (int)LodBucket.FadeOut; }
             if (lodNow == meshIndex) { return (int)LodBucket.FadeIn; }
             return (int)LodBucket.None;
+        }
+
+        public const float DistanceFadeSnap = 0.02f;
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static float ClampFadeWidth(in float fadeWidth)
+        {
+            if (fadeWidth < 0.0001f) { return 0.0001f; }
+            if (fadeWidth > 0.9999f) { return 0.9999f; }
+            return fadeWidth;
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static float DistanceLodFarEdge(in float nextScreenSize)
+        {
+            float half = nextScreenSize * 0.5f;
+            return half * half;
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static float DistanceScreenInv(in float screen, in int power)
+        {
+            float safe = screen > 1e-8f ? screen : 1e-8f;
+            if (power == 2) { return math.rsqrt(safe); }
+            return 1f / safe;
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static DistanceFade ClassifyDistanceThresholds(in float screen, float[] thresholds, in float screenFull, in float fadeWidth, in int power, in int ditherEnabled)
+        {
+            DistanceFade result = default;
+            result.lod = -1;
+            result.fadeOutLod = -1;
+            result.fadeInLod = -1;
+            int count = thresholds.Length;
+            int lod = count;
+            for (int i = 0; i < count; ++i)
+            {
+                if (screen >= thresholds[i])
+                {
+                    lod = i;
+                    break;
+                }
+            }
+            if (lod == count) { return result; }
+            return ClassifyDistanceAt(screen, lod, count, ThresholdFar(thresholds, lod), ThresholdNear(thresholds, lod, screenFull), fadeWidth, power, ditherEnabled);
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static DistanceFade ClassifyDistanceLod(in float screenRadiusSqr, in NativeArray<float> lodScreenSizes, in float fadeWidth, in int ditherEnabled)
+        {
+            int lod = ComputeLodIndex(screenRadiusSqr, lodScreenSizes);
+            return ClassifyDistanceLodAt(screenRadiusSqr, lodScreenSizes, fadeWidth, ditherEnabled, lod);
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static DistanceFade ClassifyDistanceLodAt(in float screenRadiusSqr, in NativeArray<float> lodScreenSizes, in float fadeWidth, in int ditherEnabled, in int lod)
+        {
+            DistanceFade result = default;
+            result.lod = -1;
+            result.fadeOutLod = -1;
+            result.fadeInLod = -1;
+            int count = lodScreenSizes.Length;
+            if (lod < 0 || lod >= count) { return result; }
+            if (lod >= count - 1)
+            {
+                result.lod = lod;
+                return result;
+            }
+            float far = DistanceLodFarEdge(lodScreenSizes[lod + 1]);
+            float near = lod == 0 ? 1f : DistanceLodFarEdge(lodScreenSizes[lod]);
+            return ClassifyDistanceAt(screenRadiusSqr, lod, count, far, near, fadeWidth, 2, ditherEnabled);
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static int ExpandMasksWithWeights(ulong[] masks, int chunkCount, int instanceCount, NativeArray<float> weightsByInstance, int[] destIndex, float[] destWeight)
+        {
+            return ExpandMasksWithWeights(masks, chunkCount, instanceCount, weightsByInstance, destIndex, destWeight, true);
+        }
+
+        public static int ExpandMasksWithWeights(ulong[] masks, int chunkCount, int instanceCount, float[] weightsByInstance, int[] destIndex, float[] destWeight)
+        {
+            return ExpandMasksWithWeights(masks, chunkCount, instanceCount, default, destIndex, destWeight, false, weightsByInstance);
+        }
+
+        static int ExpandMasksWithWeights(ulong[] masks, int chunkCount, int instanceCount, NativeArray<float> nativeWeights, int[] destIndex, float[] destWeight, bool native, float[] managedWeights = null)
+        {
+            int written = 0;
+            for (int chunk = 0; chunk < chunkCount; ++chunk)
+            {
+                int count = VisibilityChunkSize(chunk, instanceCount);
+                int candidateBase = VisibilityChunkBase(chunk);
+                ulong mask = masks[chunk];
+                for (int bit = 0; bit < count; ++bit)
+                {
+                    if ((mask & (1UL << bit)) == 0) { continue; }
+                    int instance = candidateBase + bit;
+                    destIndex[written] = instance;
+                    destWeight[written] = native ? nativeWeights[instance] : managedWeights[instance];
+                    ++written;
+                }
+            }
+            return written;
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static DistanceFade ClassifyDistanceEdges(in float screen, in int lod, in int lodCount, in float far, in float near, in float fadeWidth, in int power, in int ditherEnabled)
+        {
+            return ClassifyDistanceAt(screen, lod, lodCount, far, near, fadeWidth, power, ditherEnabled);
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static int FilterCompactPairs(int[] indices, float[] weights, int count, int dropInstance, int[] outIndices, float[] outWeights)
+        {
+            int written = 0;
+            for (int i = 0; i < count; ++i)
+            {
+                if (indices[i] == dropInstance) { continue; }
+                outIndices[written] = indices[i];
+                outWeights[written] = weights[i];
+                ++written;
+            }
+            return written;
+        }
+
+        static float ThresholdFar(float[] thresholds, int lod)
+        {
+            return thresholds[lod];
+        }
+
+        static float ThresholdNear(float[] thresholds, int lod, float screenFull)
+        {
+            if (lod == 0) { return screenFull; }
+            return thresholds[lod - 1];
+        }
+
+        static DistanceFade ClassifyDistanceAt(float screen, int lod, int lodCount, float far, float near, float fadeWidth, int power, int ditherEnabled)
+        {
+            DistanceFade result = default;
+            result.lod = lod;
+            result.fadeOutLod = -1;
+            result.fadeInLod = -1;
+            if (ditherEnabled == 0 || lod >= lodCount - 1 || near <= far) { return result; }
+
+            float width = ClampFadeWidth(fadeWidth);
+            float band = far + (width * (near - far));
+            if (screen >= band) { return result; }
+            if (screen < far)
+            {
+                result.lod = lod + 1;
+                return result;
+            }
+
+            float invFar = DistanceScreenInv(far, power);
+            float invBand = DistanceScreenInv(band, power);
+            float denom = invFar - invBand;
+            float x = denom != 0f ? (invFar - DistanceScreenInv(screen, power)) / denom : 0f;
+            x = math.saturate(x);
+            if (x >= 1f - DistanceFadeSnap) { return result; }
+            if (x <= DistanceFadeSnap)
+            {
+                result.lod = lod + 1;
+                return result;
+            }
+
+            result.lod = -1;
+            result.fadeOutLod = lod;
+            result.fadeInLod = lod + 1;
+            result.x = x;
+            return result;
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]

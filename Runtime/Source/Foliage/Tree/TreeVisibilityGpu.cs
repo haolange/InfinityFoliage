@@ -48,6 +48,8 @@ namespace Landscape.FoliagePipeline
         private ComputeBuffer m_RwChunks;
         private ComputeBuffer m_Runs;
         private ComputeBuffer m_SrcIndex;
+        private ComputeBuffer m_SrcWeight;
+        private ComputeBuffer m_DummyWeight;
         private ComputeBuffer m_Bounds;
         private ComputeBuffer m_InstanceCell;
         private ComputeBuffer m_CellVisible;
@@ -129,6 +131,8 @@ namespace Landscape.FoliagePipeline
             m_RwChunks = new ComputeBuffer(chunks, Marshal.SizeOf(typeof(GpuVisibilityChunk)));
             m_Runs = new ComputeBuffer(n, Marshal.SizeOf(typeof(VisibilityRun)));
             m_SrcIndex = new ComputeBuffer(n, sizeof(uint));
+            m_SrcWeight = new ComputeBuffer(n, sizeof(float));
+            m_DummyWeight = new ComputeBuffer(1, sizeof(float));
             m_Bounds = new ComputeBuffer(n, Marshal.SizeOf(typeof(GpuAabb)));
             m_InstanceCell = new ComputeBuffer(n, sizeof(int));
             m_CellVisible = new ComputeBuffer(cells, sizeof(uint));
@@ -206,6 +210,7 @@ namespace Landscape.FoliagePipeline
             if (!m_Ready) { return; }
             int enable = m_HasHzb ? 1 : 0;
             float3 origin = camera != null ? (float3)camera.transform.position : float3.zero;
+            m_CmdBuffer.SetComputeIntParam(m_Shader, "_WriteWeight", 0);
             m_CmdBuffer.SetComputeIntParam(m_Shader, "_EnableHzb", enable);
             m_CmdBuffer.SetComputeIntParam(m_Shader, "_HzbWidth", HzbWidth);
             m_CmdBuffer.SetComputeIntParam(m_Shader, "_HzbHeight", HzbHeight);
@@ -251,9 +256,25 @@ namespace Landscape.FoliagePipeline
         public void FilterIndex(int[] indices, int count, ComputeBuffer indexBuffer, ComputeBuffer argsBuffer)
         {
             if (!m_Ready || count <= 0) { return; }
+            m_CmdBuffer.SetComputeIntParam(m_Shader, "_WriteWeight", 0);
             m_CmdBuffer.SetBufferData(m_SrcIndex, indices, 0, 0, count);
             m_CmdBuffer.SetComputeIntParam(m_Shader, "_SrcCount", count);
             m_CmdBuffer.SetComputeBufferParam(m_Shader, m_FilterIndex, "_SrcIndices", m_SrcIndex);
+            m_CmdBuffer.SetComputeBufferParam(m_Shader, m_FilterIndex, "_SrcWeights", m_SrcWeight);
+            m_CmdBuffer.SetComputeBufferParam(m_Shader, m_FilterIndex, "_Weights", m_DummyWeight);
+            m_CmdBuffer.DispatchCompute(m_Shader, m_FilterIndex, (count + 63) / 64, 1, 1);
+        }
+
+        public void FilterIndex(int[] indices, float[] weights, int count, ComputeBuffer indexBuffer, ComputeBuffer weightBuffer, ComputeBuffer argsBuffer)
+        {
+            if (!m_Ready || count <= 0) { return; }
+            m_CmdBuffer.SetComputeIntParam(m_Shader, "_WriteWeight", 1);
+            m_CmdBuffer.SetBufferData(m_SrcIndex, indices, 0, 0, count);
+            m_CmdBuffer.SetBufferData(m_SrcWeight, weights, 0, 0, count);
+            m_CmdBuffer.SetComputeIntParam(m_Shader, "_SrcCount", count);
+            m_CmdBuffer.SetComputeBufferParam(m_Shader, m_FilterIndex, "_SrcIndices", m_SrcIndex);
+            m_CmdBuffer.SetComputeBufferParam(m_Shader, m_FilterIndex, "_SrcWeights", m_SrcWeight);
+            m_CmdBuffer.SetComputeBufferParam(m_Shader, m_FilterIndex, "_Weights", weightBuffer);
             m_CmdBuffer.DispatchCompute(m_Shader, m_FilterIndex, (count + 63) / 64, 1, 1);
         }
 
@@ -302,6 +323,8 @@ namespace Landscape.FoliagePipeline
             if (m_RwChunks != null) { m_RwChunks.Dispose(); }
             if (m_Runs != null) { m_Runs.Dispose(); }
             if (m_SrcIndex != null) { m_SrcIndex.Dispose(); }
+            if (m_SrcWeight != null) { m_SrcWeight.Dispose(); }
+            if (m_DummyWeight != null) { m_DummyWeight.Dispose(); }
             if (m_Bounds != null) { m_Bounds.Dispose(); }
             if (m_InstanceCell != null) { m_InstanceCell.Dispose(); }
             if (m_CellVisible != null) { m_CellVisible.Dispose(); }

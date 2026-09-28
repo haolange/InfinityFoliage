@@ -1,5 +1,29 @@
 # Infinity Foliage 交付记录
 
+## 2026-09-28 树 LOD 双模式
+
+颜色视口增加两种正式淡化。默认 `Temporal`，保持原来的双视点、共享 `alpha` 和 `fadeDuration`。`Distance` 按当前屏占比过渡带逐实例混合。`treeLodFade == false` 时两种都只画 stable。阴影仍硬切，不读主视口权重。
+
+| 项 | 结果 |
+|---|---|
+| 距离互补第 8 节与 `k = 2` 的 `rsqrt`、compact 对齐 | 用 Hub `6000.5.8f1` 的 Mono 跑 `AssertDistanceFade`，打印 `AssertDistanceFade passed`，退出码 0。本机没有 `6000.6.0f1` 编辑器，源码树的 Debug Editor 没有 URP / Mathematics 程序集 |
+| Runtime 编译 | 同一套 Hub 管理 DLL，`csc /unsafe`，退出码 0。唯一警告是未改动的 `WindComponent.m_selectedPreset`（CS0169） |
+| Shader / Play / GPU | **未验收**。没有启动 Unity Hub 或 Editor。`TreeLeave` / `TreeBrak` 的程序化 Forward 和 `TreeVisibility.compute` 需要已打开的 Editor 重新导入 |
+
+画面留到已打开的 Editor，按这些动作看，不要只看截图：
+
+- 停：过渡带中间的树，颗粒不动，两档互补，没有洞。
+- 慢推：过硬切换距离之前，粗档像素从少变多，细档变少。没有先整棵换成粗模再溶解。
+- 慢拉：同一条带反向，细档像素变多。
+- 来回：覆盖率跟着距离走，不重开一段固定时长。
+- 两棵距离不同：更近的细档像素更多。
+- 停在带外：只有 stable，不 dither。
+- 最后一档：不和更粗的档重叠，到绘制距离才按原规则消失。
+- 阴影：主视口正在过渡时，阴影只有一档。
+- 传送：第一帧就是新距离的 stable 或带内 `x`，没有 0.5 秒尾巴。
+- 未开 dither：仍然一档硬切。
+- 切回时间窗：共享 0.5 秒仍在，差两档仍硬切。
+
 ## 2026-09-28 渲染控制与遮挡诊断任务板
 
 本轮沿用现有 `main` 与原 `Scene_PBR`，不新建 Terrain、分支或 Editor。旧 T0–T7 结论是上一交付版本的证据；本轮的设置切换和突隐原因另行验收。以下为本轮实际结果，不能把可切换等同于误剔修复。

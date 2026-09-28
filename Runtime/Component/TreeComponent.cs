@@ -33,6 +33,10 @@ namespace Landscape.FoliagePipeline
         public TreeOcclusionMode occlusionOverride = TreeOcclusionMode.TerrainAndHzb;
         public bool overrideLodFade;
         public bool lodFadeOverride = true;
+        public bool overrideLodFadeMode;
+        public TreeLodFadeMode lodFadeModeOverride = TreeLodFadeMode.Temporal;
+        public bool overrideFadeWidth;
+        [Range(0.01f, 0.99f)] public float fadeWidthOverride = 0.2f;
         public bool overrideLodHysteresis;
         [Range(0f, 0.5f)] public float lodHysteresisOverride = 0.08f;
         public bool overrideMainShadows;
@@ -340,9 +344,11 @@ namespace Landscape.FoliagePipeline
                 {
                     TreeOcclusionMode mode = ResolveOcclusion(m_RenderSettings);
                     bool lodFade = overrideLodFade ? lodFadeOverride : m_RenderSettings.treeLodFade;
+                    TreeLodFadeMode fadeMode = overrideLodFadeMode ? lodFadeModeOverride : m_RenderSettings.treeLodFadeMode;
+                    float fadeWidth = overrideFadeWidth ? fadeWidthOverride : m_RenderSettings.treeFadeWidth;
                     float hysteresis = overrideLodHysteresis ? lodHysteresisOverride : m_RenderSettings.treeLodHysteresis;
                     treeSectors[i].DispatchSetup(camera, ResolveDrawDistance(m_RenderSettings), viewOrigin, matrixProj,
-                        m_Planes, mode, lodFade, hysteresis, taskHandles);
+                        m_Planes, mode, lodFade, hysteresis, fadeMode, fadeWidth, taskHandles);
                 }
             }
         }

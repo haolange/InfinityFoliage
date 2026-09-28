@@ -16,6 +16,7 @@ namespace Landscape.FoliagePipeline
         public int[] sectionIndexs;
         public int[] materialIndexs;
         public ComputeBuffer[] indexBuffers;
+        public ComputeBuffer[] weightBuffers;
         public ComputeBuffer[] argsBuffers;
         public NativeArray<ulong> stableMask;
         public NativeArray<ulong> fadeOutMask;
@@ -34,6 +35,11 @@ namespace Landscape.FoliagePipeline
                 for (int i = 0; i < 3; ++i)
                 {
                     indexBuffers[i] = new ComputeBuffer(math.max(instanceCount, 1), sizeof(int));
+                }
+                weightBuffers = new ComputeBuffer[2];
+                for (int i = 0; i < 2; ++i)
+                {
+                    weightBuffers[i] = new ComputeBuffer(math.max(instanceCount, 1), sizeof(float));
                 }
                 for (int i = 0; i < argsCount; ++i)
                 {
@@ -59,6 +65,10 @@ namespace Landscape.FoliagePipeline
             if (indexBuffers != null)
             {
                 for (int i = 0; i < indexBuffers.Length; ++i) { indexBuffers[i]?.Dispose(); }
+            }
+            if (weightBuffers != null)
+            {
+                for (int i = 0; i < weightBuffers.Length; ++i) { weightBuffers[i]?.Dispose(); }
             }
             if (argsBuffers != null)
             {
@@ -254,6 +264,8 @@ namespace Landscape.FoliagePipeline
         private NativeArray<byte> m_LodDither;
         private NativeArray<ulong> m_ChunkMasks;
         private NativeArray<int> m_LodNow;
+        private NativeArray<float> m_LodScreenSqr;
+        private NativeArray<float> m_LodWeight;
         private NativeArray<float> m_Heights;
         private List<TreeLodBatch> m_Batches;
         private Dictionary<ulong, TreeCameraFade> m_FadeViews;
@@ -265,6 +277,7 @@ namespace Landscape.FoliagePipeline
         private Camera m_ActiveCamera;
         private uint[] m_ArgsScratch;
         private int[] m_IndexScratch;
+        private float[] m_WeightScratch;
         private int[][] m_ShadowIndexScratch;
         private int[] m_ShadowCounts;
         private ulong[] m_MaskScratch;
@@ -272,6 +285,9 @@ namespace Landscape.FoliagePipeline
         private Vector4[] m_PlaneScratch;
         private bool m_DitherEnabled;
         private bool m_AllowFade = true;
+        private TreeLodFadeMode m_FadeMode;
+        private bool m_FadeModeSet;
+        private float m_FadeWidth = 0.2f;
         private TreeOcclusionMode m_OcclusionMode = TreeOcclusionMode.TerrainAndHzb;
         private int m_InstanceCount;
         private int m_HeightRes;
@@ -515,6 +531,8 @@ namespace Landscape.FoliagePipeline
             m_LodDither = new NativeArray<byte>(tree.lODInfos.Length, Allocator.Persistent);
             m_ChunkMasks = new NativeArray<ulong>(math.max(chunkCount, 1), Allocator.Persistent);
             m_LodNow = new NativeArray<int>(m_InstanceCount, Allocator.Persistent);
+            m_LodScreenSqr = new NativeArray<float>(m_InstanceCount, Allocator.Persistent);
+            m_LodWeight = new NativeArray<float>(m_InstanceCount, Allocator.Persistent);
             for (int i = 0; i < m_InstanceCount; ++i) { m_LodNow[i] = -1; }
 
             m_Batches = new List<TreeLodBatch>(tree.lODInfos.Length);
@@ -548,6 +566,7 @@ namespace Landscape.FoliagePipeline
             m_DeadShadowViews = new List<ulong>(4);
             m_ArgsScratch = new uint[5];
             m_IndexScratch = new int[m_InstanceCount];
+            m_WeightScratch = new float[m_InstanceCount];
             m_ShadowIndexScratch = new int[m_Batches.Count][];
             m_ShadowCounts = new int[m_Batches.Count];
             for (int i = 0; i < m_Batches.Count; ++i) { m_ShadowIndexScratch[i] = new int[m_InstanceCount]; }
@@ -603,14 +622,18 @@ namespace Landscape.FoliagePipeline
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public unsafe void DispatchSetup(Camera camera, in float cullDistance, in float3 viewOrigin, in float4x4 matrixProj,
             in FrustumPlane* planes, in TreeOcclusionMode occlusionMode, in bool allowFade, in float lodHysteresis,
-            in NativeList<JobHandle> taskHandles)
+            in TreeLodFadeMode fadeMode, in float fadeWidth, in NativeList<JobHandle> taskHandles)
         {
             if (m_InstanceCount <= 0) { return; }
 
             m_ActiveCamera = camera;
             m_DrawDistance = cullDistance;
             bool fadeModeChanged = m_AllowFade != allowFade;
+            bool lodModeChanged = m_FadeModeSet && m_FadeMode != fadeMode;
             m_AllowFade = allowFade;
+            m_FadeMode = fadeMode;
+            m_FadeModeSet = true;
+            m_FadeWidth = FoliageLogic.ClampFadeWidth(fadeWidth);
             m_OcclusionMode = occlusionMode;
             for (int i = 0; i < 6; ++i)
             {
@@ -622,22 +645,38 @@ namespace Landscape.FoliagePipeline
             TreeCameraFade fade = m_ActiveFade;
             bool discontinuous = !fade.hasLast ||
                 FoliageLogic.ViewDiscontinuous(fade.lastOrigin, viewOrigin, fade.lastProj, matrixProj, cullDistance);
-            fade.hardCut = !allowFade || fadeModeChanged || discontinuous;
-            if (fade.hardCut)
+            if (m_FadeMode == TreeLodFadeMode.Distance)
             {
-                fade.holdOrigin = viewOrigin;
-                fade.nowOrigin = viewOrigin;
-                fade.holdProj = matrixProj;
-                fade.nowProj = matrixProj;
-                fade.alpha = 1f;
-                fade.fading = false;
+                if (lodModeChanged || !allowFade)
+                {
+                    fade.holdOrigin = viewOrigin;
+                    fade.nowOrigin = viewOrigin;
+                    fade.holdProj = matrixProj;
+                    fade.nowProj = matrixProj;
+                    fade.alpha = 1f;
+                    fade.fading = false;
+                    fade.hardCut = false;
+                }
             }
-            else if (!fade.fading)
+            else
             {
-                fade.holdOrigin = fade.nowOrigin;
-                fade.holdProj = fade.nowProj;
-                fade.nowOrigin = viewOrigin;
-                fade.nowProj = matrixProj;
+                fade.hardCut = !allowFade || fadeModeChanged || discontinuous || lodModeChanged;
+                if (fade.hardCut)
+                {
+                    fade.holdOrigin = viewOrigin;
+                    fade.nowOrigin = viewOrigin;
+                    fade.holdProj = matrixProj;
+                    fade.nowProj = matrixProj;
+                    fade.alpha = 1f;
+                    fade.fading = false;
+                }
+                else if (!fade.fading)
+                {
+                    fade.holdOrigin = fade.nowOrigin;
+                    fade.holdProj = fade.nowProj;
+                    fade.nowOrigin = viewOrigin;
+                    fade.nowProj = matrixProj;
+                }
             }
             var cullLodJob = new TreeCullLodJob();
             {
@@ -645,10 +684,11 @@ namespace Landscape.FoliagePipeline
                 cullLodJob.maxDistance = cullDistance;
                 cullLodJob.viewOrigin = viewOrigin;
                 cullLodJob.lodHoldOrigin = fade.holdOrigin;
-                cullLodJob.lodNowOrigin = fade.nowOrigin;
+                cullLodJob.lodNowOrigin = m_FadeMode == TreeLodFadeMode.Distance ? viewOrigin : fade.nowOrigin;
                 cullLodJob.lodHoldProj = fade.holdProj;
-                cullLodJob.lodNowProj = fade.nowProj;
-                cullLodJob.lodHysteresis = discontinuous ? 0f : math.clamp(lodHysteresis, 0f, 0.5f);
+                cullLodJob.lodNowProj = m_FadeMode == TreeLodFadeMode.Distance ? matrixProj : fade.nowProj;
+                cullLodJob.lodHysteresis = m_FadeMode == TreeLodFadeMode.Distance || discontinuous ? 0f : math.clamp(lodHysteresis, 0f, 0.5f);
+                cullLodJob.distanceMode = m_FadeMode == TreeLodFadeMode.Distance ? 1 : 0;
                 cullLodJob.terrainPos = m_TerrainPos;
                 cullLodJob.terrainSize = m_TerrainSize;
                 cullLodJob.cellVisible = boundSector.visibleMap;
@@ -662,6 +702,7 @@ namespace Landscape.FoliagePipeline
                 cullLodJob.lodHold = fade.lodHold;
                 cullLodJob.lodStable = fade.lodStable;
                 cullLodJob.lodNow = m_LodNow;
+                cullLodJob.lodScreenSqr = m_LodScreenSqr;
             }
             m_CullHandle = cullLodJob.Schedule(m_ChunkMasks.Length, 4);
             taskHandles.Add(m_CullHandle);
@@ -676,31 +717,62 @@ namespace Landscape.FoliagePipeline
             in bool enableHzb, in float duration, in float deltaTime)
         {
             if (!m_PendingVisibility || m_InstanceCount <= 0 || m_ActiveFade == null) { return; }
-            UpdateFade(duration, deltaTime);
 
             JobHandle emitHandle = default;
             bool scheduled = false;
-            int dither = (m_AllowFade && m_DitherEnabled && m_ActiveFade.fading) ? 1 : 0;
-            for (int i = 0; i < m_Batches.Count; ++i)
+            if (m_FadeMode == TreeLodFadeMode.Distance)
             {
-                TreeLodBatch batch = m_Batches[i];
-                var emitJob = new TreeEmitLodMasksJob();
+                int dither = (m_AllowFade && m_DitherEnabled) ? 1 : 0;
+                for (int i = 0; i < m_Batches.Count; ++i)
                 {
-                    emitJob.meshIndex = batch.meshIndex;
-                    emitJob.ditherEnabled = dither;
-                    emitJob.instanceCount = m_InstanceCount;
-                    emitJob.chunkMasks = m_ChunkMasks;
-                    emitJob.lodHold = m_ActiveFade.lodHold;
-                    emitJob.lodNow = m_LodNow;
-                    emitJob.lodDither = m_LodDither;
-                    emitJob.stableMask = batch.stableMask;
-                    emitJob.fadeOutMask = batch.fadeOutMask;
-                    emitJob.fadeInMask = batch.fadeInMask;
-                    emitJob.bucketCounts = batch.bucketCounts;
+                    TreeLodBatch batch = m_Batches[i];
+                    var emitJob = new TreeEmitDistanceMasksJob();
+                    {
+                        emitJob.meshIndex = batch.meshIndex;
+                        emitJob.ditherEnabled = dither;
+                        emitJob.instanceCount = m_InstanceCount;
+                        emitJob.fadeWidth = m_FadeWidth;
+                        emitJob.chunkMasks = m_ChunkMasks;
+                        emitJob.lodNow = m_LodNow;
+                        emitJob.screenSqr = m_LodScreenSqr;
+                        emitJob.lodScreenSizes = m_LodScreenSizes;
+                        emitJob.lodDither = m_LodDither;
+                        emitJob.stableMask = batch.stableMask;
+                        emitJob.fadeOutMask = batch.fadeOutMask;
+                        emitJob.fadeInMask = batch.fadeInMask;
+                        emitJob.bucketCounts = batch.bucketCounts;
+                        emitJob.lodWeight = m_LodWeight;
+                    }
+                    JobHandle handle = emitJob.Schedule();
+                    emitHandle = scheduled ? JobHandle.CombineDependencies(emitHandle, handle) : handle;
+                    scheduled = true;
                 }
-                JobHandle handle = emitJob.Schedule();
-                emitHandle = scheduled ? JobHandle.CombineDependencies(emitHandle, handle) : handle;
-                scheduled = true;
+            }
+            else
+            {
+                UpdateFade(duration, deltaTime);
+                int dither = (m_AllowFade && m_DitherEnabled && m_ActiveFade.fading) ? 1 : 0;
+                for (int i = 0; i < m_Batches.Count; ++i)
+                {
+                    TreeLodBatch batch = m_Batches[i];
+                    var emitJob = new TreeEmitLodMasksJob();
+                    {
+                        emitJob.meshIndex = batch.meshIndex;
+                        emitJob.ditherEnabled = dither;
+                        emitJob.instanceCount = m_InstanceCount;
+                        emitJob.chunkMasks = m_ChunkMasks;
+                        emitJob.lodHold = m_ActiveFade.lodHold;
+                        emitJob.lodNow = m_LodNow;
+                        emitJob.lodDither = m_LodDither;
+                        emitJob.stableMask = batch.stableMask;
+                        emitJob.fadeOutMask = batch.fadeOutMask;
+                        emitJob.fadeInMask = batch.fadeInMask;
+                        emitJob.bucketCounts = batch.bucketCounts;
+                    }
+                    JobHandle handle = emitJob.Schedule();
+                    emitHandle = scheduled ? JobHandle.CombineDependencies(emitHandle, handle) : handle;
+                    scheduled = true;
+                }
             }
             if (scheduled) { emitHandle.Complete(); }
 
@@ -738,6 +810,12 @@ namespace Landscape.FoliagePipeline
                 m_MaskScratch[i] = masks[i];
             }
 
+            if (m_FadeMode == TreeLodFadeMode.Distance && bucket != 0)
+            {
+                LowerDistanceFade(cmdBuffer, batch, bucket, gpuReady, chunkCount);
+                return;
+            }
+
             int runCount = FoliageLogic.EncodeRunsFromMasks(m_MaskScratch, chunkCount, m_InstanceCount, m_RunScratch);
             int codec = FoliageLogic.PickVisibilityCodec(visible, chunkCount, runCount, gpuReady);
             ComputeBuffer indexBuffer = batch.indexBuffers[bucket];
@@ -770,6 +848,30 @@ namespace Landscape.FoliagePipeline
                 m_Gpu.FilterIndex(m_IndexScratch, written, indexBuffer, FirstArgs(batch, bucket));
             }
 
+            CopyGpuArgs(batch, bucket);
+            batch.gpuArgs[bucket] = true;
+        }
+
+        void LowerDistanceFade(CommandBuffer cmdBuffer, TreeLodBatch batch, in int bucket, in int gpuReady, in int chunkCount)
+        {
+            int written = FoliageLogic.ExpandMasksWithWeights(m_MaskScratch, chunkCount, m_InstanceCount, m_LodWeight, m_IndexScratch, m_WeightScratch);
+            batch.uploadedCount[bucket] = written;
+            if (written <= 0) { return; }
+
+            ComputeBuffer indexBuffer = batch.indexBuffers[bucket];
+            ComputeBuffer weightBuffer = batch.weightBuffers[bucket - 1];
+            bool useHzb = gpuReady != 0 && m_Gpu.HasHzb;
+            if (!useHzb)
+            {
+                cmdBuffer.SetBufferData(indexBuffer, m_IndexScratch, 0, 0, written);
+                cmdBuffer.SetBufferData(weightBuffer, m_WeightScratch, 0, 0, written);
+                WriteCpuArgs(cmdBuffer, batch, bucket, written);
+                return;
+            }
+
+            ResetGpuArgs(cmdBuffer, batch, bucket);
+            m_Gpu.BindCommon(indexBuffer, FirstArgs(batch, bucket), m_ActiveCamera, m_DrawDistance);
+            m_Gpu.FilterIndex(m_IndexScratch, m_WeightScratch, written, indexBuffer, weightBuffer, FirstArgs(batch, bucket));
             CopyGpuArgs(batch, bucket);
             batch.gpuArgs[bucket] = true;
         }
@@ -891,17 +993,22 @@ namespace Landscape.FoliagePipeline
             {
                 TreeLodBatch batch = m_Batches[i];
                 Mesh mesh = tree.meshes[batch.meshIndex];
-                DrawBucket(cmdBuffer, passIndex, propertyBlock, batch, mesh, (int)LodBucket.Stable, 0f, 0f, worldBounds);
-                if (m_ActiveFade != null && m_ActiveFade.fading && m_DitherEnabled && m_AllowFade)
+                DrawBucket(cmdBuffer, passIndex, propertyBlock, batch, mesh, (int)LodBucket.Stable, 0f, 0f, 0f, null, worldBounds);
+                if (m_FadeMode == TreeLodFadeMode.Distance && m_AllowFade)
                 {
-                    DrawBucket(cmdBuffer, passIndex, propertyBlock, batch, mesh, (int)LodBucket.FadeOut, 1f - m_ActiveFade.alpha, 1f, worldBounds);
-                    DrawBucket(cmdBuffer, passIndex, propertyBlock, batch, mesh, (int)LodBucket.FadeIn, m_ActiveFade.alpha - 1f, 1f, worldBounds);
+                    DrawBucket(cmdBuffer, passIndex, propertyBlock, batch, mesh, (int)LodBucket.FadeOut, 1f, 1f, 1f, batch.weightBuffers[0], worldBounds);
+                    DrawBucket(cmdBuffer, passIndex, propertyBlock, batch, mesh, (int)LodBucket.FadeIn, -1f, 1f, 1f, batch.weightBuffers[1], worldBounds);
+                }
+                else if (m_ActiveFade != null && m_ActiveFade.fading && m_DitherEnabled && m_AllowFade)
+                {
+                    DrawBucket(cmdBuffer, passIndex, propertyBlock, batch, mesh, (int)LodBucket.FadeOut, 1f - m_ActiveFade.alpha, 1f, 0f, null, worldBounds);
+                    DrawBucket(cmdBuffer, passIndex, propertyBlock, batch, mesh, (int)LodBucket.FadeIn, m_ActiveFade.alpha - 1f, 1f, 0f, null, worldBounds);
                 }
             }
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        void DrawBucket(CommandBuffer cmdBuffer, in int passIndex, MaterialPropertyBlock propertyBlock, TreeLodBatch batch, Mesh mesh, in int bucket, in float lodFactor, in float fadeEnable, Bounds worldBounds)
+        void DrawBucket(CommandBuffer cmdBuffer, in int passIndex, MaterialPropertyBlock propertyBlock, TreeLodBatch batch, Mesh mesh, in int bucket, in float lodFactor, in float fadeEnable, in float weightEnable, ComputeBuffer weightBuffer, Bounds worldBounds)
         {
             int argsIndex = bucket == (int)LodBucket.FadeOut ? 1 : bucket == (int)LodBucket.FadeIn ? 2 : 0;
             if (!batch.gpuArgs[argsIndex] && batch.uploadedCount[argsIndex] <= 0) { return; }
@@ -918,6 +1025,8 @@ namespace Landscape.FoliagePipeline
                 propertyBlock.SetBuffer(TreeShaderID.ElementBuffer, m_MatrixBuffer);
                 propertyBlock.SetFloat(TreeShaderID.LodFactor, lodFactor);
                 propertyBlock.SetFloat(TreeShaderID.LodFadeEnable, fadeEnable);
+                propertyBlock.SetFloat(TreeShaderID.LodWeightEnable, weightEnable);
+                if (weightBuffer != null) { propertyBlock.SetBuffer(TreeShaderID.LodWeightBuffer, weightBuffer); }
                 cmdBuffer.DrawMeshInstancedIndirect(mesh, submesh, material, passIndex, argsBuffer, 0, propertyBlock);
             }
         }
@@ -1153,6 +1262,7 @@ namespace Landscape.FoliagePipeline
                     propertyBlock.SetBuffer(TreeShaderID.IndexBuffer, shadowBatch.indexBuffer);
                     propertyBlock.SetBuffer(TreeShaderID.ElementBuffer, m_MatrixBuffer);
                     propertyBlock.SetFloat(TreeShaderID.LodFadeEnable, 0f);
+                    propertyBlock.SetFloat(TreeShaderID.LodWeightEnable, 0f);
                     cmdBuffer.DrawMeshInstancedIndirect(mesh, submesh, material, passIndex, argsBuffer, 0, propertyBlock);
                 }
             }
@@ -1171,6 +1281,8 @@ namespace Landscape.FoliagePipeline
             if (m_LodDither.IsCreated) { m_LodDither.Dispose(); }
             if (m_ChunkMasks.IsCreated) { m_ChunkMasks.Dispose(); }
             if (m_LodNow.IsCreated) { m_LodNow.Dispose(); }
+            if (m_LodScreenSqr.IsCreated) { m_LodScreenSqr.Dispose(); }
+            if (m_LodWeight.IsCreated) { m_LodWeight.Dispose(); }
             if (m_Heights.IsCreated) { m_Heights.Dispose(); }
             if (m_MatrixBuffer != null) { m_MatrixBuffer.Dispose(); m_MatrixBuffer = null; }
             if (m_Gpu != null) { m_Gpu.Release(); m_Gpu = null; }
@@ -1197,6 +1309,7 @@ namespace Landscape.FoliagePipeline
             m_ActiveCamera = null;
             m_ArgsScratch = null;
             m_IndexScratch = null;
+            m_WeightScratch = null;
             m_ShadowIndexScratch = null;
             m_ShadowCounts = null;
             m_MaskScratch = null;

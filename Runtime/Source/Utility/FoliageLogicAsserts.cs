@@ -374,6 +374,8 @@ namespace Landscape.FoliagePipeline
                 Fail("teleport and projection changes must hard-cut the LOD view");
             }
 
+            AssertDistanceFade();
+
             int[] lodNow = { -1, -1, -1, -1 };
             byte[] visible = { 0, 0, 0, 0 };
             for (int i = 0; i < visible.Length; ++i)
@@ -382,6 +384,85 @@ namespace Landscape.FoliagePipeline
                 {
                     Fail("culled instances must keep a lod sentinel");
                 }
+            }
+        }
+
+        static void AssertDistanceFade()
+        {
+            float[] thresholds = { 0.60f, 0.30f, 0.10f };
+            ExpectDistance(0.90f, thresholds, 0, -1, -1, 0f, "S=0.90 stays on the fine stable lod");
+            ExpectDistance(0.70f, thresholds, 0, -1, -1, 0f, "S=0.70 snaps to the fine stable lod");
+            float invX = (1f / 0.60f - 1f / 0.65f) / (1f / 0.60f - 1f / 0.70f);
+            float linearX = (0.65f - 0.60f) / (0.70f - 0.60f);
+            ExpectDistance(0.65f, thresholds, -1, 0, 1, invX, "S=0.65 fades with inverse screen coverage");
+            DistanceFade linearProbe = FoliageLogic.ClassifyDistanceThresholds(0.65f, thresholds, 1f, 0.25f, 1, 1);
+            if (math.abs(linearProbe.x - linearX) < 1e-3f)
+            {
+                Fail("S=0.65 must not interpolate x linearly in screen coverage");
+            }
+            ExpectDistance(0.60f, thresholds, 1, -1, -1, 0f, "S=0.60 snaps to the next stable lod");
+            ExpectDistance(0.50f, thresholds, 1, -1, -1, 0f, "S=0.50 stays on the middle stable lod");
+            float midFar = 0.30f;
+            float midNear = 0.60f;
+            float midBand = midFar + (0.25f * (midNear - midFar));
+            float midX = (1f / midFar - 1f / 0.34f) / (1f / midFar - 1f / midBand);
+            ExpectDistance(0.34f, thresholds, -1, 1, 2, midX, "S=0.34 fades the middle lod into the coarse lod");
+            ExpectDistance(0.20f, thresholds, 2, -1, -1, 0f, "S=0.20 stays on the last stable lod");
+            DistanceFade culled = FoliageLogic.ClassifyDistanceThresholds(0.05f, thresholds, 1f, 0.25f, 1, 1);
+            if (culled.lod >= 0 || culled.fadeOutLod >= 0)
+            {
+                Fail("S=0.05 is outside every threshold");
+            }
+            DistanceFade hard = FoliageLogic.ClassifyDistanceThresholds(0.65f, thresholds, 1f, 0.25f, 1, 0);
+            if (hard.lod != 0 || hard.fadeOutLod >= 0)
+            {
+                Fail("disabled dither stays on the hard lod");
+            }
+
+            float far = FoliageLogic.DistanceLodFarEdge(0.3f);
+            if (math.abs(far - (0.15f * 0.15f)) > 1e-6f)
+            {
+                Fail("lod 0 far edge is the next screen-size threshold squared");
+            }
+            float band = far + (0.25f * (1f - far));
+            float sample = 0.1f;
+            DistanceFade produced = FoliageLogic.ClassifyDistanceEdges(sample, 0, 3, far, 1f, 0.25f, 2, 1);
+            float expected = (math.rsqrt(far) - math.rsqrt(sample)) / (math.rsqrt(far) - math.rsqrt(band));
+            float linear = (sample - far) / (band - far);
+            if (produced.fadeOutLod != 0 || produced.fadeInLod != 1 || math.abs(produced.x - expected) > 1e-3f)
+            {
+                Fail("production distance fade uses rsqrt of squared screen coverage");
+            }
+            if (math.abs(produced.x - linear) < 1e-3f)
+            {
+                Fail("production distance fade must not interpolate x linearly in squared screen coverage");
+            }
+            DistanceFade last = FoliageLogic.ClassifyDistanceEdges(0.001f, 2, 3, far, 1f, 0.25f, 2, 1);
+            if (last.lod != 2 || last.fadeOutLod >= 0)
+            {
+                Fail("the last lod stays stable until distance cull");
+            }
+
+            float[] byInstance = { 0.2f, 0.5f, 0.8f };
+            ulong[] masks = { 0x7UL };
+            int[] indices = new int[3];
+            float[] weights = new float[3];
+            int written = FoliageLogic.ExpandMasksWithWeights(masks, 1, 3, byInstance, indices, weights);
+            int[] keptIndex = new int[3];
+            float[] keptWeight = new float[3];
+            int kept = FoliageLogic.FilterCompactPairs(indices, weights, written, 1, keptIndex, keptWeight);
+            if (written != 3 || kept != 2 || keptIndex[0] != 0 || keptWeight[0] != 0.2f || keptIndex[1] != 2 || keptWeight[1] != 0.8f)
+            {
+                Fail("dropping one instance must keep the remaining index and weight pairs aligned");
+            }
+        }
+
+        static void ExpectDistance(float screen, float[] thresholds, int lod, int fadeOut, int fadeIn, float x, string message)
+        {
+            DistanceFade fade = FoliageLogic.ClassifyDistanceThresholds(screen, thresholds, 1f, 0.25f, 1, 1);
+            if (fade.lod != lod || fade.fadeOutLod != fadeOut || fade.fadeInLod != fadeIn || math.abs(fade.x - x) > 1e-3f)
+            {
+                Fail(message);
             }
         }
 

@@ -33,6 +33,9 @@ struct GpuAabb
 StructuredBuffer<GpuChunk> _Chunks;
 StructuredBuffer<GpuRun> _Runs;
 StructuredBuffer<uint> _SrcIndices;
+StructuredBuffer<float> _SrcWeights;
+RWStructuredBuffer<float> _Weights;
+int _WriteWeight;
 StructuredBuffer<GpuAabb> _Bounds;
 StructuredBuffer<GpuAabb> _CellBounds;
 StructuredBuffer<int> _InstanceCell;
@@ -280,7 +283,13 @@ void FilterIndexHzb(uint3 id : SV_DispatchThreadID)
     {
         return;
     }
-    AppendIndex(instanceId);
+    uint slot;
+    InterlockedAdd(_Args[1], 1, slot);
+    _Indices[slot] = instanceId;
+    if (_WriteWeight != 0)
+    {
+        _Weights[slot] = _SrcWeights[id.x];
+    }
 }
 
 groupshared uint gsMaskLo;

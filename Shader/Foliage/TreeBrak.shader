@@ -163,6 +163,7 @@ Shader "Landscape/TreeBrak"
 				float3 normalWS : NORMAL;
 				float4 vertexCS : SV_POSITION;
 				float4 vertexWS : TEXCOORD2;
+				nointerpolation float lodFactor : TEXCOORD3;
 			};
 
 			Varyings vert(Attributes input)
@@ -176,6 +177,11 @@ Shader "Landscape/TreeBrak"
 				output.normalWS = TransformFoliageNormal(treeElement.matrix_World, input.normalOS);
 				output.vertexWS = mul(treeElement.matrix_World, input.vertexOS);
 				output.vertexCS = mul(UNITY_MATRIX_VP, output.vertexWS);
+				output.lodFactor = _LODFactor;
+				if (_LodWeightEnable > 0.5)
+				{
+					output.lodFactor = _LodWeightBuffer[input.InstanceId] * _LODFactor;
+				}
 				return output;
 			}
 
@@ -183,7 +189,7 @@ Shader "Landscape/TreeBrak"
 			{
 				if (_LodFadeEnable > 0.5)
 				{
-					LODDitheringTransition(input.vertexCS.xy, _LODFactor);
+					LODDitheringTransition(input.vertexCS.xy, input.lodFactor);
 				}
 
 				//Geometry Context

@@ -266,6 +266,7 @@ namespace Landscape.FoliagePipeline
         public float4x4 lodHoldProj;
         public float4x4 lodNowProj;
         public float lodHysteresis;
+        public int distanceMode;
         public float3 terrainPos;
         public float3 terrainSize;
 
@@ -302,6 +303,9 @@ namespace Landscape.FoliagePipeline
 
         [NativeDisableParallelForRestriction]
         public NativeArray<int> lodNow;
+
+        [NativeDisableParallelForRestriction]
+        public NativeArray<float> lodScreenSqr;
 
         public void Execute(int chunk)
         {
@@ -377,9 +381,19 @@ namespace Landscape.FoliagePipeline
 
                 mask |= 1UL << bit;
                 float radius = math.max(math.max(math.abs(box.extents.x), math.abs(box.extents.y)), math.abs(box.extents.z));
-                int previous = lodStable[index];
-                lodHold[index] = FoliageLogic.ComputeLodIndexHysteresis(ScreenRadiusSqr(box.center, radius, lodHoldOrigin, lodHoldProj), lodScreenSizes, previous, lodHysteresis);
-                lodNow[index] = FoliageLogic.ComputeLodIndexHysteresis(ScreenRadiusSqr(box.center, radius, lodNowOrigin, lodNowProj), lodScreenSizes, previous, lodHysteresis);
+                if (distanceMode != 0)
+                {
+                    float screenSqr = ScreenRadiusSqr(box.center, radius, viewOrigin, lodNowProj);
+                    lodHold[index] = -1;
+                    lodNow[index] = FoliageLogic.ComputeLodIndex(screenSqr, lodScreenSizes);
+                    lodScreenSqr[index] = screenSqr;
+                }
+                else
+                {
+                    int previous = lodStable[index];
+                    lodHold[index] = FoliageLogic.ComputeLodIndexHysteresis(ScreenRadiusSqr(box.center, radius, lodHoldOrigin, lodHoldProj), lodScreenSizes, previous, lodHysteresis);
+                    lodNow[index] = FoliageLogic.ComputeLodIndexHysteresis(ScreenRadiusSqr(box.center, radius, lodNowOrigin, lodNowProj), lodScreenSizes, previous, lodHysteresis);
+                }
             }
 
             chunkMasks[chunk] = mask;
@@ -533,6 +547,93 @@ namespace Landscape.FoliagePipeline
                         ++fadeOutCount;
                     }
                     else if (bucket == (int)LodBucket.FadeIn)
+                    {
+                        fadeIn |= bitMask;
+                        ++fadeInCount;
+                    }
+                }
+                stableMask[chunk] = stable;
+                fadeOutMask[chunk] = fadeOut;
+                fadeInMask[chunk] = fadeIn;
+            }
+            bucketCounts[0] = stableCount;
+            bucketCounts[1] = fadeOutCount;
+            bucketCounts[2] = fadeInCount;
+        }
+    }
+
+    [BurstCompile]
+    public struct TreeEmitDistanceMasksJob : IJob
+    {
+        public int meshIndex;
+        public int ditherEnabled;
+        public int instanceCount;
+        public float fadeWidth;
+
+        [ReadOnly]
+        public NativeArray<ulong> chunkMasks;
+
+        [ReadOnly]
+        public NativeArray<int> lodNow;
+
+        [ReadOnly]
+        public NativeArray<float> screenSqr;
+
+        [ReadOnly]
+        public NativeArray<float> lodScreenSizes;
+
+        [ReadOnly]
+        public NativeArray<byte> lodDither;
+
+        public NativeArray<ulong> stableMask;
+        public NativeArray<ulong> fadeOutMask;
+        public NativeArray<ulong> fadeInMask;
+        public NativeArray<int> bucketCounts;
+
+        [NativeDisableParallelForRestriction]
+        public NativeArray<float> lodWeight;
+
+        public void Execute()
+        {
+            int stableCount = 0;
+            int fadeOutCount = 0;
+            int fadeInCount = 0;
+            int chunkCount = chunkMasks.Length;
+            for (int chunk = 0; chunk < chunkCount; ++chunk)
+            {
+                int candidateBase = chunk * 64;
+                int remain = instanceCount - candidateBase;
+                int count = remain > 64 ? 64 : (remain < 0 ? 0 : remain);
+                ulong vis = chunkMasks[chunk];
+                ulong stable = 0;
+                ulong fadeOut = 0;
+                ulong fadeIn = 0;
+                for (int bit = 0; bit < count; ++bit)
+                {
+                    if ((vis & (1UL << bit)) == 0) { continue; }
+                    int index = candidateBase + bit;
+                    int lod = lodNow[index];
+                    if (lod < 0) { continue; }
+
+                    int pairDither = 0;
+                    if (ditherEnabled != 0 && lod + 1 < lodDither.Length && lodDither[lod] != 0 && lodDither[lod + 1] != 0)
+                    {
+                        pairDither = 1;
+                    }
+                    DistanceFade fade = FoliageLogic.ClassifyDistanceLodAt(screenSqr[index], lodScreenSizes, fadeWidth, pairDither, lod);
+                    ulong bitMask = 1UL << bit;
+                    if (fade.lod == meshIndex)
+                    {
+                        stable |= bitMask;
+                        ++stableCount;
+                    }
+                    else if (fade.fadeOutLod == meshIndex)
+                    {
+                        fadeOut |= bitMask;
+                        ++fadeOutCount;
+                        lodWeight[index] = fade.x;
+                    }
+                    else if (fade.fadeInLod == meshIndex)
                     {
                         fadeIn |= bitMask;
                         ++fadeInCount;
