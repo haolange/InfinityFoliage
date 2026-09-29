@@ -29,6 +29,8 @@ namespace Landscape.FoliagePipeline
         [Header("Rendering Overrides")]
         public bool overrideDrawDistance;
         [Min(0f)] public float drawDistanceOverride;
+        public bool overrideBackend;
+        public TreeVisibilityBackend backendOverride = TreeVisibilityBackend.Auto;
         public bool overrideOcclusion;
         public TreeOcclusionMode occlusionOverride = TreeOcclusionMode.TerrainAndHzb;
         public bool overrideLodFade;
@@ -69,6 +71,54 @@ namespace Landscape.FoliagePipeline
         internal void SetRenderSettings(FoliageRenderSettings settings)
         {
             m_RenderSettings = settings;
+            if (treeSectors == null) { return; }
+            TreeVisibilityBackend backend = ResolveBackend(settings);
+            for (int i = 0; i < treeSectors.Length; ++i)
+            {
+                if (m_SectorReady != null && m_SectorReady[i]) { treeSectors[i].SetBackend(backend); }
+            }
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        internal TreeVisibilityBackend ResolveBackend(FoliageRenderSettings settings)
+        {
+            return overrideBackend ? backendOverride : settings.treeBackend;
+        }
+
+        public TreeVisibilityBackend requestedBackend
+        {
+            get { return overrideBackend ? backendOverride : m_RenderSettings != null ? m_RenderSettings.treeBackend : TreeVisibilityBackend.Auto; }
+        }
+
+        public bool usesCpuBackend
+        {
+            get
+            {
+                if (requestedBackend == TreeVisibilityBackend.CPU) { return true; }
+                if (!Application.isPlaying || treeSectors == null) { return false; }
+                for (int i = 0; i < treeSectors.Length; ++i)
+                {
+                    if (m_SectorReady != null && m_SectorReady[i] && treeSectors[i].actualBackend == TreeVisibilityBackend.CPU) { return true; }
+                }
+                return false;
+            }
+        }
+
+        public string BackendStatusSummary()
+        {
+            Camera camera = Camera.main;
+#if UNITY_EDITOR
+            if (debugCamera != null) { camera = debugCamera; }
+#endif
+            if (!Application.isPlaying || treeSectors == null) { return "Requested backend: " + requestedBackend + ". Runtime status is available in Play."; }
+            var summary = new System.Text.StringBuilder();
+            for (int i = 0; i < treeSectors.Length; ++i)
+            {
+                if (treeSectors[i] == null || m_SectorReady == null || !m_SectorReady[i]) { continue; }
+                if (summary.Length > 0) { summary.Append('\n'); }
+                summary.Append("Tree ").Append(i).Append(": ").Append(treeSectors[i].BackendStatus(camera));
+            }
+            return summary.Length > 0 ? summary.ToString() : "Requested backend: " + requestedBackend + ". No resident tree candidates.";
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]

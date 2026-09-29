@@ -16,6 +16,9 @@ StructuredBuffer<TreeElement> _TreeElementBuffer;
 #if defined(FOLIAGE_LOD_WEIGHT)
 StructuredBuffer<float> _LodWeightBuffer;
 #endif
+#if defined(FOLIAGE_GPU_TEMPORAL)
+StructuredBuffer<float4> _TreeFadeState;
+#endif
 float _LODFactor;
 float _LodFadeEnable;
 

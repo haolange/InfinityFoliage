@@ -27,13 +27,6 @@ namespace Landscape.FoliagePipeline
         public int count;
     }
 
-    public enum VisibilityCodec : byte
-    {
-        CompactIndex = 0,
-        BitMaskTransfer = 1,
-        RunTransfer = 2
-    }
-
     public struct VisibilityChunk
     {
         public int candidateBase;
@@ -41,21 +34,9 @@ namespace Landscape.FoliagePipeline
         public ulong mask;
     }
 
-    public struct VisibilityRun
-    {
-        public int start;
-        public int count;
-    }
-
     public static class FoliageLogic
     {
         public const int VisibilityChunkWidth = 64;
-        public const int VisibilityIndexBytes = 4;
-        public const int VisibilityRunBytes = 8;
-        public const int VisibilityChunkBytes = 16;
-        public const int VisibilityExpandMaskWeight = 2;
-        public const int VisibilityExpandRunWeight = 1;
-
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static int CellIndex(int x, int y, int numSection)
         {
@@ -526,117 +507,6 @@ namespace Landscape.FoliagePipeline
                 written += ExpandMaskToIndex(VisibilityChunkBase(chunk), count, masks[chunk], dest, written);
             }
             return written;
-        }
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static int EncodeRuns(int[] ids, int idCount, VisibilityRun[] runs)
-        {
-            if (idCount <= 0) { return 0; }
-            int runCount = 0;
-            int start = ids[0];
-            int last = ids[0];
-            for (int i = 1; i < idCount; ++i)
-            {
-                int id = ids[i];
-                if (id == last + 1)
-                {
-                    last = id;
-                    continue;
-                }
-                runs[runCount].start = start;
-                runs[runCount].count = (last - start) + 1;
-                ++runCount;
-                start = id;
-                last = id;
-            }
-            runs[runCount].start = start;
-            runs[runCount].count = (last - start) + 1;
-            ++runCount;
-            return runCount;
-        }
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static int EncodeRunsFromMasks(ulong[] masks, int chunkCount, int instanceCount, VisibilityRun[] runs)
-        {
-            int runCount = 0;
-            int runStart = -1;
-            int runLast = -2;
-            for (int chunk = 0; chunk < chunkCount; ++chunk)
-            {
-                int baseIndex = VisibilityChunkBase(chunk);
-                int count = VisibilityChunkSize(chunk, instanceCount);
-                ulong mask = masks[chunk];
-                for (int bit = 0; bit < count; ++bit)
-                {
-                    if ((mask & (1UL << bit)) == 0) { continue; }
-                    int id = baseIndex + bit;
-                    if (runStart < 0)
-                    {
-                        runStart = id;
-                        runLast = id;
-                        continue;
-                    }
-                    if (id == runLast + 1)
-                    {
-                        runLast = id;
-                        continue;
-                    }
-                    runs[runCount].start = runStart;
-                    runs[runCount].count = (runLast - runStart) + 1;
-                    ++runCount;
-                    runStart = id;
-                    runLast = id;
-                }
-            }
-            if (runStart >= 0)
-            {
-                runs[runCount].start = runStart;
-                runs[runCount].count = (runLast - runStart) + 1;
-                ++runCount;
-            }
-            return runCount;
-        }
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static int ExpandRunsToIndex(VisibilityRun[] runs, int runCount, int[] dest)
-        {
-            int written = 0;
-            for (int i = 0; i < runCount; ++i)
-            {
-                int start = runs[i].start;
-                int count = runs[i].count;
-                for (int k = 0; k < count; ++k)
-                {
-                    dest[written] = start + k;
-                    ++written;
-                }
-            }
-            return written;
-        }
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static int PickVisibilityCodec(int visibleCount, int chunkCount, int runCount, int gpuReady)
-        {
-            if (gpuReady == 0 || visibleCount <= 0)
-            {
-                return (int)VisibilityCodec.CompactIndex;
-            }
-
-            int costIndex = visibleCount * VisibilityIndexBytes;
-            int costMask = (chunkCount * VisibilityChunkBytes) + (visibleCount * VisibilityExpandMaskWeight);
-            int costRun = (runCount * VisibilityRunBytes) + (visibleCount * VisibilityExpandRunWeight);
-            int codec = (int)VisibilityCodec.CompactIndex;
-            int best = costIndex;
-            if (costMask < best)
-            {
-                best = costMask;
-                codec = (int)VisibilityCodec.BitMaskTransfer;
-            }
-            if (costRun < best)
-            {
-                codec = (int)VisibilityCodec.RunTransfer;
-            }
-            return codec;
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]

@@ -11,6 +11,13 @@ using Unity.Collections.LowLevel.Unsafe;
 
 namespace Landscape.FoliagePipeline
 {
+    public enum TreeVisibilityBackend
+    {
+        Auto = 0,
+        CPU = 1,
+        GPU = 2
+    }
+
     public enum TreeOcclusionMode
     {
         None = 0,
@@ -36,6 +43,7 @@ namespace Landscape.FoliagePipeline
         [Min(0f)] public float treeDistanceScale = 1f;
 
         [Header("Tree Visibility")]
+        public TreeVisibilityBackend treeBackend = TreeVisibilityBackend.Auto;
         public TreeOcclusionMode treeOcclusion = TreeOcclusionMode.TerrainAndHzb;
         public bool treeLodFade = true;
         public TreeLodFadeMode treeLodFadeMode = TreeLodFadeMode.Temporal;

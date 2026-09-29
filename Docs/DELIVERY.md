@@ -1,5 +1,38 @@
 # Infinity Foliage 交付记录
 
+## 2026-09-30 Tree CPU／GPU 双 Backend
+
+基线 `29e3273`，工作树干净；Unity 6000.6.0f1／URP 17.6。仅扩展树颜色与主光 CSM，草保持 CPU 格剔除与连续 run；候选资产和矩阵格式不变，不 rebake。CPU compact 与 GPU 64 位 mask→计数→前缀→compact 为两条正式路径，退役旧混合搬运选择器。任务按阶段集中记录，正常帧不读回 GPU。
+
+| 任务 | 依赖 | 代码 | 编译／断言 | Play／GPU | 结论 |
+|---|---|---|---|---|---|
+| B0 基线与控制契约 | 无 | Auto／CPU／GPU、组件覆盖、实际状态与独立遮挡控制 | Unity 6.6 Runtime／Editor 编译通过 | CPU／GPU／Auto、组件覆盖与 HZB 关开通过 | 本机功能通过 |
+| B1 CPU 路径收敛 | B0 | Burst 剔除与 compact；CPU CSM 独立 compact；旧搬运链删除 | 正式断言随 Renderer Create 执行，无异常 | 3,604 可见；Distance 10 权重槽；Temporal 目标 5/303 起中末通过 | 通过 |
+| B2 GPU 颜色 | B1 | GPU 格／实例、LOD、fade、64 位 mask／分层 prefix／compact | 当前 Metal 导入无目标 Shader 错误或警告 | 7,622 候选下 CPU／GPU 逐桶 index 相等；Distance index／weight 相等；HZB 3,533 为关闭时 3,604 的子集 | 核心与开关通过；已知遮挡者的单目标画面证据未关闭 |
+| B3 GPU CSM | B2 | 每相机／级联独立最终 index／args | 托管编译通过 | 1／2／4 级联 CPU／GPU 完整索引相等；计数 5390、426/5271、20/79/495/5273；1／4 级联 Game 地面受影已观察 | 索引与当前画面通过；单独隔离镜头外 caster 未完成 |
+| B4 切换与生命周期 | B2、B3 | 状态重置、失败回退、资源释放与相机清理 | 独立源码复核通过 | 两相机 3604/2292、10/8 权重槽相等；tree0 GPU 故障回退 CPU、361 index、仅一次提示；停用后释放、重入恢复 GPU | 本机功能通过 |
+| B5 集中验收与交付 | B1–B4 | AGENTS／README 同步；临时入口与定位读回清除 | 最终源码终编与 Git 检查见发布记录 | 23 项诊断 PASS、0 FAIL；三路径各 120 帧；原设置已恢复 | 按用户最新要求直接提交；未测范围保留 |
+
+本轮修复了 GPU compact 的 Metal 排名错误：高 32 位线程曾把整个位掩码的计数作为自身排名，覆盖同一槽位；原始 mask／count／offset 与候选 LOD 都正确。改为合法右移范围构造低位掩码后，CPU／GPU 最终 index 逐槽一致。临时原始 mask、rank 与 slot 读回已删除，正式冻结快照仍只按需执行。
+
+Temporal 在现有 Tree 5／candidate 303 的 LOD 1→0 上实测：CPU alpha 起点 0.0040、中段 0.4560、终点 1；GPU 起点 0.0054、中段 0.4520、终点 1。实际目标从两个 fade 桶进入细档 stable；GPU 中段 Game 已观察。双相机、组件覆盖、关闭 fade、GPU 不可用回退和卸载重入均在同一 Editor 的收尾会话验证。自动验收结束恢复相机、组件、Renderer、原 URP 3 级联／128 米，销毁临时 Camera／RT，没有保存宿主资产。
+
+性能为当前 Mac／Metal、原机位、1566×881、4 级联下单次顺序采样；每配置 120 个有效 FrameTiming 样本，读回关闭，不能直接与旧 1569×1874 基线比较，也不据此宣称 GPU 在所有设备更快。
+
+| 配置 | CPU mean／P95 ms | GPU mean／P95 ms | 树 ComputeBuffer 容量 |
+|---|---:|---:|---:|
+| CPU | 16.677／17.709 | 27.056／47.327 | 3,001,680 bytes |
+| GPU，HZB 关闭 | 16.668／17.356 | 16.486／24.569 | 3,001,680 bytes |
+| GPU，HZB 开启 | 16.663／17.276 | 13.891／16.711 | 3,155,280 bytes |
+
+DrawCalls recorder 全为 0，属于不可用数据，不能报告为零 Draw。容量是已分配 ComputeBuffer 的 count×stride，不是 VRAM 实测。最后 Frame Debugger 取得 263 个事件与最终树／地面画面，但未完成单事件资源和 atlas 隔离对照；已关闭 Frame Debugger。
+
+发布边界：用户在上述功能与性能结果后明确要求「直接提交，不要查看 Unity」。据此停止继续 UI 验收并发布当前实现，保留 HZB 已知无遮挡／真实遮挡单目标、镜头外 caster 隔离及完整 Frame Debugger 资源对照的证据限制；提交不把这些项写成通过。旧 C4 转镜头突隐仍独立待办。草、VT、SH 不属于本轮新验收结论。
+
+跨平台：Windows D3D11／D3D12、可选 Vulkan 未实测。对应平台用已有 Bake 场景对照 CPU／GPU、HZB 关闭的最终 index／LOD／Distance 权重；验证 GPU Temporal 起中末、切模式与开关重置、双相机、GPU 不可用回退、1／2／4 级联独立阴影索引及实际受影。重点检查 shader 编译变体资源、compute scan／compact 顺序与容量；Mac 证据不能替代该平台运行。本轮资产布局不变，无需 rebake。
+
+发布记录：删除临时验收入口及其 `.meta`、全部临时 Compact 读回代码和本轮 18 个 AppleDouble 后，最终 Runtime／Editor Unity 6000.6.0f1 Managed 编译 **0 warning／0 error**，`git diff --check` 通过。宿主生成的 csproj 尚保留已删除入口条目，终编仅用 `/private/tmp` 的一次性 Remove target 排除该条目，未修改宿主项目文件；编译输出与 target 已精确删除。本节与正式实现按用户最新授权提交至 `main`。
+
 ## 2026-09-29 树 LOD 双模式回归收尾
 
 基线：`main` 的 `ca4778cd`，本工程 Unity `6000.6.0f1`；进入本轮时工作树无未提交改动。现有 `Scene_PBR` 的 TreeComponent 有资产键和 15 个树种槽位。当前 Editor 日志第 1361、1364、1493、1494 行记录 Metal 因 `TreeLeave` / `TreeBrak` 缺 ComputeBuffer 而跳过 Draw；本轮须以修后新日志和 Game 画面重新判定。旧 C4 转镜头突隐仍是独立待办。

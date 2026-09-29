@@ -145,7 +145,7 @@ Shader "Landscape/TreeLeave"
 			#pragma multi_compile _ _SHADOWS_SOFT
 			#pragma multi_compile _ _MAIN_LIGHT_SHADOWS
 			#pragma multi_compile _ _MAIN_LIGHT_SHADOWS_CASCADE
-			#pragma multi_compile _ FOLIAGE_LOD_WEIGHT
+			#pragma multi_compile _ FOLIAGE_LOD_WEIGHT FOLIAGE_GPU_TEMPORAL
 
 			#include "Include/Foliage.hlsl"
 			#include "Include/Transmission.hlsl"
@@ -181,7 +181,10 @@ Shader "Landscape/TreeLeave"
 				output.lodFactor = _LODFactor;
 				#if defined(FOLIAGE_LOD_WEIGHT)
 					output.lodFactor = _LodWeightBuffer[input.InstanceId] * _LODFactor;
-				#endif
+                #elif defined(FOLIAGE_GPU_TEMPORAL)
+                    float alpha = _TreeFadeState[0].x;
+                    output.lodFactor = _LODFactor > 0.0 ? 1.0 - alpha : alpha - 1.0;
+                #endif
 				return output;
 			}
 

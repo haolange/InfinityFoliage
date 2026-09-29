@@ -24,6 +24,7 @@ namespace Landscape.FoliagePipeline
             AssertTreeLod();
             AssertTreeDrawCount();
             AssertVisibilityIr();
+            AssertShadowJob();
         }
 
         static void AssertGrassLayout()
@@ -553,6 +554,121 @@ namespace Landscape.FoliagePipeline
             }
         }
 
+        static void AssertShadowJob()
+        {
+            var sections = new NativeArray<BoundSection>(1, Allocator.TempJob);
+            var cells = new NativeArray<TreeCell>(1, Allocator.TempJob);
+            var bounds = new NativeArray<Aabb>(3, Allocator.TempJob);
+            var planes = new NativeArray<FrustumPlane>(1, Allocator.TempJob);
+            var sizes = new NativeArray<float>(1, Allocator.TempJob);
+            var stable = new NativeArray<int>(3, Allocator.TempJob);
+            var indices = new NativeArray<int>(3, Allocator.TempJob);
+            var counts = new NativeArray<int>(1, Allocator.TempJob);
+            try
+            {
+                BoundSection section = new BoundSection();
+                section.boundBox = new Aabb(float3.zero, new float3(400f));
+                sections[0] = section;
+                TreeCell cell = new TreeCell();
+                cell.offset = 0;
+                cell.count = 3;
+                cells[0] = cell;
+                bounds[0] = new Aabb(new float3(10f, 0f, 10f), new float3(1f));
+                bounds[1] = new Aabb(new float3(-10f, 0f, 10f), new float3(1f));
+                bounds[2] = new Aabb(new float3(20f, 0f, 10f), new float3(1f));
+                planes[0] = new FrustumPlane(new float3(1f, 0f, 0f), 0f);
+                sizes[0] = 0.5f;
+                for (int i = 0; i < stable.Length; ++i) { stable[i] = -1; }
+                var job = new TreeShadowCullJob();
+                {
+                    job.sections = sections;
+                    job.cells = cells;
+                    job.bounds = bounds;
+                    job.planes = planes;
+                    job.lodScreenSizes = sizes;
+                    job.lodStable = stable;
+                    job.indices = indices;
+                    job.counts = counts;
+                    job.projection = float4x4.identity;
+                    job.origin = float3.zero;
+                    job.hysteresis = 0.08f;
+                }
+                job.Schedule().Complete();
+                if (counts[0] != 2 || indices[0] != 0 || indices[1] != 2 || stable[1] != -1)
+                {
+                    Fail("shadow Job must compact in candidate order and skip invisible instance LOD");
+                }
+                section.boundBox = new Aabb(new float3(-100f, 0f, 0f), new float3(1f));
+                sections[0] = section;
+                job.Schedule().Complete();
+                if (counts[0] != 0) { Fail("shadow Job must clear previous args counts when its cell is culled"); }
+            }
+            finally
+            {
+                sections.Dispose();
+                cells.Dispose();
+                bounds.Dispose();
+                planes.Dispose();
+                sizes.Dispose();
+                stable.Dispose();
+                indices.Dispose();
+                counts.Dispose();
+            }
+        }
+
+        static void AssertPrefixCompact()
+        {
+            int[] chunkCounts = { 0, 1, 63, 64, 65, 257, 4097 };
+            for (int sample = 0; sample < chunkCounts.Length; ++sample)
+            {
+                int chunks = chunkCounts[sample];
+                int candidates = chunks == 0 ? 0 : (chunks - 1) * 64 + 7;
+                ulong[] masks = new ulong[chunks];
+                int[] counts = new int[chunks];
+                int[] offsets = new int[chunks];
+                float[] sourceWeights = new float[candidates];
+                for (int i = 0; i < candidates; ++i) { sourceWeights[i] = (i % 97) / 96f; }
+                for (int chunk = 0; chunk < chunks; ++chunk)
+                {
+                    masks[chunk] = chunk % 3 == 0 ? ulong.MaxValue : chunk % 3 == 1 ? 0xAAAAAAAAAAAAAAAAUL : 0UL;
+                    int valid = FoliageLogic.VisibilityChunkSize(chunk, candidates);
+                    ulong keep = valid == 64 ? ulong.MaxValue : (1UL << valid) - 1UL;
+                    counts[chunk] = FoliageLogic.PopCount(masks[chunk] & keep);
+                }
+                FoliageLogic.PrefixOffsets(counts, offsets);
+                int total = chunks == 0 ? 0 : offsets[chunks - 1] + counts[chunks - 1];
+                int[] compact = new int[total + 1];
+                int[] prefixed = new int[total + 1];
+                float[] weights = new float[total + 1];
+                compact[total] = -1;
+                prefixed[total] = -1;
+                weights[total] = -1f;
+                int written = FoliageLogic.ExpandMasksWithWeights(masks, chunks, candidates, sourceWeights, compact, weights);
+                if (written != total) { Fail("prefix total must match clipped mask population"); }
+                int previousEnd = 0;
+                for (int chunk = 0; chunk < chunks; ++chunk)
+                {
+                    if (offsets[chunk] != previousEnd) { Fail("exclusive prefix must support arbitrary chunk lengths"); }
+                    int count = FoliageLogic.ExpandMaskToIndex(chunk * 64,
+                        FoliageLogic.VisibilityChunkSize(chunk, candidates), masks[chunk], prefixed, offsets[chunk]);
+                    if (count != counts[chunk]) { Fail("per-chunk compact must match prefix capacity"); }
+                    previousEnd += count;
+                }
+                for (int i = 0; i < total; ++i)
+                {
+                    if (compact[i] != prefixed[i] || (i > 0 && compact[i - 1] >= compact[i]))
+                    {
+                        Fail("compact indices must retain candidate order across scan block boundaries");
+                    }
+                    if (weights[i] != sourceWeights[compact[i]]) { Fail("compact weights must share the index output slot"); }
+                }
+                if (compact[total] != -1 || prefixed[total] != -1 || weights[total] != -1f)
+                {
+                    Fail("compact must not write beyond its prefix capacity");
+                }
+            }
+        }
+
         static void AssertVisibilityIr()
         {
             if (FoliageLogic.Morton2(1, 0) == FoliageLogic.Morton2(0, 1))
@@ -605,48 +721,7 @@ namespace Landscape.FoliagePipeline
                 Fail("tail chunk mask must ignore bits beyond candidate count");
             }
 
-            int[] ids = { 10, 11, 12, 20, 21 };
-            VisibilityRun[] runs = new VisibilityRun[4];
-            int runCount = FoliageLogic.EncodeRuns(ids, 5, runs);
-            if (runCount != 2 || runs[0].start != 10 || runs[0].count != 3 || runs[1].start != 20 || runs[1].count != 2)
-            {
-                Fail("EncodeRuns must merge consecutive ids");
-            }
-
-            ulong[] runMasks = { 0x7, 0 };
-            runMasks[0] = 0x7;
-            runCount = FoliageLogic.EncodeRunsFromMasks(runMasks, 1, 8, runs);
-            if (runCount != 1 || runs[0].start != 0 || runs[0].count != 3)
-            {
-                Fail("EncodeRunsFromMasks must merge set bits");
-            }
-
-            written = FoliageLogic.ExpandRunsToIndex(runs, 1, dest);
-            if (written != 3 || dest[0] != 0 || dest[2] != 2)
-            {
-                Fail("ExpandRunsToIndex must fill VisibleIndex");
-            }
-
-            if (FoliageLogic.PickVisibilityCodec(1, 1, 1, 0) != (int)VisibilityCodec.CompactIndex)
-            {
-                Fail("CPU policy must pick CompactIndex");
-            }
-            if (FoliageLogic.PickVisibilityCodec(64, 1, 1, 1) != (int)VisibilityCodec.RunTransfer)
-            {
-                Fail("one dense run on GPU must pick RunTransfer");
-            }
-            if (FoliageLogic.PickVisibilityCodec(32, 1, 32, 1) != (int)VisibilityCodec.BitMaskTransfer)
-            {
-                Fail("fragmented dense chunk on GPU must pick BitMaskTransfer");
-            }
-            if (FoliageLogic.PickVisibilityCodec(1, 1, 1, 1) != (int)VisibilityCodec.CompactIndex)
-            {
-                Fail("single visible instance must pick CompactIndex");
-            }
-            if (FoliageLogic.PickVisibilityCodec(32, 32, 32, 1) != (int)VisibilityCodec.CompactIndex)
-            {
-                Fail("fully fragmented visibility must pick CompactIndex");
-            }
+            AssertPrefixCompact();
 
             byte[] visible = { 0, 1, 0, 1 };
             int[] cells = new int[4];

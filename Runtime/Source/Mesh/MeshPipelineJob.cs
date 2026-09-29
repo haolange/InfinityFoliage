@@ -60,6 +60,57 @@ namespace Landscape.FoliagePipeline
 #endif
 
     [BurstCompile]
+    public struct TreeShadowCullJob : IJob
+    {
+        [ReadOnly] public NativeArray<BoundSection> sections;
+        [ReadOnly] public NativeArray<TreeCell> cells;
+        [ReadOnly] public NativeArray<Aabb> bounds;
+        [ReadOnly] public NativeArray<FrustumPlane> planes;
+        [ReadOnly] public NativeArray<float> lodScreenSizes;
+        public NativeArray<int> lodStable;
+        public NativeArray<int> indices;
+        public NativeArray<int> counts;
+        public float3 origin;
+        public float4x4 projection;
+        public float hysteresis;
+
+        public void Execute()
+        {
+            for (int lod = 0; lod < counts.Length; ++lod) { counts[lod] = 0; }
+            for (int cellIndex = 0; cellIndex < cells.Length; ++cellIndex)
+            {
+                TreeCell cell = cells[cellIndex];
+                if (cell.count <= 0 || !Visible(sections[cellIndex].boundBox)) { continue; }
+                int end = cell.offset + cell.count;
+                for (int candidate = cell.offset; candidate < end; ++candidate)
+                {
+                    Aabb box = bounds[candidate];
+                    if (!Visible(box)) { continue; }
+                    float radius = math.cmax(math.abs(box.extents));
+                    float screen = Geometry.ComputeBoundsScreenRadiusSquared(radius, box.center, origin, projection);
+                    int lod = FoliageLogic.ComputeLodIndexHysteresis(screen, lodScreenSizes, lodStable[candidate], hysteresis);
+                    lodStable[candidate] = lod;
+                    int slot = lod * bounds.Length + counts[lod];
+                    indices[slot] = candidate;
+                    counts[lod] = counts[lod] + 1;
+                }
+            }
+        }
+
+        bool Visible(in Aabb box)
+        {
+            for (int i = 0; i < planes.Length; ++i)
+            {
+                float4 plane = planes[i].normalDist;
+                float distance = math.dot(plane.xyz, box.center) + plane.w;
+                float radius = math.dot(math.abs(plane.xyz), box.extents);
+                if (distance + radius < 0f) { return false; }
+            }
+            return true;
+        }
+    }
+
+    [BurstCompile]
     public unsafe struct GrassPageScatterJob : IJobParallelFor
     {
         [ReadOnly]

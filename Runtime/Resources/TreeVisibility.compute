@@ -1,26 +1,17 @@
 #pragma kernel BuildHzb
 #pragma kernel BuildHzbMip
+#pragma kernel PrepareView
 #pragma kernel CullCells
-#pragma kernel ExpandMaskToIndex
-#pragma kernel ExpandRunToIndex
-#pragma kernel FilterIndexHzb
 #pragma kernel CullInstances
+#pragma kernel ReduceChanges
+#pragma kernel AdvanceFade
+#pragma kernel CommitLod
+#pragma kernel EmitMasks
+#pragma kernel ScanBlocks
+#pragma kernel AddOffsets
+#pragma kernel Compact
 #pragma kernel CopyArgsCount
 #pragma target 5.0
-
-struct GpuChunk
-{
-    int candidateBase;
-    int count;
-    uint maskLo;
-    uint maskHi;
-};
-
-struct GpuRun
-{
-    int start;
-    int count;
-};
 
 struct GpuAabb
 {
@@ -30,23 +21,29 @@ struct GpuAabb
     float pad1;
 };
 
-StructuredBuffer<GpuChunk> _Chunks;
-StructuredBuffer<GpuRun> _Runs;
-StructuredBuffer<uint> _SrcIndices;
-StructuredBuffer<float> _SrcWeights;
-RWStructuredBuffer<float> _Weights;
-int _WriteWeight;
 StructuredBuffer<GpuAabb> _Bounds;
 StructuredBuffer<GpuAabb> _CellBounds;
 StructuredBuffer<int> _InstanceCell;
-RWStructuredBuffer<uint> _CellVisible;
+StructuredBuffer<float> _LodSizes;
+StructuredBuffer<uint> _LodDither;
+StructuredBuffer<float> _Heights;
 StructuredBuffer<float4> _Planes;
-RWStructuredBuffer<GpuChunk> _RwChunks;
+RWStructuredBuffer<uint> _CellVisible;
+RWStructuredBuffer<int4> _LodState;
+RWStructuredBuffer<float> _InstanceWeights;
+RWStructuredBuffer<float4> _FadeState;
+RWStructuredBuffer<uint> _Changes;
+RWStructuredBuffer<uint2> _Masks;
+RWStructuredBuffer<uint> _Counts;
+StructuredBuffer<uint> _ScanInput;
+RWStructuredBuffer<uint> _ScanOffsets;
+RWStructuredBuffer<uint> _ScanSums;
+StructuredBuffer<uint> _ParentOffsets;
+StructuredBuffer<uint> _Offsets;
 RWStructuredBuffer<uint> _Indices;
-RWStructuredBuffer<uint> _Args;
+RWStructuredBuffer<float> _Weights;
 RWStructuredBuffer<uint> _ArgsDst;
 RWStructuredBuffer<float> _Hzb;
-
 Texture2D _CameraDepthTexture;
 
 float4 _ZBufferParams;
@@ -55,26 +52,143 @@ float4x4 _ViewProj;
 float3 _ViewOrigin;
 float _MaxDistance;
 float _NearClip;
+float _ProjectionY;
+float _Orthographic;
+float _FadeWidth;
+float _Hysteresis;
+float _Duration;
+float _DeltaTime;
+float3 _TerrainPos;
+float3 _TerrainSize;
+int _InstanceCount;
 int _ChunkCount;
-int _RunCount;
-int _SrcCount;
+int _CellCount;
+int _LodCount;
+int _HeightRes;
+int _EnableTerrain;
 int _EnableHzb;
 int _HzbWidth;
 int _HzbHeight;
-int _CellCount;
+int _Mode;
+int _AllowFade;
+int _Reset;
+int _Advance;
+int _Shadow;
+int _Lod;
+int _Bucket;
+int _ScanLength;
+int _WriteWeight;
 
-uint MaskBit(GpuChunk chunk, uint bit)
+float ScreenRadius(GpuAabb box, float4 origin, float ortho)
 {
-    uint result = 0u;
-    if (bit < 32)
+    float radius = max(max(abs(box.extents.x), abs(box.extents.y)), abs(box.extents.z));
+    float scale = 0.5 * origin.w * radius;
+    float3 delta = box.center - origin.xyz;
+    return scale * scale / (ortho > 0.5 ? 1.0 : max(1.0, dot(delta, delta)));
+}
+
+int RawLod(float screen)
+{
+    for (int lod = _LodCount - 1; lod >= 1; --lod)
     {
-        result = (chunk.maskLo >> bit) & 1u;
+        float edge = _LodSizes[lod] * 0.5;
+        if (edge * edge >= screen) { return lod; }
     }
-    else
+    return 0;
+}
+
+int HysteresisLod(float screen, int previous)
+{
+    int raw = RawLod(screen);
+    int result = raw;
+    float ratio = clamp(_Hysteresis, 0.0, 0.49);
+    if (previous >= 0 && previous < _LodCount)
     {
-        result = (chunk.maskHi >> (bit - 32u)) & 1u;
+        if (raw > previous)
+        {
+            for (int lod = previous + 1; lod <= raw; ++lod)
+            {
+                float edge = _LodSizes[lod] * 0.5 * (1.0 - ratio);
+                if (screen > edge * edge)
+                {
+                    result = lod - 1;
+                    break;
+                }
+            }
+        }
+        else
+        {
+            for (int lod = previous; lod > raw; --lod)
+            {
+                float edge = _LodSizes[lod] * 0.5 * (1.0 + ratio);
+                if (screen < edge * edge)
+                {
+                    result = lod;
+                    break;
+                }
+            }
+        }
     }
     return result;
+}
+
+float SampleHeight(float2 world)
+{
+    float height = -3.402823e38;
+    float2 uv = (world - _TerrainPos.xz) / max(_TerrainSize.xz, float2(0.0001, 0.0001));
+    if (all(uv >= 0.0) && all(uv <= 1.0) && _HeightRes > 1)
+    {
+        float2 samplePosition = uv * (_HeightRes - 1);
+        int2 a = (int2)samplePosition;
+        int2 b = min(a + 1, _HeightRes - 1);
+        float2 t = samplePosition - a;
+        float h0 = lerp(_Heights[a.y * _HeightRes + a.x], _Heights[a.y * _HeightRes + b.x], t.x);
+        float h1 = lerp(_Heights[b.y * _HeightRes + a.x], _Heights[b.y * _HeightRes + b.x], t.x);
+        height = lerp(h0, h1, t.y);
+    }
+    return height;
+}
+
+uint TerrainOccluded(GpuAabb box)
+{
+    uint occluded = 0u;
+    if (_EnableTerrain != 0 && _HeightRes >= 2)
+    {
+        occluded = 1u;
+        float3 nearCorner = box.center - box.extents;
+        float3 farCorner = box.center + box.extents;
+        for (int corner = 0; corner < 5; ++corner)
+        {
+            float2 target = corner == 4 ? box.center.xz : float2((corner & 1) == 0 ? nearCorner.x : farCorner.x, (corner & 2) == 0 ? nearCorner.z : farCorner.z);
+            float2 delta = target - _ViewOrigin.xz;
+            float distance = length(delta);
+            uint blocked = 0u;
+            if (distance >= 0.5)
+            {
+                float topSlope = (farCorner.y - _ViewOrigin.y) / distance;
+                for (int sampleIndex = 1; sampleIndex < 8; ++sampleIndex)
+                {
+                    float t = sampleIndex * 0.125;
+                    float sampleDistance = distance * t;
+                    if (sampleDistance >= 1.0)
+                    {
+                        float height = SampleHeight(_ViewOrigin.xz + delta * t);
+                        if ((height - _ViewOrigin.y) / sampleDistance > topSlope + 0.1)
+                        {
+                            blocked = 1u;
+                            break;
+                        }
+                    }
+                }
+            }
+            if (blocked == 0u)
+            {
+                occluded = 0u;
+                break;
+            }
+        }
+    }
+    return occluded;
 }
 
 float LinearEye(float raw)
@@ -82,7 +196,7 @@ float LinearEye(float raw)
     return 1.0 / (_ZBufferParams.z * raw + _ZBufferParams.w);
 }
 
-uint FrustumDistance(GpuAabb box)
+uint FrustumDistance(GpuAabb box, float distanceScale, float3 distancePivot)
 {
     uint visible = 1u;
     [unroll]
@@ -93,8 +207,8 @@ uint FrustumDistance(GpuAabb box)
         float radius = dot(abs(plane.xyz), box.extents);
         visible &= (dist + radius >= 0.0) ? 1u : 0u;
     }
-    float3 delta = box.center - _ViewOrigin;
-    visible &= (dot(delta, delta) <= (_MaxDistance * _MaxDistance)) ? 1u : 0u;
+    float3 delta = distancePivot - _ViewOrigin;
+    visible &= (dot(delta, delta) <= (_MaxDistance * distanceScale * _MaxDistance * distanceScale)) ? 1u : 0u;
     return visible;
 }
 
@@ -162,13 +276,6 @@ uint HzbOccluded(GpuAabb box)
     return occluded;
 }
 
-void AppendIndex(uint instanceId)
-{
-    uint slot;
-    InterlockedAdd(_Args[1], 1, slot);
-    _Indices[slot] = instanceId;
-}
-
 [numthreads(8, 8, 1)]
 void BuildHzb(uint3 id : SV_DispatchThreadID)
 {
@@ -221,145 +328,268 @@ void BuildHzbMip(uint3 id : SV_DispatchThreadID)
     _Hzb[(srcWidth * srcHeight) + id.y * w + id.x] = farthest;
 }
 
-[numthreads(64, 1, 1)]
-void ExpandMaskToIndex(uint3 groupId : SV_GroupID, uint threadIndex : SV_GroupIndex)
+[numthreads(1, 1, 1)]
+void PrepareView()
 {
-    uint chunk = groupId.x;
-    if (chunk >= (uint)_ChunkCount)
+    float4 state = _FadeState[0];
+    float4 current = float4(_ViewOrigin, _ProjectionY);
+    float4 projection = _FadeState[3];
+    bool reset = _Reset != 0 || projection.z == 0.0;
+    if (reset || _Mode == 1 || _AllowFade == 0 || _Shadow != 0)
     {
-        return;
+        _FadeState[1] = current;
+        _FadeState[2] = current;
+        projection.xy = _Orthographic.xx;
+        state.xy = float2(1.0, 0.0);
     }
-
-    GpuChunk packed = _Chunks[chunk];
-    if (threadIndex >= (uint)packed.count)
+    else if (_Advance != 0 && state.y == 0.0)
     {
-        return;
+        _FadeState[1] = _FadeState[2];
+        projection.x = projection.y;
+        _FadeState[2] = current;
+        projection.y = _Orthographic;
     }
-    if (MaskBit(packed, threadIndex) == 0u)
-    {
-        return;
-    }
-
-    uint instanceId = (uint)(packed.candidateBase + threadIndex);
-    if (_CellVisible[_InstanceCell[instanceId]] == 0u || HzbOccluded(_Bounds[instanceId]) != 0u)
-    {
-        return;
-    }
-    AppendIndex(instanceId);
+    projection.z = 1.0;
+    state.z = 0.0;
+    state.w = reset ? 1.0 : 0.0;
+    _FadeState[0] = state;
+    _FadeState[3] = projection;
 }
 
 [numthreads(64, 1, 1)]
-void ExpandRunToIndex(uint3 groupId : SV_GroupID, uint threadIndex : SV_GroupIndex)
+void CullCells(uint3 id : SV_DispatchThreadID)
 {
-    uint run = groupId.x;
-    if (run >= (uint)_RunCount)
-    {
-        return;
-    }
+    if (id.x >= (uint)_CellCount) { return; }
+    GpuAabb box = _CellBounds[id.x];
+    uint flags = FrustumDistance(box, 1.5, box.center + float3(0.0, box.extents.y, 0.0)) != 0u ? 1u : 0u;
+    if (flags != 0u && TerrainOccluded(box) == 0u) { flags |= 2u; }
+    if (flags == 3u && HzbOccluded(box) == 0u) { flags |= 4u; }
+    _CellVisible[id.x] = flags;
+}
 
-    GpuRun packed = _Runs[run];
-    [loop]
-    for (uint i = threadIndex; i < (uint)packed.count; i += 64)
+groupshared uint gsChanges[64];
+
+[numthreads(64, 1, 1)]
+void CullInstances(uint3 groupId : SV_GroupID, uint threadIndex : SV_GroupIndex)
+{
+    uint candidate = groupId.x * 64u + threadIndex;
+    uint changed = 0u;
+    if (candidate < (uint)_InstanceCount)
     {
-        uint instanceId = (uint)(packed.start + i);
-        if (_CellVisible[_InstanceCell[instanceId]] == 0u || HzbOccluded(_Bounds[instanceId]) != 0u)
+        int4 lodState = _LodState[candidate];
+        float4 fadeState = _FadeState[0];
+        if (fadeState.w != 0.0) { lodState.z = -1; }
+        GpuAabb box = _Bounds[candidate];
+        bool visible = _CellVisible[_InstanceCell[candidate]] == 7u;
+        if (visible) { visible = FrustumDistance(box, 1.0, box.center) != 0u; }
+        if (visible) { visible = HzbOccluded(box) == 0u; }
+        lodState.x = -1;
+        lodState.y = -1;
+        lodState.w = visible ? 1 : 0;
+        float weight = 1.0;
+        if (visible)
         {
-            continue;
+            float4 projection = _FadeState[3];
+            float screen = ScreenRadius(box, _FadeState[2], projection.y);
+            if (_Shadow != 0)
+            {
+                lodState.y = HysteresisLod(screen, lodState.z);
+                lodState.x = lodState.y;
+                lodState.z = lodState.y;
+            }
+            else if (_Mode == 1)
+            {
+                int lod = RawLod(screen);
+                lodState.x = lod;
+                lodState.y = lod;
+                if (_AllowFade != 0 && fadeState.w == 0.0 && lod + 1 < _LodCount && _LodDither[lod] != 0u && _LodDither[lod + 1] != 0u)
+                {
+                    float farEdge = _LodSizes[lod + 1] * 0.5;
+                    farEdge *= farEdge;
+                    float nearEdge = lod == 0 ? 1.0 : _LodSizes[lod] * _LodSizes[lod] * 0.25;
+                    float band = farEdge + clamp(_FadeWidth, 0.0001, 0.9999) * (nearEdge - farEdge);
+                    if (nearEdge > farEdge && screen < band)
+                    {
+                        float invFar = rsqrt(max(farEdge, 1e-12));
+                        float invBand = rsqrt(max(band, 1e-12));
+                        float denominator = invFar - invBand;
+                        weight = denominator != 0.0 ? saturate((invFar - rsqrt(max(screen, 1e-12))) / denominator) : 0.0;
+                        if (weight <= 0.02)
+                        {
+                            lodState.x = lod + 1;
+                            lodState.y = lod + 1;
+                            weight = 1.0;
+                        }
+                        else if (weight < 0.98)
+                        {
+                            lodState.y = lod + 1;
+                        }
+                        else { weight = 1.0; }
+                    }
+                }
+                lodState.z = lodState.y;
+            }
+            else
+            {
+                lodState.x = HysteresisLod(ScreenRadius(box, _FadeState[1], projection.x), lodState.z);
+                lodState.y = HysteresisLod(screen, lodState.z);
+                int delta = abs(lodState.x - lodState.y);
+                changed = delta == 1 && _LodDither[lodState.x] != 0u && _LodDither[lodState.y] != 0u ? 1u : 0u;
+            }
         }
-        AppendIndex(instanceId);
+        _LodState[candidate] = lodState;
+        _InstanceWeights[candidate] = weight;
     }
+    gsChanges[threadIndex] = changed;
+    GroupMemoryBarrierWithGroupSync();
+    for (uint stride = 32u; stride > 0u; stride >>= 1u)
+    {
+        if (threadIndex < stride) { gsChanges[threadIndex] |= gsChanges[threadIndex + stride]; }
+        GroupMemoryBarrierWithGroupSync();
+    }
+    if (threadIndex == 0u) { _Changes[groupId.x] = gsChanges[0]; }
+}
+
+groupshared uint gsReduction[128];
+
+[numthreads(128, 1, 1)]
+void ReduceChanges(uint3 groupId : SV_GroupID, uint threadIndex : SV_GroupIndex)
+{
+    uint index = groupId.x * 128u + threadIndex;
+    uint inputIndex = min(index, max((uint)_ScanLength, 1u) - 1u);
+    gsReduction[threadIndex] = index < (uint)_ScanLength ? _ScanInput[inputIndex] : 0u;
+    GroupMemoryBarrierWithGroupSync();
+    for (uint stride = 64u; stride > 0u; stride >>= 1u)
+    {
+        if (threadIndex < stride) { gsReduction[threadIndex] |= gsReduction[threadIndex + stride]; }
+        GroupMemoryBarrierWithGroupSync();
+    }
+    if (threadIndex == 0u) { _ScanSums[groupId.x] = gsReduction[0]; }
+}
+
+[numthreads(1, 1, 1)]
+void AdvanceFade()
+{
+    float4 state = _FadeState[0];
+    bool commit = state.w != 0.0 || _AllowFade == 0 || _Mode == 1 || _Shadow != 0;
+    if (!commit && _Advance != 0)
+    {
+        if (state.y != 0.0)
+        {
+            state.x = min(1.0, state.x + _DeltaTime / max(_Duration, 0.0001));
+            commit = state.x >= 1.0;
+        }
+        else if (_ScanInput[0] != 0u)
+        {
+            state.x = 0.0;
+            state.y = 1.0;
+        }
+        else { commit = true; }
+    }
+    if (commit)
+    {
+        state.xy = float2(1.0, 0.0);
+        _FadeState[1] = _FadeState[2];
+        float4 projection = _FadeState[3];
+        projection.x = projection.y;
+        _FadeState[3] = projection;
+    }
+    state.z = commit ? 1.0 : 0.0;
+    _FadeState[0] = state;
 }
 
 [numthreads(64, 1, 1)]
-void FilterIndexHzb(uint3 id : SV_DispatchThreadID)
+void CommitLod(uint3 id : SV_DispatchThreadID)
 {
-    if (id.x >= (uint)_SrcCount)
-    {
-        return;
-    }
-
-    uint instanceId = _SrcIndices[id.x];
-    if (_CellVisible[_InstanceCell[instanceId]] == 0u || HzbOccluded(_Bounds[instanceId]) != 0u)
-    {
-        return;
-    }
-    uint slot;
-    InterlockedAdd(_Args[1], 1, slot);
-    _Indices[slot] = instanceId;
-    if (_WriteWeight != 0)
-    {
-        _Weights[slot] = _SrcWeights[id.x];
-    }
+    if (id.x >= (uint)_InstanceCount || _Mode == 1 || _FadeState[0].z == 0.0) { return; }
+    int4 state = _LodState[id.x];
+    if (state.y >= 0) { state.z = state.y; }
+    state.x = state.y;
+    _LodState[id.x] = state;
 }
 
 groupshared uint gsMaskLo;
 groupshared uint gsMaskHi;
 
 [numthreads(64, 1, 1)]
-void CullCells(uint3 id : SV_DispatchThreadID)
+void EmitMasks(uint3 groupId : SV_GroupID, uint threadIndex : SV_GroupIndex)
 {
-    if (id.x >= (uint)_CellCount)
+    if (threadIndex == 0u) { gsMaskLo = 0u; gsMaskHi = 0u; }
+    GroupMemoryBarrierWithGroupSync();
+    uint candidate = groupId.x * 64u + threadIndex;
+    if (candidate < (uint)_InstanceCount)
     {
-        return;
+        int4 state = _LodState[candidate];
+        bool pair = state.w != 0 && state.x >= 0 && state.y >= 0 && abs(state.x - state.y) == 1;
+        if (pair) { pair = _AllowFade != 0 && _LodDither[state.x] != 0u && _LodDither[state.y] != 0u; }
+        pair = pair && (_Mode == 1 || _FadeState[0].y != 0.0);
+        bool emit = state.w != 0 && state.y >= 0;
+        if (_Bucket == 0) { emit = emit && !pair && state.y == _Lod; }
+        else if (_Bucket == 1) { emit = emit && pair && state.x == _Lod; }
+        else { emit = emit && pair && state.y == _Lod; }
+        if (emit)
+        {
+            if (threadIndex < 32u) { InterlockedOr(gsMaskLo, 1u << threadIndex); }
+            else { InterlockedOr(gsMaskHi, 1u << (threadIndex - 32u)); }
+        }
     }
+    GroupMemoryBarrierWithGroupSync();
+    if (threadIndex == 0u)
+    {
+        _Masks[groupId.x] = uint2(gsMaskLo, gsMaskHi);
+        _Counts[groupId.x] = countbits(gsMaskLo) + countbits(gsMaskHi);
+    }
+}
 
-    uint visible = _CellVisible[id.x];
-    if (visible != 0u)
+groupshared uint gsScan[128];
+
+[numthreads(128, 1, 1)]
+void ScanBlocks(uint3 groupId : SV_GroupID, uint threadIndex : SV_GroupIndex)
+{
+    uint index = groupId.x * 128u + threadIndex;
+    uint inputIndex = min(index, max((uint)_ScanLength, 1u) - 1u);
+    uint value = index < (uint)_ScanLength ? _ScanInput[inputIndex] : 0u;
+    gsScan[threadIndex] = value;
+    GroupMemoryBarrierWithGroupSync();
+    for (uint stride = 1u; stride < 128u; stride <<= 1u)
     {
-        GpuAabb box = _CellBounds[id.x];
-        visible = HzbOccluded(box) == 0u ? 1u : 0u;
+        uint sourceIndex = threadIndex - min(threadIndex, stride);
+        uint add = threadIndex >= stride ? gsScan[sourceIndex] : 0u;
+        GroupMemoryBarrierWithGroupSync();
+        gsScan[threadIndex] += add;
+        GroupMemoryBarrierWithGroupSync();
     }
-    _CellVisible[id.x] = visible;
+    if (index < (uint)_ScanLength) { _ScanOffsets[index] = gsScan[threadIndex] - value; }
+    if (threadIndex == 127u) { _ScanSums[groupId.x] = gsScan[127]; }
+}
+
+[numthreads(128, 1, 1)]
+void AddOffsets(uint3 id : SV_DispatchThreadID)
+{
+    if (id.x >= (uint)_ScanLength) { return; }
+    _ScanOffsets[id.x] += _ParentOffsets[id.x / 128u];
 }
 
 [numthreads(64, 1, 1)]
-void CullInstances(uint3 groupId : SV_GroupID, uint threadIndex : SV_GroupIndex)
+void Compact(uint3 groupId : SV_GroupID, uint threadIndex : SV_GroupIndex)
 {
-    uint chunk = groupId.x;
-    if (chunk >= (uint)_ChunkCount)
-    {
-        return;
-    }
-
-    GpuChunk packed = _RwChunks[chunk];
-    if (threadIndex == 0)
-    {
-        gsMaskLo = packed.maskLo;
-        gsMaskHi = packed.maskHi;
-    }
-    GroupMemoryBarrierWithGroupSync();
-
-    if (threadIndex < (uint)packed.count && MaskBit(packed, threadIndex) != 0u)
-    {
-        uint instanceId = (uint)(packed.candidateBase + threadIndex);
-        int cell = _InstanceCell[instanceId];
-        uint cellVisible = _CellVisible[cell];
-        GpuAabb box = _Bounds[instanceId];
-        bool keep = cellVisible != 0u && FrustumDistance(box) != 0u;
-        if (!keep)
-        {
-            if (threadIndex < 32)
-            {
-                InterlockedAnd(gsMaskLo, ~(1u << threadIndex));
-            }
-            else
-            {
-                InterlockedAnd(gsMaskHi, ~(1u << (threadIndex - 32)));
-            }
-        }
-    }
-
-    GroupMemoryBarrierWithGroupSync();
-    if (threadIndex == 0)
-    {
-        packed.maskLo = gsMaskLo;
-        packed.maskHi = gsMaskHi;
-        _RwChunks[chunk] = packed;
-    }
+    uint2 mask = _Masks[groupId.x];
+    uint word = threadIndex < 32u ? mask.x : mask.y;
+    uint bit = threadIndex & 31u;
+    if (((word >> bit) & 1u) == 0u) { return; }
+    uint lowerBits = (0xffffffffu >> (31u - bit)) >> 1u;
+    uint rank = countbits(word & lowerBits);
+    if (threadIndex >= 32u) { rank += countbits(mask.x); }
+    uint slot = _Offsets[groupId.x] + rank;
+    uint candidate = groupId.x * 64u + threadIndex;
+    if (slot >= (uint)_InstanceCount || candidate >= (uint)_InstanceCount) { return; }
+    _Indices[slot] = candidate;
+    if (_WriteWeight != 0) { _Weights[slot] = _InstanceWeights[candidate]; }
 }
 
 [numthreads(1, 1, 1)]
 void CopyArgsCount()
 {
-    _ArgsDst[1] = _Args[1];
+    uint last = (uint)_ChunkCount - 1u;
+    _ArgsDst[1] = min(_Offsets[last] + _Counts[last], (uint)_InstanceCount);
 }
