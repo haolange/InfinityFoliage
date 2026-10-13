@@ -6,10 +6,10 @@
 
 | 项 | 结果 |
 |---|---|
-| 静态对照 | 已按 AGENTS 相位、PreZ 过滤、上一帧 HZB、草页私有 scatter 和 `ComputeBuffer` 约束核对当前源码 |
+| 静态对照 | 已按 AGENTS 相位、PreZ 过滤、上一帧 HZB、草页私有 scatter 和 `ComputeBuffer` 约束核对当前源码。旧相位名、`F` 类型、`DESIGN.md`、全图草缓冲和死 shader 注释没有残留 |
 | 托管编译 | **未验收**。本环境没有 Unity、csc 或 dotnet，不能用 6000.6 Managed DLL 编译 |
 | Editor Game / Frame Debugger / 日志 | **未验收**。没有已打开的 Editor，不能观察 PreZ、主绘制、阴影和 HZB |
-| Nature Renderer | 兼容层保留。厂商当前 include、缓冲名和压缩矩阵格式尚未改 API；只去掉了死注释和未引用的 HSL 分支 |
+| Nature Renderer | 兼容层保留，未改 API。Nature Renderer 6 的自定义 shader 文档仍要求 `NatureRendererInstancing` 和 `procedural:SetupNatureRenderer`；厂商 include 是 `Nature Renderer.templatex`，本包继续用本地 `ProceduralInstance.hlsl`，否则没有该资产时编不过。缓冲名和压缩矩阵格式没有公开文档，不改写。`_NatureRendererDistanceControl` 不是文档里的 Shader Graph 属性 `_NatureRendererInstancing`，不改名 |
 
 ## 2026-09-30 Tree CPU／GPU 双 Backend
 
