@@ -58,13 +58,11 @@ namespace Landscape.FoliagePipeline
 
         private float drawDistance;
         private MaterialPropertyBlock m_PropertyBlock;
-        private FrustumPlane* m_Planes;
         private bool m_RuntimeReady;
         private bool m_Resident;
         private bool[] m_SectorReady;
         private int m_Generation;
         private float[] m_OcclusionHeights;
-        private Matrix4x4 m_DepthViewProj;
         private FoliageRenderSettings m_RenderSettings;
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -372,78 +370,62 @@ namespace Landscape.FoliagePipeline
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public override void InitView(in float3 viewOrigin, in float4x4 matrixProj, in FrustumPlane* planes, in NativeList<JobHandle> taskHandles)
+        TreeViewSettings ResolveViewSettings()
         {
-            if (!m_RuntimeReady || !m_Resident) { return; }
-            m_Planes = planes;
-            if (treeSectors == null) { return; }
+            var viewSettings = new TreeViewSettings();
+            {
+                viewSettings.cullDistance = ResolveDrawDistance(m_RenderSettings);
+                viewSettings.lodHysteresis = overrideLodHysteresis ? lodHysteresisOverride : m_RenderSettings.treeLodHysteresis;
+                viewSettings.fadeWidth = overrideFadeWidth ? fadeWidthOverride : m_RenderSettings.treeFadeWidth;
+                viewSettings.fadeDuration = fadeDuration;
+                viewSettings.deltaTime = Time.deltaTime;
+                viewSettings.allowFade = overrideLodFade ? lodFadeOverride : m_RenderSettings.treeLodFade;
+                viewSettings.fadeMode = overrideLodFadeMode ? lodFadeModeOverride : m_RenderSettings.treeLodFadeMode;
+                viewSettings.occlusion = ResolveOcclusion(m_RenderSettings);
+            }
+            return viewSettings;
+        }
+
+        internal bool UsesHzb(FoliageRenderSettings settings)
+        {
+            if (!m_RuntimeReady || !m_Resident || treeSectors == null) { return false; }
+            TreeOcclusionMode occlusion = ResolveOcclusion(settings);
             for (int i = 0; i < treeSectors.Length; ++i)
             {
-                if (m_SectorReady[i]) { treeSectors[i].InitView(ResolveDrawDistance(m_RenderSettings), viewOrigin, matrixProj, planes, taskHandles); }
+                if (m_SectorReady[i] && treeSectors[i].UsesHzb(occlusion)) { return true; }
             }
+            return false;
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public override void DispatchSetup(Camera camera, in float3 viewOrigin, in float4x4 matrixProj, in NativeList<JobHandle> taskHandles)
-        {
-            if (!m_RuntimeReady || !m_Resident) { return; }
-            if (treeSectors == null) { return; }
-            for (int i = 0; i < treeSectors.Length; ++i)
-            {
-                if (m_SectorReady[i])
-                {
-                    TreeOcclusionMode mode = ResolveOcclusion(m_RenderSettings);
-                    bool lodFade = overrideLodFade ? lodFadeOverride : m_RenderSettings.treeLodFade;
-                    TreeLodFadeMode fadeMode = overrideLodFadeMode ? lodFadeModeOverride : m_RenderSettings.treeLodFadeMode;
-                    float fadeWidth = overrideFadeWidth ? fadeWidthOverride : m_RenderSettings.treeFadeWidth;
-                    float hysteresis = overrideLodHysteresis ? lodHysteresisOverride : m_RenderSettings.treeLodHysteresis;
-                    treeSectors[i].DispatchSetup(camera, ResolveDrawDistance(m_RenderSettings), viewOrigin, matrixProj,
-                        m_Planes, mode, lodFade, hysteresis, fadeMode, fadeWidth, taskHandles);
-                }
-            }
-        }
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        internal void SetDepthViewProjection(in Matrix4x4 depthViewProj)
-        {
-            m_DepthViewProj = depthViewProj;
-        }
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public override void FlushPendingUploads(CommandBuffer cmdBuffer, RTHandle cameraDepth, in Vector4 zParams)
-        {
-            if (!m_RuntimeReady || !m_Resident) { return; }
-            if (treeSectors == null) { return; }
-            float dt = Time.deltaTime;
-            for (int i = 0; i < treeSectors.Length; ++i)
-            {
-                if (m_SectorReady[i])
-                {
-                    bool hzb = (ResolveOcclusion(m_RenderSettings) & TreeOcclusionMode.Hzb) != 0;
-                    treeSectors[i].FlushPendingUploads(cmdBuffer, cameraDepth, zParams, m_DepthViewProj, hzb, fadeDuration, dt);
-                }
-            }
-        }
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public override void DispatchDraw(CommandBuffer cmdBuffer, in int passIndex)
-        {
-            if (!m_RuntimeReady || !m_Resident) { return; }
-            if (treeSectors == null) { return; }
-            for (int i = 0; i < treeSectors.Length; ++i)
-            {
-                if (m_SectorReady[i]) { treeSectors[i].DispatchDraw(cmdBuffer, passIndex, m_PropertyBlock); }
-            }
-        }
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        internal void DispatchShadow(CommandBuffer cmdBuffer, Camera camera, in int cascadeIndex, Plane[] planes)
+        public override void Cull(CommandBuffer cmdBuffer, in FoliageView view, in NativeList<JobHandle> taskHandles)
         {
             if (!m_RuntimeReady || !m_Resident || treeSectors == null) { return; }
-            float hysteresis = overrideLodHysteresis ? lodHysteresisOverride : m_RenderSettings.treeLodHysteresis;
+            TreeViewSettings viewSettings = ResolveViewSettings();
             for (int i = 0; i < treeSectors.Length; ++i)
             {
-                if (m_SectorReady[i]) { treeSectors[i].DispatchShadow(cmdBuffer, camera, cascadeIndex, planes, hysteresis, m_PropertyBlock); }
+                if (m_SectorReady[i]) { treeSectors[i].Cull(cmdBuffer, view, viewSettings, taskHandles); }
+            }
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public override void Pack(CommandBuffer cmdBuffer, in FoliageView view)
+        {
+            if (!m_RuntimeReady || !m_Resident || treeSectors == null) { return; }
+            TreeViewSettings viewSettings = ResolveViewSettings();
+            for (int i = 0; i < treeSectors.Length; ++i)
+            {
+                if (m_SectorReady[i]) { treeSectors[i].Pack(cmdBuffer, view, viewSettings); }
+            }
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public override void Draw(CommandBuffer cmdBuffer, in FoliageView view, in FoliageDrawPass pass)
+        {
+            if (!m_RuntimeReady || !m_Resident || treeSectors == null) { return; }
+            for (int i = 0; i < treeSectors.Length; ++i)
+            {
+                if (m_SectorReady[i]) { treeSectors[i].Draw(cmdBuffer, view, pass, m_PropertyBlock); }
             }
         }
     }

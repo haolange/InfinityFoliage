@@ -29,6 +29,8 @@ namespace Landscape.FoliagePipeline
         private GrassPage[] m_Details;
         private bool m_Resident;
         private DrawRun[] m_Runs;
+        private int m_ForwardPass = -1;
+        private int m_DepthPass = -1;
 
         private class GrassPage
         {
@@ -250,7 +252,7 @@ namespace Landscape.FoliagePipeline
                 m_Building = true;
             }
 
-            internal void Flush()
+            internal void Pack()
             {
                 if (!m_Building || !m_BuildHandle.IsCompleted) { return; }
                 try
@@ -294,7 +296,6 @@ namespace Landscape.FoliagePipeline
                 if (m_Buffer == null || m_Counts == null) { return; }
                 int count = FoliageLogic.MergeVisibleRuns(m_Offsets, m_Counts, visibleMap, numSection, runs);
                 if (count == 0) { return; }
-                FoliageAmbientSH.Bind(block);
                 block.SetBuffer(GrassShaderID.ElementBuffer, m_Buffer);
                 Mesh mesh = m_Owner.grass.meshes[0];
                 Material material = m_Owner.grass.materials[0];
@@ -406,6 +407,9 @@ namespace Landscape.FoliagePipeline
                 }
             }
             m_Runs = new DrawRun[numSection * numSection];
+            Material material = grass.materials[0];
+            m_ForwardPass = material.FindPass("ForwardLit-Instance");
+            m_DepthPass = material.FindPass("FoliageDepth");
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -442,17 +446,20 @@ namespace Landscape.FoliagePipeline
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public void Flush()
+        public void Pack()
         {
             if (!m_Resident) { return; }
-            m_Base.Flush();
-            for (int i = 0; i < m_Details.Length; ++i) { m_Details[i].Flush(); }
+            m_Base.Pack();
+            for (int i = 0; i < m_Details.Length; ++i) { m_Details[i].Pack(); }
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public void Draw(CommandBuffer cmdBuffer, MaterialPropertyBlock block, byte[] visibleMap, in int numSection, in int passIndex)
+        public void Draw(CommandBuffer cmdBuffer, MaterialPropertyBlock block, byte[] visibleMap, in int numSection, in FoliageDrawPass pass)
         {
             if (!m_Resident) { return; }
+            int passIndex = pass == FoliageDrawPass.PreZ ? m_DepthPass : pass == FoliageDrawPass.Forward ? m_ForwardPass : -1;
+            if (passIndex < 0) { return; }
+            if (pass == FoliageDrawPass.Forward) { FoliageAmbientSH.Bind(block); }
             m_Base.Draw(cmdBuffer, block, visibleMap, m_Runs, numSection, passIndex);
             for (int i = 0; i < m_Details.Length; ++i) { m_Details[i].Draw(cmdBuffer, block, visibleMap, m_Runs, numSection, passIndex); }
         }

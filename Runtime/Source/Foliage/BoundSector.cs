@@ -55,7 +55,7 @@ namespace Landscape.FoliagePipeline
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public unsafe JobHandle InitView(in float drawDistance, in float4 viewOrigin, in FrustumPlane* planes)
+        public unsafe JobHandle Cull(in float drawDistance, in float4 viewOrigin, in FrustumPlane* planes)
         {
             var cullingJob = new SectionCullingJob();
             {
