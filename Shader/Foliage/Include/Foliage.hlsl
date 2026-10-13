@@ -22,6 +22,18 @@ StructuredBuffer<float4> _TreeFadeState;
 float _LODFactor;
 float _LodFadeEnable;
 
+float FoliageLodFactor(uint instanceId)
+{
+    float lodFactor = _LODFactor;
+#if defined(FOLIAGE_LOD_WEIGHT)
+    lodFactor = _LodWeightBuffer[instanceId] * _LODFactor;
+#elif defined(FOLIAGE_GPU_TEMPORAL)
+    float alpha = _TreeFadeState[0].x;
+    lodFactor = _LODFactor > 0.0 ? 1.0 - alpha : alpha - 1.0;
+#endif
+    return lodFactor;
+}
+
 struct GrassElement
 {
      float4x4 matrix_World;
