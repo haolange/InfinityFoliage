@@ -22,18 +22,20 @@
 |---|---|---|
 | 剔除 | 组件盒 → 自持格 → 基础层 / 细节页 | 组件盒 → 自持格 → 实例，格盒先做地形 / HZB 遮挡 |
 | 资源 | 每种草一份基础层 + `4×4` 细节页资产；只为驻留页分配 packed `ComputeBuffer` | 一种树 `bounds[]` + `matrices[]`，格 `{offset,count}` |
-| 提交 | 页内 1D 连续 run + `DrawMeshInstancedProcedural` | mesh × LOD × bucket + VisibleIndex + args + Indirect；主光每级联独立 index / args |
-| 搬运 | 页载入或运行密度变化后重新 scatter / upload；释放页即释放资源 | 矩阵与静态候选只在载入 / 重排后 upload；CPU compact 或 GPU mask→计数→前缀→compact，VS 只吃 uint index |
+| Draw | 页内 1D 连续 run + `DrawMeshInstancedProcedural` | mesh × LOD × bucket + VisibleIndex + args + Indirect；主光每级联独立 index / args |
+| Pack | 页载入或运行密度变化后重新 scatter / upload；释放页即释放资源 | 矩阵与静态候选只在载入 / 重排后 upload；CPU compact 或 GPU 三桶一次 mask→计数→前缀→compact，VS 只吃 uint index |
 
-Pass 相位：`FoliageResidency.UpdateView` → 组件盒粗剔 → `InitView` 入队后 `CompleteAll` → `DispatchSetup` 入队后 `CompleteAll` → `FlushPendingUploads` → `DispatchDraw`。草页 scatter 用页私有 `JobHandle`，不进共享 `taskHandles`；未完成时不阻塞绘制。草的 Flush 在组件盒外仍推进驻留页；Draw 两边都按盒剔。主光阴影 Pass 按级联另算树 index / args，不能借用颜色相机的可见结果。
+Pass 相位：`FoliageResidency.UpdateView` → 组件盒粗剔 → `Cull` 入队后一次 `CompleteAll` → `Pack` → `Draw`。`treePreZ` 默认开：Cull 与 Pack 在 `AfterRenderingPrePasses` 完成，然后 `Draw(PreZ)` 写 `activeDepth`，颜色 Pass 只 `Draw(Forward)`；关闭时颜色 Pass 内完成 Cull、Pack、Draw。草页 scatter 用页私有 `JobHandle`，不进共享 `taskHandles`；未完成时不阻塞绘制。草的 Pack 在组件盒外仍推进驻留页；Draw 两边都按盒剔。主光阴影按级联走同一组 Cull / Pack / Draw，另算树 index / args，不能借用颜色相机的可见结果。
+
+PreZ：`FoliageDepth` 为 `ColorMask 0`、`AlphaToMask Off`，`ZTest LEqual`、`ZWrite On` 与主绘制一致。`TreeLeave` 的 `RenderType` 为 `TransparentCutout`，全部子网格进 PreZ；`TreeBrak` 只有 FadeOut / FadeIn 进；草全部进。`FoliageDepth` 与实例 Forward 共用 `FoliageLodFactor`，并声明同一套 `FOLIAGE_LOD_WEIGHT` / `FOLIAGE_GPU_TEMPORAL` 变体，clip 与 dither 逐位一致。HZB 用上一帧相机深度，按相机保存 viewProj；视点不连续则这一帧不用。投影仍匹配 RenderGraph 当前 camera depth 的 `TextureUVOrigin`，不可按 Metal 平台固定翻转 Y。
 
 草：`sections` 保持 `N×N` 作为空间键；密度二进制资产是唯一运行数据真源，Scene 不再承载整张 `densityMap`。基础层按确定性抽样保留约 `1/8` 密度；每种草另有 `4×4` 细节页承载剩余密度。`FoliageRenderer.settings` 控制运行时驻留预算，默认最多 2 个 Terrain、每个草 prefab 跨 Terrain 最多 8 个细节页、离开视锥后保留 12 帧可见优先级；这些是可调预算，不改变 Bake 的 `4×4` 与 `1/8` 资产格式。不能用 Terrain 内的 detail prototype 序号当全局草种键。优先当前可见、近视点及已有驻留页；先释放未入选页的槽位，再申请新页，异步旧请求以代次隔离。页的 CPU `GrassPageScatterJob : IJobParallelFor` 跨帧完成后上传一张页内 packed `ComputeBuffer`；首次载入未就绪的页不绘制，密度重建期间继续使用旧 buffer，完成后替换，构建失败须归还页租约并释放部分分配。运行时 `terrain.detailObjectDensity` 或 `SetDensityScale` 变化触发驻留页重建，不回写 Bake 资产。页内 run 只画可见格；`count==0` 可作连续区间桥。CPU scatter 只做 XZ / 旋转 / 缩放，Y 由 VS 采 heightmap；只画 `meshes[0]`。
 
-树：无「自有地形大 bound」；自持 `numSection` 默认 16；Bake 先 Morton 排 Candidate Stream，再 `CellFromLocal` 写 `{offset,count}`，格键公式不变。CPU chunk Job 可覆盖全量候选，但对不可见格尽早跳过；GPU 模式不调度 CPU 格 / 实例剔除与 LOD Job，格盒先做地形 / 可选 HZB 遮挡，实例再做精剔；HZB 投影须匹配 RenderGraph 当前 camera depth 的 `TextureUVOrigin`，不可按 Metal 平台固定翻转 Y；已 cull 不算 LOD。Visibility 是 IR（64 宽 chunk mask），不是绘制格式。CPU Burst 与树 Compute 是同一候选流的两种执行路径。CPU 直接按候选顺序 compact 最终 index / args。GPU 写每 chunk 的两个 uint mask，经计数与任意长度分层前缀扫描，按位排名写最终 index / args；Distance 权重与 index 同槽。禁止逐实例全局原子追加与 Append 实例列表，不依赖 Multi-Draw Indirect，不读回数量决定绘制。旧混合搬运选择器和 RunTransfer 已退役。同一视图的暂存 ComputeBuffer 按 CommandBuffer 顺序消费，不能在排队的 dispatch 消费前用即时 SetData 覆盖。颜色 LOD 淡化有两种正式模式，由 `treeLodFadeMode` 选择，不是旧路径兼容。时间窗按渲染 `Camera` 保存 hold / now 两个视点，共享 `alpha`；CPU 在 Burst 与相机状态中计算，GPU 通过自身状态与过渡归约闭合，不做正常帧读回；以屏占比迟滞稳定 LOD，差大于 1 档硬切。距离互补只用当前视点，在硬切换点靠近的一侧按 `treeFadeWidth` 做过渡带，逐实例 `x` 只活在当帧 fade index 旁边，不进矩阵或 bounds。透视 / 正交相机按各自投影求屏半径，颜色与阴影使用同一口径；只有相邻 LOD 且实例 Forward pass 支持 dither 时双几何，fade 不进实例 payload。阴影两种模式都硬切，并保留阴影自己的滞回。颜色 DC = 种 × LOD × bucket × submesh；主光 CSM 按相机 / 级联保留独立 index / args，fallback 级联球与投影必须用相机正前方的世界空间视锥角点。
+树：无「自有地形大 bound」；自持 `numSection` 默认 16；Bake 先 Morton 排 Candidate Stream，再 `CellFromLocal` 写 `{offset,count}`，格键公式不变。CPU chunk Job 可覆盖全量候选，但对不可见格尽早跳过；GPU 模式不调度 CPU 格 / 实例剔除与 LOD Job，格盒先做地形 / 可选 HZB 遮挡，实例再做精剔；HZB 读上一帧按相机保存的深度，视点不连续则跳过，投影须匹配保存时的 `TextureUVOrigin`；已 cull 不算 LOD。Visibility 是 IR（64 宽 chunk mask），不是绘制格式。CPU Burst 与树 Compute 是同一候选流的两种执行路径。CPU 直接按候选顺序 compact 最终 index / args。GPU 写每 chunk 的两个 uint mask，经计数与任意长度分层前缀扫描，按位排名写最终 index / args；Distance 权重与 index 同槽。禁止逐实例全局原子追加与 Append 实例列表，不依赖 Multi-Draw Indirect，不读回数量决定绘制。旧混合搬运选择器和 RunTransfer 已退役。同一视图的暂存 ComputeBuffer 按 CommandBuffer 顺序消费，不能在排队的 dispatch 消费前用即时 SetData 覆盖。颜色 LOD 淡化有两种正式模式，由 `treeLodFadeMode` 选择，不是旧路径兼容。时间窗按渲染 `Camera` 保存 hold / now 两个视点，共享 `alpha`；CPU 在 Burst 与相机状态中计算，GPU 通过自身状态与过渡归约闭合，不做正常帧读回；以屏占比迟滞稳定 LOD，差大于 1 档硬切。距离互补只用当前视点，在硬切换点靠近的一侧按 `treeFadeWidth` 做过渡带，逐实例 `x` 只活在当帧 fade index 旁边，不进矩阵或 bounds。透视 / 正交相机按各自投影求屏半径，颜色与阴影使用同一口径；只有相邻 LOD 且实例 Forward pass 支持 dither 时双几何，fade 不进实例 payload。阴影两种模式都硬切，并保留阴影自己的滞回。颜色 DC = 种 × LOD × bucket × submesh；主光 CSM 按相机 / 级联保留独立 index / args，fallback 级联球与投影必须用相机正前方的世界空间视锥角点。
 
-设置权威：`FoliageRenderer.settings` 给绘制、Tree backend、遮挡、LOD 淡化模式、过渡带宽度、LOD 迟滞、主光投影和预算提供全局默认；`TreeComponent` 只覆盖本 Terrain 的 backend、遮挡、fade、淡化模式、过渡带宽度、迟滞、距离与主光投影，`GrassComponent` 只覆盖距离。`fadeDuration` 只驱动时间窗。草密度仍由 Terrain 管，主光阴影距离和级联仍由 URP 管。Tree backend 默认 Auto：核心 Compute / 资源可用选 GPU，否则 CPU；强制 GPU 失败时仅状态变化提示并回退 CPU。Terrain Occlusion 在两 backend 执行同一保守算法，GPU HZB 仅在 GPU backend 生效。现有 treeOcclusion 枚举是遮挡保存真源，Inspector 两开关只映射其位，不另建 bool。核心 GPU 与 HZB 能力分别判断，缺深度或 HZB 不适用不关闭 GPU 基础可见性；关闭 HZB 必须清除本视图的有效状态，不能消费上一帧深度。组件 `showBounds` 仍是 Editor 线框总开关且保留真实深度；CPU 实时线框只代表 CPU 阶段，GPU 实时线框不能冒充最终可见性。按需冻结快照才能读取 GPU 格过滤和最终 VisibleIndex，快照必须绑定 backend、具体相机与帧。
+设置权威：`FoliageRenderer.settings` 给绘制、`treePreZ`、Tree backend、遮挡、LOD 淡化模式、过渡带宽度、LOD 迟滞、主光投影和预算提供全局默认；`TreeComponent` 只覆盖本 Terrain 的 backend、遮挡、fade、淡化模式、过渡带宽度、迟滞、距离与主光投影，`GrassComponent` 只覆盖距离。`fadeDuration` 只驱动时间窗。草密度仍由 Terrain 管，主光阴影距离和级联仍由 URP 管。Tree backend 默认 Auto：核心 Compute / 资源可用选 GPU，否则 CPU；强制 GPU 失败时仅状态变化提示并回退 CPU。Terrain Occlusion 在两 backend 执行同一保守算法，GPU HZB 仅在 GPU backend 生效。现有 treeOcclusion 枚举是遮挡保存真源，Inspector 两开关只映射其位，不另建 bool。核心 GPU 与 HZB 能力分别判断，缺深度或 HZB 不适用不关闭 GPU 基础可见性；关闭 HZB 必须清除本视图的有效状态，不能消费上一帧深度。组件 `showBounds` 仍是 Editor 线框总开关且保留真实深度；CPU 实时线框只代表 CPU 阶段，GPU 实时线框不能冒充最终可见性。按需冻结快照才能读取 GPU 格过滤和最终 VisibleIndex，快照必须绑定 backend、具体相机与帧。
 
-距离模式多 LOD emit Job 共写当帧权重数组，必须按 `JobHandle` 依赖顺序调度；每个渲染相机分别记录 backend、上次模式与淡化开关，切换时重置该相机目标状态、首帧硬切，清除旧 args、HZB 和过期快照。工作资源按 backend 首次使用分配，随驻留保留；卸载、停用和 Renderer 释放须完整释放，初始化失败释放部分 GPU 资源并回退 CPU。树实例 Forward 的 `FOLIAGE_LOD_WEIGHT` 编译变体仅用于距离 fade 桶：绘制前绑定权重 buffer 并启用关键词，绘制后关闭；stable、Temporal、普通 Forward 与 ShadowCaster 不声明该资源。GPU Temporal fade 使用 FOLIAGE_GPU_TEMPORAL 编译变体读取共享 fade 状态；声明与读取同时受宏保护，CPU Temporal 和 stable 不依赖该资源，桶绘制后关闭关键词。Editor 冻结快照的距离权重和 VisibleIndex 同槽读回，只在请求时执行。
+距离模式多 LOD emit Job 共写当帧权重数组，必须按 `JobHandle` 依赖顺序调度；每个渲染相机分别记录 backend、上次模式与淡化开关，切换时重置该相机目标状态、首帧硬切，清除旧 args、HZB 和过期快照。工作资源按 backend 首次使用分配，随驻留保留；卸载、停用和 Renderer 释放须完整释放，初始化失败释放部分 GPU 资源并回退 CPU。树实例 Forward 与 `FoliageDepth` 的 `FOLIAGE_LOD_WEIGHT` 编译变体仅用于距离 fade 桶：绘制前绑定权重 buffer 并启用关键词，绘制后关闭；stable、Temporal、普通 Forward 与 ShadowCaster 不声明该资源。GPU Temporal fade 使用 FOLIAGE_GPU_TEMPORAL 编译变体读取共享 fade 状态；声明与读取同时受宏保护，CPU Temporal 和 stable 不依赖该资源，桶绘制后关闭关键词。Editor 冻结快照的距离权重和 VisibleIndex 同槽读回，只在请求时执行。
 
 Bake：草密度、树 transforms 写完之后才算格归属，并生成带版本的流式资产；树 `meshes[i]` 与 `lODInfos[i]` 一一对应，重复引用同一 Mesh 的 LOD 仍各占一个槽，只有 Material 可去重；`OnSave` 只在 `numSection` 变化时重建空间格。Play 中禁止把空 `transforms` 写回。旧 Scene、MeshAsset 和旧密度布局必须重新 Build/Update；缺失或版本错误的资产不能静默走旧路径。
 
@@ -54,12 +56,12 @@ Out of Scope：内部 BVH；草 mesh LOD；可变 section；跨块双归属；�
 ```csharp
 // 对：热路径 in + AggressiveInlining；Job 用赋值块
 [MethodImpl(MethodImplOptions.AggressiveInlining)]
-public unsafe void InitView(in float cullDistance, in float3 viewOrigin, in FrustumPlane* planes, in NativeList<JobHandle> taskHandles)
+public unsafe void Cull(CommandBuffer cmdBuffer, in FoliageView view, in NativeList<JobHandle> taskHandles)
 {
     var treeCullingJob = new TreeCullLodJob();
     {
-        treeCullingJob.planes = planes;
-        treeCullingJob.viewOrigin = viewOrigin;
+        treeCullingJob.planes = view.planes;
+        treeCullingJob.viewOrigin = view.origin;
     }
     taskHandles.Add(treeCullingJob.Schedule(m_ChunkMasks.Length, 4));
 }

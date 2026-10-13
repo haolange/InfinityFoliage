@@ -14,7 +14,7 @@ Agent 工作台见 [AGENTS.md](AGENTS.md)。交付与宿主验收见 [Docs/DELIV
 
 ## 渲染与诊断控制
 
-URP Renderer 的 `FoliageRenderer / Settings` 给全场景提供默认值：草 / 树绘制隔离、树 backend（Auto / CPU / GPU）、Terrain Occlusion 与 GPU HZB、LOD dither fade、淡化模式、过渡带宽度与迟滞、树主光投影、草 / 树绘制距离倍率，以及驻留 Terrain 数 / 每草种细节页数 / 页可见保留帧。backend 默认 Auto：核心 Compute 可用时选 GPU，不可用时选 CPU。两种树遮挡默认开启，淡化模式为时间窗，过渡带宽度 `0.2`，迟滞 `0.08`，距离倍率 `1`，预算 `2 / 8 / 12`。预算可在 Play 调整；细节页预算设为 `0` 时草保留基础层。`4×4` 页格局与基础层 `1/8` 属于 Bake 格式，不能在运行时修改。时间窗在档位变化后共享一段 `fadeDuration`。距离互补按当前屏占比在过渡带里逐棵混合，相机停下混合就停下。
+URP Renderer 的 `FoliageRenderer / Settings` 给全场景提供默认值：草 / 树绘制隔离、`treePreZ`（默认开）、树 backend（Auto / CPU / GPU）、Terrain Occlusion 与 GPU HZB、LOD dither fade、淡化模式、过渡带宽度与迟滞、树主光投影、草 / 树绘制距离倍率，以及驻留 Terrain 数 / 每草种细节页数 / 页可见保留帧。每个视点先 Cull、再 Pack、再 Draw。`treePreZ` 开启时，Cull 与 Pack 在深度预通道完成，PreZ 只画带 clip 的子网格和正在淡化的桶，颜色通道复用同一份结果；关闭时这三步都在不透明通道完成。HZB 使用上一帧按相机保存的深度，视点不连续的那一帧不用。backend 默认 Auto：核心 Compute 可用时选 GPU，不可用时选 CPU。两种树遮挡默认开启，淡化模式为时间窗，过渡带宽度 `0.2`，迟滞 `0.08`，距离倍率 `1`，预算 `2 / 8 / 12`。预算可在 Play 调整；细节页预算设为 `0` 时草保留基础层。`4×4` 页格局与基础层 `1/8` 属于 Bake 格式，不能在运行时修改。时间窗在档位变化后共享一段 `fadeDuration`。距离互补按当前屏占比在过渡带里逐棵混合，相机停下混合就停下。
 
 `TreeComponent / Rendering Overrides` 可为该 Terrain 单独覆盖 backend、遮挡、距离、LOD fade / 淡化模式 / 过渡带宽度 / 迟滞和主光投影。`fadeDuration` 只作用于时间窗，仍由组件决定。`GrassComponent` 可单独覆盖绘制距离，草密度仍读取 Terrain。距离未覆盖时使用进入 Play 前的 Terrain 距离乘 Renderer 倍率；退出 Play 会恢复 Terrain 原值。实时阴影的距离及级联继续在 URP Asset 设置，本包主光开关只控制树的投影。
 
