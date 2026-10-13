@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using Unity.Jobs;
 using UnityEngine;
 using Unity.Mathematics;
@@ -65,11 +66,23 @@ namespace Landscape.FoliagePipeline
         private bool[] m_DetailResident;
         private int[] m_PageLastUsed;
         private int[] m_PageLastVisible;
-        private byte[] m_Visible;
+        private List<GrassView> m_Views;
+        private int m_PrunedFrame = -1;
+        private int m_CulledFrame = -1;
         private float m_DensityScale;
         private float m_DrawDistance;
         private FoliageRenderSettings m_RenderSettings;
         private MaterialPropertyBlock m_PropertyBlock;
+
+        const int ViewRetireFrames = 120;
+
+        class GrassView
+        {
+            public Camera camera;
+            public byte[] visible;
+            public int usedFrame;
+            public int packedFrame = -1;
+        }
 
         internal float drawDistance { get { return m_DrawDistance; } }
 
@@ -134,7 +147,7 @@ namespace Landscape.FoliagePipeline
                 m_PageLastUsed = new int[m_DetailResident.Length];
                 m_PageLastVisible = new int[m_DetailResident.Length];
                 for (int i = 0; i < m_PageLastVisible.Length; ++i) { m_PageLastVisible[i] = -1; }
-                m_Visible = new byte[boundSector.sections.Length];
+                m_Views = new List<GrassView>(4);
                 m_RuntimeReady = true;
                 FoliageResidency.Register(terrain, this);
             }
@@ -161,6 +174,7 @@ namespace Landscape.FoliagePipeline
             {
                 foreach (GrassSector grassSector in grassSectors) { grassSector.Release(); }
             }
+            if (m_Views != null) { m_Views.Clear(); }
             m_RuntimeReady = false;
         }
 
@@ -240,15 +254,79 @@ namespace Landscape.FoliagePipeline
 #endif
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public override void InitView(in float3 viewOrigin, in float4x4 matrixProj, in FrustumPlane* planes, in NativeList<JobHandle> taskHandles)
+        GrassView GetView(Camera camera)
         {
-            if (!m_RuntimeReady || !m_Resident) { return; }
-            taskHandles.Add(boundSector.InitView(ResolveDrawDistance(m_RenderSettings), new float4(viewOrigin, 1), planes));
+            int frame = Time.frameCount;
+            if (m_PrunedFrame != frame)
+            {
+                m_PrunedFrame = frame;
+                for (int i = m_Views.Count - 1; i >= 0; --i)
+                {
+                    GrassView stale = m_Views[i];
+                    if (stale.camera != null && frame - stale.usedFrame <= ViewRetireFrames) { continue; }
+                    m_Views.RemoveAt(i);
+                }
+            }
+            for (int i = 0; i < m_Views.Count; ++i)
+            {
+                GrassView view = m_Views[i];
+                if (view.camera != camera) { continue; }
+                view.usedFrame = frame;
+                return view;
+            }
+            GrassView created = new GrassView();
+            created.camera = camera;
+            created.visible = new byte[boundSector.sections.Length];
+            created.usedFrame = frame;
+            m_Views.Add(created);
+            return created;
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public override void DispatchSetup(Camera camera, in float3 viewOrigin, in float4x4 matrixProj, in NativeList<JobHandle> taskHandles)
+        public override void Cull(CommandBuffer cmdBuffer, in FoliageView view, in NativeList<JobHandle> taskHandles)
         {
+            if (!m_RuntimeReady || !m_Resident || view.isShadow) { return; }
+            taskHandles.Add(boundSector.Cull(ResolveDrawDistance(m_RenderSettings), new float4(view.origin, 1), view.planes));
+            m_CulledFrame = Time.frameCount;
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public override void Pack(CommandBuffer cmdBuffer, in FoliageView view)
+        {
+            if (!m_RuntimeReady || !m_Resident || grassSectors == null || view.isShadow) { return; }
+            float scale = Mathf.Clamp01(terrain.detailObjectDensity);
+            if (scale != m_DensityScale)
+            {
+                m_DensityScale = scale;
+                for (int i = 0; i < grassSectors.Length; ++i) { grassSectors[i].SetDensityScale(scale); }
+            }
+            if (m_CulledFrame == Time.frameCount)
+            {
+                GrassView grassView = GetView(view.camera);
+                byte[] visible = grassView.visible;
+                for (int i = 0; i < visible.Length; ++i) { visible[i] = boundSector.visibleMap[i]; }
+                grassView.packedFrame = Time.frameCount;
+            }
+            for (int i = 0; i < grassSectors.Length; ++i) { grassSectors[i].Pack(); }
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public override void Draw(CommandBuffer cmdBuffer, in FoliageView view, in FoliageDrawPass pass)
+        {
+            if (!m_RuntimeReady || !m_Resident || grassSectors == null || view.isShadow || pass == FoliageDrawPass.Shadow) { return; }
+            GrassView grassView = null;
+            if (m_Views != null)
+            {
+                for (int i = 0; i < m_Views.Count; ++i)
+                {
+                    if (m_Views[i].camera == view.camera) { grassView = m_Views[i]; break; }
+                }
+            }
+            if (grassView == null || grassView.packedFrame != Time.frameCount) { return; }
+            for (int j = 0; j < grassSectors.Length; ++j)
+            {
+                grassSectors[j].Draw(cmdBuffer, m_PropertyBlock, grassView.visible, numSection, pass);
+            }
         }
 
         public void SetDensityScale(in float scale)
@@ -320,28 +398,5 @@ namespace Landscape.FoliagePipeline
             if (resident) { m_PageLastUsed[index] = frame; }
         }
 
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public override void FlushPendingUploads(CommandBuffer cmdBuffer, RTHandle cameraDepth, in Vector4 zParams)
-        {
-            if (!m_RuntimeReady || !m_Resident || grassSectors == null) { return; }
-            float scale = Mathf.Clamp01(terrain.detailObjectDensity);
-            if (scale != m_DensityScale)
-            {
-                m_DensityScale = scale;
-                for (int i = 0; i < grassSectors.Length; ++i) { grassSectors[i].SetDensityScale(scale); }
-            }
-            for (int i = 0; i < grassSectors.Length; ++i) { grassSectors[i].Flush(); }
-        }
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public override void DispatchDraw(CommandBuffer cmdBuffer, in int passIndex)
-        {
-            if (!m_RuntimeReady || !m_Resident || grassSectors == null) { return; }
-            for (int i = 0; i < m_Visible.Length; ++i) { m_Visible[i] = boundSector.visibleMap[i]; }
-            for (int j = 0; j < grassSectors.Length; ++j)
-            {
-                grassSectors[j].Draw(cmdBuffer, m_PropertyBlock, m_Visible, numSection, passIndex);
-            }
-        }
     }
 }

@@ -38,9 +38,6 @@ Shader "Landscape/Grass"
 		
 		[Header(Unuse)]
 		_MainTex ("Base (RGB)", 2D) = "white" {}
-		//[Header(State)]
-		//_ZTest("ZTest", Int) = 4
-		//_ZWrite("ZWrite", Int) = 1
 	}
 
 	HLSLINCLUDE
@@ -80,6 +77,35 @@ Shader "Landscape/Grass"
 		#include "Include/ProceduralInstance.hlsl"
 		#include "Packages/com.infinity.render-foliage/Shader/Foliage/Include/Foliage.hlsl"
 
+		void GrassInstancePosition(uint instanceId, float4 vertexOS, float2 uv0, out float3 worldPos, out float3 objectPos, out float3 terrainNormal)
+		{
+			GrassElement grassElement = _GrassElementBuffer[instanceId + _InstanceOffset];
+			worldPos = mul(grassElement.matrix_World, vertexOS).xyz;
+			objectPos = float3(grassElement.matrix_World[0].w, grassElement.matrix_World[1].w, grassElement.matrix_World[2].w);
+			float2 sampleUV = (objectPos.xz - _TerrainPivotScaleY.xz) * rcp(_TerrainSize);
+			float4 sampledHeight = _TerrainHeightmap.SampleLevel(Global_bilinear_clamp_sampler, sampleUV, 0, 0);
+			float height = UnpackHeightmap(sampledHeight) * (_TerrainPivotScaleY.w * 2);
+			terrainNormal = _TerrainNormalmap.SampleLevel(Global_bilinear_clamp_sampler, sampleUV, 0, 0).xyz * 2 - 1;
+			worldPos.y += height;
+			objectPos.y += height;
+
+			float windFade;
+			float scaleFade;
+			PerVertexFade(objectPos, windFade, scaleFade);
+			WindInput windInput;
+			windInput.fade = windFade;
+			windInput.flutter = 1;
+			windInput.phaseOffset = 0;
+			windInput.speed = GetWindSpeed();
+			windInput.objectPivot = objectPos;
+			windInput.normalWS = 0;
+			windInput.direction = GetWindDirection();
+			windInput.mask = uv0.y * saturate(vertexOS.y / _PivotOffset) * GetWindVariation(objectPos);
+			float3 discardedNormal;
+			Wind(windInput, worldPos, discardedNormal);
+			worldPos = ApplyScaleFade(worldPos, objectPos, scaleFade);
+		}
+
 	ENDHLSL
 
     SubShader
@@ -98,7 +124,6 @@ Shader "Landscape/Grass"
             #pragma vertex vert
             #pragma fragment frag
 			#pragma multi_compile_instancing
-			//#pragma enable_d3d11_debug_symbols
 			#pragma instancing_options procedural:SetupNatureRenderer
 
 			#pragma shader_feature _ColorMap
@@ -187,7 +212,6 @@ Shader "Landscape/Grass"
 
 				//Surface
 				float4 baseColor = _AlbedoTexture.Sample(sampler_AlbedoTexture, input.uv0);
-				//clip(baseColor.a);
 				clip(baseColor.a - _AlphaThreshold);
 
 				float3 variantColor = lerp(lerp(_BottomTint.rgb, _TopTint.rgb, input.uv0.y), _TintVariation.rgb, input.noise.x);
@@ -204,8 +228,7 @@ Shader "Landscape/Grass"
 					shadowCoord = TransformWorldToShadowCoord(worldPos);
 				#endif
 				Light mainLight = GetMainLight(shadowCoord, worldPos, 1);
-				//float lightShadow = MainLightRealtimeShadow(shadowCoord);
-				float3 attenuatedLightColor = mainLight.color * (/*mainLight.distanceAttenuation */ mainLight.shadowAttenuation);
+				float3 attenuatedLightColor = mainLight.color * (mainLight.shadowAttenuation);
 
 				//Lighting
 				float3 directDiffuse = saturate(dot(lightDir, normalWS.xyz));
@@ -237,7 +260,6 @@ Shader "Landscape/Grass"
 			#pragma target 4.5
             #pragma vertex vert
             #pragma fragment frag
-			//#pragma enable_d3d11_debug_symbols
 
 			#pragma shader_feature _ColorMap
 			#pragma shader_feature _PivotFromUV1
@@ -268,68 +290,26 @@ Shader "Landscape/Grass"
 				float4 vertexCS : SV_POSITION;
 			};
 
-			float4 Blerp(float4 c00, float4 c10, float4 c01, float4 c11, float tx, float ty)
-			{
-				return lerp(lerp(c00, c10, tx), lerp(c01, c11, tx), ty);
-			}
-
-			float4 SampleHeight(float2 p, float4 leftBottomH, float4 leftTopH, float4 rightBottomH, float4 rightTopH)
-			{
-				return Blerp(leftBottomH, rightBottomH, leftTopH, rightTopH, p.x, p.y);
-			}
-
 			Varyings vert(Attributes input)
 			{
 				Varyings output = (Varyings)0;
 				output.PrimitiveId = input.InstanceId;
-				GrassElement grassElement = _GrassElementBuffer[input.InstanceId + _InstanceOffset];
-
-				float3 worldPos = mul(grassElement.matrix_World, input.vertexOS).xyz;
-				float3 objectPos = float3(grassElement.matrix_World[0].w, grassElement.matrix_World[1].w, grassElement.matrix_World[2].w);
-
-				/*float invSize = rcp(_TerrainSize);
-				float2 sampleUV = (objectPos.xz - _TerrainPivotScaleY.xz) * invSize;
-				float4 leftTopH = _TerrainHeightmap.SampleLevel(Global_point_clamp_sampler,  sampleUV, 0, int2(1, 0));
-				float4 rightTopH = _TerrainHeightmap.SampleLevel(Global_point_clamp_sampler, sampleUV, 0, int2(1, 1));
-				float4 leftBottomH = _TerrainHeightmap.SampleLevel(Global_bilinear_clamp_sampler, sampleUV, 0, 0);
-				float4 rightBottomH = _TerrainHeightmap.SampleLevel(Global_point_clamp_sampler, sampleUV, 0, int2(0, 1));
-				float4 sampledHeight = SampleHeight(frac(objectPos.xz * invSize), leftBottomH, leftTopH, rightBottomH, rightTopH);
-				float height = UnpackHeightmap(sampledHeight) * (_TerrainPivotScaleY.w * 2);*/
-
-				float2 sampleUV = (objectPos.xz - _TerrainPivotScaleY.xz) * rcp(_TerrainSize);
-				float4 sampledHeight = _TerrainHeightmap.SampleLevel(Global_bilinear_clamp_sampler, sampleUV, 0, 0);
-				float height = UnpackHeightmap(sampledHeight) * (_TerrainPivotScaleY.w * 2);
-				float3 normal = _TerrainNormalmap.SampleLevel(Global_bilinear_clamp_sampler, sampleUV, 0, 0).xyz * 2 - 1;
-
-				worldPos.y += height;
-				objectPos.y += height;
-
-				float windFade;
-                float scaleFade;
-                PerVertexFade(objectPos, windFade, scaleFade);
+				float3 worldPos;
+				float3 objectPos;
+				float3 terrainNormal;
+				GrassInstancePosition(input.InstanceId, input.vertexOS, input.uv0, worldPos, objectPos, terrainNormal);
 				output.noise.y = PerlinNoise(objectPos.xz, _DarkVariation);
 				output.noise.x = PerlinNoise(objectPos.xz, _ColorVariation);
 				output.noise.y *= 1.0 - saturate((distance(objectPos, _WorldSpaceCameraPos) - _DarkFadeness.x) / _DarkFadeness.y);
-
-				WindInput windInput;
-                windInput.fade = windFade;
-                windInput.flutter = 1;
-                windInput.phaseOffset = 0;
-                windInput.speed = GetWindSpeed();
-                windInput.objectPivot = objectPos;
-                windInput.normalWS = output.normalWS;
-                windInput.direction = GetWindDirection();
-                windInput.mask = input.uv0.y * saturate(input.vertexOS.y / _PivotOffset) * GetWindVariation(objectPos);
-				Wind(windInput, worldPos, output.normalWS);
-				worldPos = ApplyScaleFade(worldPos, objectPos, scaleFade);
 
 				output.uv0 = input.uv0;
 				output.uv1 = input.uv1;
 				output.color = input.color;
 				output.vertexWS = float4(worldPos, 1);
 				output.vertexCS = mul(unity_MatrixVP, output.vertexWS);
+				GrassElement grassElement = _GrassElementBuffer[input.InstanceId + _InstanceOffset];
 				output.normalWS = TransformFoliageNormal(grassElement.matrix_World, input.normalOS);
-				output.normalWS = lerp(normal, output.normalWS, _VertexNormalStrength);
+				output.normalWS = lerp(terrainNormal, output.normalWS, _VertexNormalStrength);
 				return output;
 			}
 
@@ -343,7 +323,6 @@ Shader "Landscape/Grass"
 
 				//Surface
 				float4 baseColor = _AlbedoTexture.Sample(sampler_AlbedoTexture, input.uv0);
-				//clip(baseColor.a);
 				clip(baseColor.a - _AlphaThreshold);
 
 				float3 variantColor = lerp(lerp(_BottomTint.rgb, _TopTint.rgb, input.uv0.y), _TintVariation.rgb, input.noise.x);
@@ -360,8 +339,7 @@ Shader "Landscape/Grass"
 					shadowCoord = TransformWorldToShadowCoord(worldPos);
 				#endif
 				Light mainLight = GetMainLight(shadowCoord, worldPos, 1);
-				//float lightShadow = MainLightRealtimeShadow(shadowCoord);
-				float3 attenuatedLightColor = mainLight.color * (/*mainLight.distanceAttenuation */ mainLight.shadowAttenuation);
+				float3 attenuatedLightColor = mainLight.color * (mainLight.shadowAttenuation);
 
 				//Lighting
 				float3 directDiffuse = saturate(dot(lightDir, normalWS.xyz));
@@ -385,6 +363,55 @@ Shader "Landscape/Grass"
 
         Pass
         {
+            Name "FoliageDepth"
+            Tags { "LightMode" = "FoliageDepth" }
+            ZTest LEqual
+            ZWrite On
+            Cull Off
+            ColorMask 0
+            AlphaToMask Off
+
+            HLSLPROGRAM
+            #pragma target 4.5
+            #pragma vertex vert
+            #pragma fragment frag
+
+            struct Attributes
+            {
+                uint InstanceId : SV_InstanceID;
+                float2 uv0 : TEXCOORD0;
+                float4 vertexOS : POSITION;
+            };
+
+            struct Varyings
+            {
+                float2 uv0 : TEXCOORD0;
+                float4 vertexCS : SV_POSITION;
+            };
+
+            Varyings vert(Attributes input)
+            {
+                Varyings output = (Varyings)0;
+                float3 worldPos;
+                float3 objectPos;
+                float3 terrainNormal;
+                GrassInstancePosition(input.InstanceId, input.vertexOS, input.uv0, worldPos, objectPos, terrainNormal);
+                output.uv0 = input.uv0;
+                output.vertexCS = mul(unity_MatrixVP, float4(worldPos, 1));
+                return output;
+            }
+
+            float4 frag(Varyings input) : SV_Target
+            {
+                float4 baseColor = _AlbedoTexture.Sample(sampler_AlbedoTexture, input.uv0);
+                clip(baseColor.a - _AlphaThreshold);
+                return 0;
+            }
+            ENDHLSL
+        }
+
+        Pass
+        {
             Name "Shadowmap"
 			Tags { "LightMode" = "ShadowCaster" }
 			Cull Off ZTest LEqual ZWrite On 
@@ -395,7 +422,6 @@ Shader "Landscape/Grass"
             #pragma fragment frag
 			#pragma multi_compile_instancing
 			#pragma shader_feature _PivotFromUV1
-			//#pragma enable_d3d11_debug_symbols
 			#pragma instancing_options procedural:SetupNatureRenderer
 
 			#define _TYPE_GRASS
@@ -486,7 +512,6 @@ Shader "Landscape/Grass"
 				UNITY_SETUP_INSTANCE_ID(input);
 
 				float alpha = _AlbedoTexture.Sample(sampler_AlbedoTexture, input.uv0).a;
-				//clip(alpha - 0.33);
 				clip(alpha - _AlphaThreshold);
 				return 0;
 			}

@@ -40,8 +40,11 @@ RWStructuredBuffer<uint> _ScanOffsets;
 RWStructuredBuffer<uint> _ScanSums;
 StructuredBuffer<uint> _ParentOffsets;
 StructuredBuffer<uint> _Offsets;
-RWStructuredBuffer<uint> _Indices;
-RWStructuredBuffer<float> _Weights;
+RWStructuredBuffer<uint> _Indices0;
+RWStructuredBuffer<uint> _Indices1;
+RWStructuredBuffer<uint> _Indices2;
+RWStructuredBuffer<float> _Weights1;
+RWStructuredBuffer<float> _Weights2;
 RWStructuredBuffer<uint> _ArgsDst;
 RWStructuredBuffer<float> _Hzb;
 Texture2D _CameraDepthTexture;
@@ -75,7 +78,9 @@ int _Reset;
 int _Advance;
 int _Shadow;
 int _Lod;
-int _Bucket;
+int _BucketCount;
+int _SubmeshCount;
+int _PlaneCount;
 int _ScanLength;
 int _WriteWeight;
 
@@ -199,8 +204,8 @@ float LinearEye(float raw)
 uint FrustumDistance(GpuAabb box, float distanceScale, float3 distancePivot)
 {
     uint visible = 1u;
-    [unroll]
-    for (int i = 0; i < 6; ++i)
+    [loop]
+    for (int i = 0; i < _PlaneCount; ++i)
     {
         float4 plane = _Planes[i];
         float dist = dot(plane.xyz, box.center) + plane.w;
@@ -508,13 +513,13 @@ void CommitLod(uint3 id : SV_DispatchThreadID)
     _LodState[id.x] = state;
 }
 
-groupshared uint gsMaskLo;
-groupshared uint gsMaskHi;
+groupshared uint gsMaskLo[3];
+groupshared uint gsMaskHi[3];
 
 [numthreads(64, 1, 1)]
 void EmitMasks(uint3 groupId : SV_GroupID, uint threadIndex : SV_GroupIndex)
 {
-    if (threadIndex == 0u) { gsMaskLo = 0u; gsMaskHi = 0u; }
+    if (threadIndex < 3u) { gsMaskLo[threadIndex] = 0u; gsMaskHi[threadIndex] = 0u; }
     GroupMemoryBarrierWithGroupSync();
     uint candidate = groupId.x * 64u + threadIndex;
     if (candidate < (uint)_InstanceCount)
@@ -523,21 +528,25 @@ void EmitMasks(uint3 groupId : SV_GroupID, uint threadIndex : SV_GroupIndex)
         bool pair = state.w != 0 && state.x >= 0 && state.y >= 0 && abs(state.x - state.y) == 1;
         if (pair) { pair = _AllowFade != 0 && _LodDither[state.x] != 0u && _LodDither[state.y] != 0u; }
         pair = pair && (_Mode == 1 || _FadeState[0].y != 0.0);
-        bool emit = state.w != 0 && state.y >= 0;
-        if (_Bucket == 0) { emit = emit && !pair && state.y == _Lod; }
-        else if (_Bucket == 1) { emit = emit && pair && state.x == _Lod; }
-        else { emit = emit && pair && state.y == _Lod; }
-        if (emit)
+        int bucket = -1;
+        if (state.w != 0 && state.y >= 0)
         {
-            if (threadIndex < 32u) { InterlockedOr(gsMaskLo, 1u << threadIndex); }
-            else { InterlockedOr(gsMaskHi, 1u << (threadIndex - 32u)); }
+            if (!pair) { bucket = state.y == _Lod ? 0 : -1; }
+            else if (state.x == _Lod) { bucket = 1; }
+            else if (state.y == _Lod) { bucket = 2; }
+        }
+        if (bucket >= 0 && bucket < _BucketCount)
+        {
+            if (threadIndex < 32u) { InterlockedOr(gsMaskLo[bucket], 1u << threadIndex); }
+            else { InterlockedOr(gsMaskHi[bucket], 1u << (threadIndex - 32u)); }
         }
     }
     GroupMemoryBarrierWithGroupSync();
-    if (threadIndex == 0u)
+    if (threadIndex < (uint)_BucketCount)
     {
-        _Masks[groupId.x] = uint2(gsMaskLo, gsMaskHi);
-        _Counts[groupId.x] = countbits(gsMaskLo) + countbits(gsMaskHi);
+        uint slot = threadIndex * (uint)_ChunkCount + groupId.x;
+        _Masks[slot] = uint2(gsMaskLo[threadIndex], gsMaskHi[threadIndex]);
+        _Counts[slot] = countbits(gsMaskLo[threadIndex]) + countbits(gsMaskHi[threadIndex]);
     }
 }
 
@@ -580,16 +589,30 @@ void Compact(uint3 groupId : SV_GroupID, uint threadIndex : SV_GroupIndex)
     uint lowerBits = (0xffffffffu >> (31u - bit)) >> 1u;
     uint rank = countbits(word & lowerBits);
     if (threadIndex >= 32u) { rank += countbits(mask.x); }
-    uint slot = _Offsets[groupId.x] + rank;
-    uint candidate = groupId.x * 64u + threadIndex;
+    uint bucket = groupId.x / (uint)_ChunkCount;
+    uint chunk = groupId.x - bucket * (uint)_ChunkCount;
+    uint slot = _Offsets[groupId.x] - _Offsets[bucket * (uint)_ChunkCount] + rank;
+    uint candidate = chunk * 64u + threadIndex;
     if (slot >= (uint)_InstanceCount || candidate >= (uint)_InstanceCount) { return; }
-    _Indices[slot] = candidate;
-    if (_WriteWeight != 0) { _Weights[slot] = _InstanceWeights[candidate]; }
+    if (bucket == 0u) { _Indices0[slot] = candidate; }
+    else if (bucket == 1u)
+    {
+        _Indices1[slot] = candidate;
+        if (_WriteWeight != 0) { _Weights1[slot] = _InstanceWeights[candidate]; }
+    }
+    else
+    {
+        _Indices2[slot] = candidate;
+        if (_WriteWeight != 0) { _Weights2[slot] = _InstanceWeights[candidate]; }
+    }
 }
 
-[numthreads(1, 1, 1)]
-void CopyArgsCount()
+[numthreads(64, 1, 1)]
+void CopyArgsCount(uint3 id : SV_DispatchThreadID)
 {
-    uint last = (uint)_ChunkCount - 1u;
-    _ArgsDst[1] = min(_Offsets[last] + _Counts[last], (uint)_InstanceCount);
+    if (id.x >= (uint)(_BucketCount * _SubmeshCount)) { return; }
+    uint bucket = id.x / (uint)_SubmeshCount;
+    uint first = bucket * (uint)_ChunkCount;
+    uint last = first + (uint)_ChunkCount - 1u;
+    _ArgsDst[id.x * 5u + 1u] = min(_Offsets[last] + _Counts[last] - _Offsets[first], (uint)_InstanceCount);
 }

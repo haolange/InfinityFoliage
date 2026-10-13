@@ -2,15 +2,15 @@
   "name": "com.infinity.render-foliage",
   "description": "The Infinity-Foliage.",
   "version": "1.0.0",
-  "unity": "2021.1",
-  "unityRelease": "0a8",
+  "unity": "6000.6",
+  "unityRelease": "0f1",
   "displayName": "Infinity Foliage",
   "dependencies": {
-    "com.unity.jobs": "0.50.0-preview.8",
-    "com.unity.burst": "1.6.5",
-    "com.unity.mathematics": "1.2.6",
-    "com.unity.render-pipelines.core": "12.1.6",
-    "com.unity.render-pipelines.universal": "12.1.6"
+    "com.unity.burst": "2.0.0",
+    "com.unity.collections": "6.6.0",
+    "com.unity.mathematics": "1.3.3",
+    "com.unity.render-pipelines.core": "17.6.0",
+    "com.unity.render-pipelines.universal": "17.6.0"
   },
   "type": "library"
 }

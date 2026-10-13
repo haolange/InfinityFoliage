@@ -468,10 +468,12 @@ namespace Landscape.FoliagePipeline
             var screenSizes = new NativeArray<float>(3, Allocator.TempJob);
             var dither = new NativeArray<byte>(3, Allocator.TempJob);
             var weights = new NativeArray<float>(2, Allocator.TempJob);
-            var stable = new NativeArray<ulong>[3];
-            var fadeOut = new NativeArray<ulong>[3];
-            var fadeIn = new NativeArray<ulong>[3];
-            var counts = new NativeArray<int>[3];
+            int slotCount = 3 * FoliageLogic.LodBucketCount;
+            var bucketMasks = new NativeArray<ulong>(slotCount, Allocator.TempJob);
+            var bucketCounts = new NativeArray<int>(slotCount, Allocator.TempJob);
+            var indices = new NativeArray<int>(4, Allocator.TempJob);
+            var packedWeights = new NativeArray<float>(4, Allocator.TempJob);
+            var ranges = new NativeArray<int2>(slotCount, Allocator.TempJob);
             JobHandle handle = default;
             try
             {
@@ -484,48 +486,53 @@ namespace Landscape.FoliagePipeline
                 screenSizes[1] = 0.3f;
                 screenSizes[2] = 0.1f;
                 for (int i = 0; i < 3; ++i) { dither[i] = 1; }
-                for (int i = 0; i < 3; ++i)
+                var emitJob = new TreeEmitDistanceMasksJob();
                 {
-                    stable[i] = new NativeArray<ulong>(1, Allocator.TempJob);
-                    fadeOut[i] = new NativeArray<ulong>(1, Allocator.TempJob);
-                    fadeIn[i] = new NativeArray<ulong>(1, Allocator.TempJob);
-                    counts[i] = new NativeArray<int>(3, Allocator.TempJob);
-                    var job = new TreeEmitDistanceMasksJob();
-                    {
-                        job.meshIndex = i;
-                        job.ditherEnabled = 1;
-                        job.instanceCount = 2;
-                        job.fadeWidth = 0.2f;
-                        job.chunkMasks = chunkMasks;
-                        job.lodNow = lodNow;
-                        job.screenSqr = screenSqr;
-                        job.lodScreenSizes = screenSizes;
-                        job.lodDither = dither;
-                        job.stableMask = stable[i];
-                        job.fadeOutMask = fadeOut[i];
-                        job.fadeInMask = fadeIn[i];
-                        job.bucketCounts = counts[i];
-                        job.lodWeight = weights;
-                    }
-                    handle = job.Schedule(handle);
+                    emitJob.ditherEnabled = 1;
+                    emitJob.instanceCount = 2;
+                    emitJob.fadeWidth = 0.2f;
+                    emitJob.chunkMasks = chunkMasks;
+                    emitJob.lodNow = lodNow;
+                    emitJob.screenSqr = screenSqr;
+                    emitJob.lodScreenSizes = screenSizes;
+                    emitJob.lodDither = dither;
+                    emitJob.bucketMasks = bucketMasks;
+                    emitJob.bucketCounts = bucketCounts;
+                    emitJob.lodWeight = weights;
                 }
+                handle = emitJob.Schedule();
+                var compactJob = new TreeCompactJob();
+                {
+                    compactJob.instanceCount = 2;
+                    compactJob.weighted = 1;
+                    compactJob.bucketMasks = bucketMasks;
+                    compactJob.candidateWeights = weights;
+                    compactJob.indices = indices;
+                    compactJob.weights = packedWeights;
+                    compactJob.ranges = ranges;
+                }
+                handle = compactJob.Schedule(handle);
                 handle.Complete();
-                if (fadeOut[0][0] != 1 || fadeIn[1][0] != 1 || fadeOut[1][0] != 2 || fadeIn[2][0] != 2 ||
+                if (bucketMasks[FoliageLogic.BucketSlot(0, LodBucket.FadeOut)] != 1 || bucketMasks[FoliageLogic.BucketSlot(1, LodBucket.FadeIn)] != 1 ||
+                    bucketMasks[FoliageLogic.BucketSlot(1, LodBucket.FadeOut)] != 2 || bucketMasks[FoliageLogic.BucketSlot(2, LodBucket.FadeIn)] != 2 ||
                     weights[0] <= 0f || weights[0] >= 1f || weights[1] <= 0f || weights[1] >= 1f)
                 {
-                    Fail("distance LOD jobs must preserve adjacent masks and shared instance weights");
+                    Fail("distance LOD job must preserve adjacent masks and shared instance weights");
+                }
+                int2 fadeInRange = ranges[FoliageLogic.BucketSlot(2, LodBucket.FadeIn)];
+                if (fadeInRange.y != 1 || indices[fadeInRange.x] != 1 || packedWeights[fadeInRange.x] != weights[1])
+                {
+                    Fail("compact ranges must keep each bucket's index and weight in the same slot");
                 }
             }
             finally
             {
                 handle.Complete();
-                for (int i = 0; i < 3; ++i)
-                {
-                    if (stable[i].IsCreated) { stable[i].Dispose(); }
-                    if (fadeOut[i].IsCreated) { fadeOut[i].Dispose(); }
-                    if (fadeIn[i].IsCreated) { fadeIn[i].Dispose(); }
-                    if (counts[i].IsCreated) { counts[i].Dispose(); }
-                }
+                bucketMasks.Dispose();
+                bucketCounts.Dispose();
+                indices.Dispose();
+                packedWeights.Dispose();
+                ranges.Dispose();
                 chunkMasks.Dispose();
                 lodNow.Dispose();
                 screenSqr.Dispose();
@@ -731,27 +738,53 @@ namespace Landscape.FoliagePipeline
                 Fail("CollectVisibleCells must skip culled cells");
             }
 
-            float[] flat = new float[4];
-            if (FoliageLogic.SampleHeightField(flat, 2, 0, 0, 10, 10, 0, 0) != 0f)
-            {
-                Fail("flat height field must sample 0");
-            }
-
             float[] ridge = new float[16];
-            for (int i = 0; i < 16; ++i) { ridge[i] = 0f; }
             ridge[5] = 50f;
             ridge[6] = 50f;
             ridge[9] = 50f;
             ridge[10] = 50f;
-            bool occluded = FoliageLogic.TerrainOccludes(20f, 1f, 20f, 21f, 2f, 21f, 0f, 1f, 0f, ridge, 4, 0f, 0f, 24f, 24f);
-            if (!occluded)
+            if (CellTerrainFlag(ridge, 4) != FoliageLogic.CellFrustum)
             {
-                Fail("ridge between camera and box must occlude");
+                Fail("ridge between camera and cell must clear the terrain flag");
             }
-            bool open = FoliageLogic.TerrainOccludes(20f, 1f, 20f, 21f, 2f, 21f, 0f, 1f, 0f, flat, 2, 0f, 0f, 24f, 24f);
-            if (open)
+            if (CellTerrainFlag(new float[16], 4) != FoliageLogic.CellVisible)
             {
-                Fail("flat ground must not occlude a box sitting on it");
+                Fail("flat ground must keep a cell sitting on it visible");
+            }
+        }
+
+        static byte CellTerrainFlag(float[] heights, in int heightRes)
+        {
+            var cellVisible = new NativeArray<byte>(1, Allocator.TempJob);
+            var cellBounds = new NativeArray<BoundSection>(1, Allocator.TempJob);
+            var nativeHeights = new NativeArray<float>(heights, Allocator.TempJob);
+            var cellFlags = new NativeArray<byte>(1, Allocator.TempJob);
+            try
+            {
+                cellVisible[0] = 1;
+                BoundSection section = default;
+                section.boundBox = new Aabb(new float3(20.5f, 1.5f, 20.5f), new float3(1f, 1f, 1f));
+                cellBounds[0] = section;
+                var terrainJob = new TreeCellTerrainJob();
+                {
+                    terrainJob.heightRes = heightRes;
+                    terrainJob.viewOrigin = new float3(0f, 1f, 0f);
+                    terrainJob.terrainPos = float3.zero;
+                    terrainJob.terrainSize = new float3(24f, 50f, 24f);
+                    terrainJob.cellVisible = cellVisible;
+                    terrainJob.cellBounds = cellBounds;
+                    terrainJob.heights = nativeHeights;
+                    terrainJob.cellFlags = cellFlags;
+                }
+                terrainJob.Schedule(1, 1).Complete();
+                return cellFlags[0];
+            }
+            finally
+            {
+                cellVisible.Dispose();
+                cellBounds.Dispose();
+                nativeHeights.Dispose();
+                cellFlags.Dispose();
             }
         }
 

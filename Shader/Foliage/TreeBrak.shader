@@ -10,9 +10,6 @@ Shader "Landscape/TreeBrak"
 		[NoScaleOffset]_TrunkColor ("TrunkColor", 2D) = "white" {}
         [NoScaleOffset]_TrunkNormal ("TrunkNormal", 2D) = "bump" {}
 
-		//[Header(State)]
-		//_ZTest("ZTest", Int) = 4
-		//_ZWrite("ZWrite", Int) = 1
 	}
 
 	HLSLINCLUDE
@@ -31,7 +28,6 @@ Shader "Landscape/TreeBrak"
     SubShader
     {
         Tags{"Queue" = "Geometry" "RenderPipeline" = "UniversalPipeline" "IgnoreProjector" = "True" "RenderType" = "Opaque"}
-		//AlphaToMask On
 
         Pass
         {
@@ -45,7 +41,6 @@ Shader "Landscape/TreeBrak"
 			#pragma target 4.5
             #pragma vertex vert
             #pragma fragment frag
-			//#pragma enable_d3d11_debug_symbols
 
 			#pragma shader_feature _Mask
 
@@ -85,7 +80,6 @@ Shader "Landscape/TreeBrak"
 				output.normalWS = TransformObjectToWorldNormal(input.normalOS);
 				output.vertexWS = mul(UNITY_MATRIX_M, input.vertexOS);
 				output.vertexCS = mul(UNITY_MATRIX_VP, output.vertexWS);
-				//output.vertexCS.z = output.vertexCS.w;
 				return output;
 			}
 
@@ -113,8 +107,7 @@ Shader "Landscape/TreeBrak"
 					shadowCoord = TransformWorldToShadowCoord(worldPos);
 				#endif
 				Light mainLight = GetMainLight(shadowCoord, worldPos, 1);
-				//float lightShadow = MainLightRealtimeShadow(shadowCoord);
-				float3 attenuatedLightColor = mainLight.color * (/*mainLight.distanceAttenuation */ mainLight.shadowAttenuation);
+				float3 attenuatedLightColor = mainLight.color * (mainLight.shadowAttenuation);
 
 				//Lighting
 				float3 directDiffuse = saturate(dot(normalize(_MainLightPosition.xyz), input.normalWS)) * attenuatedLightColor * baseColor.rgb;
@@ -136,7 +129,6 @@ Shader "Landscape/TreeBrak"
 			#pragma target 4.5
             #pragma vertex vert
             #pragma fragment frag
-			//#pragma enable_d3d11_debug_symbols
 
 			#pragma shader_feature _Mask
 			
@@ -178,13 +170,7 @@ Shader "Landscape/TreeBrak"
 				output.normalWS = TransformFoliageNormal(treeElement.matrix_World, input.normalOS);
 				output.vertexWS = mul(treeElement.matrix_World, input.vertexOS);
 				output.vertexCS = mul(UNITY_MATRIX_VP, output.vertexWS);
-				output.lodFactor = _LODFactor;
-				#if defined(FOLIAGE_LOD_WEIGHT)
-					output.lodFactor = _LodWeightBuffer[input.InstanceId] * _LODFactor;
-                #elif defined(FOLIAGE_GPU_TEMPORAL)
-                    float alpha = _TreeFadeState[0].x;
-                    output.lodFactor = _LODFactor > 0.0 ? 1.0 - alpha : alpha - 1.0;
-                #endif
+				output.lodFactor = FoliageLodFactor(input.InstanceId);
 				return output;
 			}
 
@@ -213,14 +199,65 @@ Shader "Landscape/TreeBrak"
 					shadowCoord = TransformWorldToShadowCoord(worldPos);
 				#endif
 				Light mainLight = GetMainLight(shadowCoord, worldPos, 1);
-				//float lightShadow = MainLightRealtimeShadow(shadowCoord);
-				float3 attenuatedLightColor = mainLight.color * (/*mainLight.distanceAttenuation */ mainLight.shadowAttenuation);
+				float3 attenuatedLightColor = mainLight.color * (mainLight.shadowAttenuation);
 
 				//Lighting
 				float3 directDiffuse = saturate(dot(normalize(_MainLightPosition.xyz), input.normalWS)) * attenuatedLightColor * baseColor.rgb;
 				float3 indirectDiffuse = SampleFoliageSH(input.normalWS) * baseColor.rgb;
 				return float4(directDiffuse + indirectDiffuse, 1);
 			}
+            ENDHLSL
+        }
+
+        Pass
+        {
+            Name "FoliageDepth"
+            Tags { "LightMode" = "FoliageDepth" }
+            ZTest LEqual
+            ZWrite On
+            Cull Back
+            ColorMask 0
+            AlphaToMask Off
+
+            HLSLPROGRAM
+            #pragma target 4.5
+            #pragma vertex vert
+            #pragma fragment frag
+            #pragma multi_compile _ FOLIAGE_LOD_WEIGHT FOLIAGE_GPU_TEMPORAL
+
+            #include "Include/Foliage.hlsl"
+
+            struct Attributes
+            {
+                uint InstanceId : SV_InstanceID;
+                float3 normalOS : NORMAL;
+                float4 vertexOS : POSITION;
+            };
+
+            struct Varyings
+            {
+                float4 vertexCS : SV_POSITION;
+                nointerpolation float lodFactor : TEXCOORD0;
+            };
+
+            Varyings vert(Attributes input)
+            {
+                Varyings output = (Varyings)0;
+                uint index = _TreeIndexBuffer[input.InstanceId];
+                TreeElement element = _TreeElementBuffer[index];
+                output.vertexCS = mul(UNITY_MATRIX_VP, mul(element.matrix_World, input.vertexOS));
+                output.lodFactor = FoliageLodFactor(input.InstanceId);
+                return output;
+            }
+
+            float4 frag(Varyings input) : SV_Target
+            {
+                if (_LodFadeEnable > 0.5)
+                {
+                    LODDitheringTransition(input.vertexCS.xy, input.lodFactor);
+                }
+                return 0;
+            }
             ENDHLSL
         }
 
@@ -236,7 +273,6 @@ Shader "Landscape/TreeBrak"
             #pragma fragment frag
 			#pragma multi_compile_instancing
 			#pragma multi_compile __ LOD_FADE_CROSSFADE
-			//#pragma enable_d3d11_debug_symbols
 			
 			struct Attributes
 			{
@@ -250,7 +286,6 @@ Shader "Landscape/TreeBrak"
 			struct Varyings
 			{
 				float2 uv0 : TEXCOORD0;
-				//float noise : TEXCOORD1;
 				float4 color : COLOR;
 				float3 normalWS : NORMAL;
 				float4 vertexWS : TEXCOORD2;
@@ -280,7 +315,6 @@ Shader "Landscape/TreeBrak"
 				UNITY_SETUP_INSTANCE_ID(input);
 				UNITY_TRANSFER_INSTANCE_ID(input, output);
 
-				//float3 objectPos = float3(UNITY_MATRIX_M[0].w, UNITY_MATRIX_M[1].w, UNITY_MATRIX_M[2].w);
 
 				output.uv0 = input.uv0;
 				output.color = input.color;

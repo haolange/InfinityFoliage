@@ -8,11 +8,9 @@ Shader "Landscape/TreeLeave"
         [Header(Normal)]
         [NoScaleOffset]_NomralTexture ("NomralTexture", 2D) = "bump" {}
 
-		[Header(Transparency)]
+        [Header(Transparency)]
         _AlphaThreshold("Alpha Threshold", Range(0.0, 1.0)) = 0.5
-		//[Header(State)]
-		//_ZTest("ZTest", Int) = 4
-		//_ZWrite("ZWrite", Int) = 1
+		[Enum(UnityEngine.Rendering.CullMode)] _Cull ("Cull", Float) = 0
 	}
 
 	HLSLINCLUDE
@@ -35,7 +33,7 @@ Shader "Landscape/TreeLeave"
 
     SubShader
     {
-        Tags{"Queue" = "AlphaTest" "RenderPipeline" = "UniversalPipeline" "IgnoreProjector" = "True" "RenderType" = "Opaque"}
+        Tags{"Queue" = "AlphaTest" "RenderPipeline" = "UniversalPipeline" "IgnoreProjector" = "True" "RenderType" = "TransparentCutout"}
 		AlphaToMask On
 
         Pass
@@ -50,8 +48,6 @@ Shader "Landscape/TreeLeave"
 			#pragma target 4.5
             #pragma vertex vert
             #pragma fragment frag
-			//#pragma enable_d3d11_debug_symbols
-			//#pragma fragmentoption ARB_precision_hint_nicest
 
 			#pragma multi_compile_instancing
 			#pragma multi_compile _ _SHADOWS_SOFT
@@ -88,7 +84,6 @@ Shader "Landscape/TreeLeave"
 				output.normalWS = TransformObjectToWorldNormal(input.normalOS);
 				output.vertexWS = mul(UNITY_MATRIX_M, input.vertexOS);
 				output.vertexCS = mul(UNITY_MATRIX_VP, output.vertexWS);
-				//output.vertexCS.z = output.vertexCS.w;
 				return output;
 			}
 
@@ -101,7 +96,6 @@ Shader "Landscape/TreeLeave"
 
 				//Surface
 				float4 baseColor = _AlbedoTexture.Sample(sampler_AlbedoTexture, input.uv0);
-				//clip(baseColor.a);
 				clip(baseColor.a - _AlphaThreshold);
 
 				//Geometry Context
@@ -116,8 +110,7 @@ Shader "Landscape/TreeLeave"
 					shadowCoord = TransformWorldToShadowCoord(worldPos);
 				#endif
 				Light mainLight = GetMainLight(shadowCoord, worldPos, 1);
-				//float lightShadow = MainLightRealtimeShadow(shadowCoord);
-				float3 lightAttenuated = mainLight.color * (/*mainLight.distanceAttenuation */ mainLight.shadowAttenuation);
+				float3 lightAttenuated = mainLight.color * (mainLight.shadowAttenuation);
 
 				//Lighting
 				float3 directDiffuse = saturate(dot(normalize(_MainLightPosition.xyz), input.normalWS)) * baseColor.rgb;
@@ -140,7 +133,6 @@ Shader "Landscape/TreeLeave"
 			#pragma target 4.5
             #pragma vertex vert
             #pragma fragment frag
-			//#pragma enable_d3d11_debug_symbols
 
 			#pragma multi_compile _ _SHADOWS_SOFT
 			#pragma multi_compile _ _MAIN_LIGHT_SHADOWS
@@ -178,13 +170,7 @@ Shader "Landscape/TreeLeave"
 				output.normalWS = TransformFoliageNormal(treeElement.matrix_World, input.normalOS);
 				output.vertexWS = mul(treeElement.matrix_World, input.vertexOS);
 				output.vertexCS = mul(UNITY_MATRIX_VP, output.vertexWS);
-				output.lodFactor = _LODFactor;
-				#if defined(FOLIAGE_LOD_WEIGHT)
-					output.lodFactor = _LodWeightBuffer[input.InstanceId] * _LODFactor;
-                #elif defined(FOLIAGE_GPU_TEMPORAL)
-                    float alpha = _TreeFadeState[0].x;
-                    output.lodFactor = _LODFactor > 0.0 ? 1.0 - alpha : alpha - 1.0;
-                #endif
+				output.lodFactor = FoliageLodFactor(input.InstanceId);
 				return output;
 			}
 
@@ -197,7 +183,6 @@ Shader "Landscape/TreeLeave"
 
 				//Surface
 				float4 baseColor = _AlbedoTexture.Sample(sampler_AlbedoTexture, input.uv0);
-				//clip(baseColor.a);
 				clip(baseColor.a - _AlphaThreshold);
 
 				//Geometry Context
@@ -212,8 +197,7 @@ Shader "Landscape/TreeLeave"
 					shadowCoord = TransformWorldToShadowCoord(worldPos);
 				#endif
 				Light mainLight = GetMainLight(shadowCoord, worldPos, 1);
-				//float lightShadow = MainLightRealtimeShadow(shadowCoord);
-				float3 lightAttenuated = mainLight.color * (/*mainLight.distanceAttenuation */ mainLight.shadowAttenuation);
+				float3 lightAttenuated = mainLight.color * (mainLight.shadowAttenuation);
 
 				//Lighting
 				float3 directDiffuse = saturate(dot(normalize(_MainLightPosition.xyz), input.normalWS)) * baseColor.rgb;
@@ -222,6 +206,63 @@ Shader "Landscape/TreeLeave"
 
 				return float4(indirectDiffuse + (directDiffuse + subsurfaceColor) * lightAttenuated, baseColor.a);
 			}
+            ENDHLSL
+        }
+
+        Pass
+        {
+            Name "FoliageDepth"
+            Tags { "LightMode" = "FoliageDepth" }
+            ZTest LEqual
+            ZWrite On
+            Cull [_Cull]
+            ColorMask 0
+            AlphaToMask Off
+
+            HLSLPROGRAM
+            #pragma target 4.5
+            #pragma vertex vert
+            #pragma fragment frag
+            #pragma multi_compile _ FOLIAGE_LOD_WEIGHT FOLIAGE_GPU_TEMPORAL
+
+            #include "Include/Foliage.hlsl"
+
+            struct Attributes
+            {
+                uint InstanceId : SV_InstanceID;
+                float2 uv0 : TEXCOORD0;
+                float3 normalOS : NORMAL;
+                float4 vertexOS : POSITION;
+            };
+
+            struct Varyings
+            {
+                float2 uv0 : TEXCOORD0;
+                float4 vertexCS : SV_POSITION;
+                nointerpolation float lodFactor : TEXCOORD1;
+            };
+
+            Varyings vert(Attributes input)
+            {
+                Varyings output = (Varyings)0;
+                uint index = _TreeIndexBuffer[input.InstanceId];
+                TreeElement element = _TreeElementBuffer[index];
+                output.uv0 = input.uv0;
+                output.vertexCS = mul(UNITY_MATRIX_VP, mul(element.matrix_World, input.vertexOS));
+                output.lodFactor = FoliageLodFactor(input.InstanceId);
+                return output;
+            }
+
+            float4 frag(Varyings input) : SV_Target
+            {
+                if (_LodFadeEnable > 0.5)
+                {
+                    LODDitheringTransition(input.vertexCS.xy, input.lodFactor);
+                }
+                float4 baseColor = _AlbedoTexture.Sample(sampler_AlbedoTexture, input.uv0);
+                clip(baseColor.a - _AlphaThreshold);
+                return 0;
+            }
             ENDHLSL
         }
 
@@ -237,7 +278,6 @@ Shader "Landscape/TreeLeave"
             #pragma fragment frag
 			#pragma multi_compile_instancing
 			#pragma multi_compile __ LOD_FADE_CROSSFADE
-			//#pragma enable_d3d11_debug_symbols
 			
 			struct Attributes
 			{
@@ -251,7 +291,6 @@ Shader "Landscape/TreeLeave"
 			struct Varyings
 			{
 				float2 uv0 : TEXCOORD0;
-				//float noise : TEXCOORD1;
 				float4 color : COLOR;
 				float3 normalWS : NORMAL;
 				float4 vertexWS : TEXCOORD2;
@@ -281,7 +320,6 @@ Shader "Landscape/TreeLeave"
 				UNITY_SETUP_INSTANCE_ID(input);
 				UNITY_TRANSFER_INSTANCE_ID(input, output);
 
-				//float3 objectPos = float3(UNITY_MATRIX_M[0].w, UNITY_MATRIX_M[1].w, UNITY_MATRIX_M[2].w);
 
 				output.uv0 = input.uv0;
 				output.color = input.color;
@@ -297,7 +335,6 @@ Shader "Landscape/TreeLeave"
 
 				//Surface
 				float4 baseColor = _AlbedoTexture.Sample(sampler_AlbedoTexture, input.uv0);
-				//clip(baseColor.a - 0.33);
 				clip(baseColor.a - _AlphaThreshold);
 				
 				#ifdef LOD_FADE_CROSSFADE 

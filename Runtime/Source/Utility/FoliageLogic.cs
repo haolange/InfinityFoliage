@@ -37,6 +37,16 @@ namespace Landscape.FoliagePipeline
     public static class FoliageLogic
     {
         public const int VisibilityChunkWidth = 64;
+        public const int LodBucketCount = 3;
+        public const byte CellFrustum = 1;
+        public const byte CellTerrain = 2;
+        public const byte CellVisible = CellFrustum | CellTerrain;
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static int BucketSlot(in int lod, in LodBucket bucket)
+        {
+            return (lod * LodBucketCount) + (int)bucket - (int)LodBucket.Stable;
+        }
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static int CellIndex(int x, int y, int numSection)
         {
@@ -520,67 +530,6 @@ namespace Landscape.FoliagePipeline
                 ++count;
             }
             return count;
-        }
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static float SampleHeightField(float[] heights, int heightRes, float terrainPosX, float terrainPosZ, float terrainSizeX, float terrainSizeZ, float worldX, float worldZ)
-        {
-            if (heights == null || heightRes <= 1) { return 0f; }
-            float u = terrainSizeX > 0.0001f ? (worldX - terrainPosX) / terrainSizeX : 0f;
-            float v = terrainSizeZ > 0.0001f ? (worldZ - terrainPosZ) / terrainSizeZ : 0f;
-            if (u < 0f) { u = 0f; }
-            if (v < 0f) { v = 0f; }
-            if (u > 1f) { u = 1f; }
-            if (v > 1f) { v = 1f; }
-            float fx = u * (heightRes - 1);
-            float fz = v * (heightRes - 1);
-            int x0 = (int)fx;
-            int z0 = (int)fz;
-            int x1 = x0 + 1;
-            int z1 = z0 + 1;
-            if (x1 >= heightRes) { x1 = heightRes - 1; }
-            if (z1 >= heightRes) { z1 = heightRes - 1; }
-            float tx = fx - x0;
-            float tz = fz - z0;
-            float h00 = heights[(z0 * heightRes) + x0];
-            float h10 = heights[(z0 * heightRes) + x1];
-            float h01 = heights[(z1 * heightRes) + x0];
-            float h11 = heights[(z1 * heightRes) + x1];
-            float h0 = h00 + ((h10 - h00) * tx);
-            float h1 = h01 + ((h11 - h01) * tx);
-            return h0 + ((h1 - h0) * tz);
-        }
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static bool TerrainOccludes(float boxMinX, float boxMinY, float boxMinZ, float boxMaxX, float boxMaxY, float boxMaxZ, float viewX, float viewY, float viewZ, float[] heights, int heightRes, float terrainPosX, float terrainPosZ, float terrainSizeX, float terrainSizeZ)
-        {
-            if (heights == null || heightRes <= 1) { return false; }
-
-            float centerX = (boxMinX + boxMaxX) * 0.5f;
-            float centerZ = (boxMinZ + boxMaxZ) * 0.5f;
-            float dx = centerX - viewX;
-            float dz = centerZ - viewZ;
-            float boxDist = (float)Math.Sqrt((dx * dx) + (dz * dz));
-            if (boxDist < 0.5f) { return false; }
-
-            float boxTopSlope = (boxMaxY - viewY) / boxDist;
-            const int samples = 8;
-            for (int s = 1; s < samples; ++s)
-            {
-                float t = s / (float)samples;
-                if (t > 0.85f) { break; }
-                float px = viewX + (dx * t);
-                float pz = viewZ + (dz * t);
-                float dist = boxDist * t;
-                if (dist < 1f) { continue; }
-                float height = SampleHeightField(heights, heightRes, terrainPosX, terrainPosZ, terrainSizeX, terrainSizeZ, px, pz);
-                float terrainSlope = (height - viewY) / dist;
-                if (terrainSlope > boxTopSlope + 0.05f)
-                {
-                    return true;
-                }
-            }
-            return false;
         }
     }
 }

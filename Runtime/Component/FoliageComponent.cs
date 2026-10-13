@@ -18,6 +18,28 @@ namespace Landscape.FoliagePipeline
         Grass = 1
     }
 
+    public enum FoliageDrawPass
+    {
+        PreZ = 0,
+        Forward = 1,
+        Shadow = 2
+    }
+
+    public unsafe struct FoliageView
+    {
+        public Camera camera;
+        public int cascade;
+        public float3 origin;
+        public float4x4 lodProjection;
+        public FrustumPlane* planes;
+        public int planeCount;
+
+        public bool isShadow
+        {
+            get { return cascade >= 0; }
+        }
+    }
+
 #if UNITY_EDITOR
     [CanEditMultipleObjects]
 #endif
@@ -55,15 +77,12 @@ namespace Landscape.FoliagePipeline
         protected abstract void UnRegiste();
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public abstract void InitView(in float3 viewOrigin, in float4x4 matrixProj, in FrustumPlane* planes, in NativeList<JobHandle> taskHandles);
+        public abstract void Cull(CommandBuffer cmdBuffer, in FoliageView view, in NativeList<JobHandle> taskHandles);
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public abstract void DispatchSetup(Camera camera, in float3 viewOrigin, in float4x4 matrixProj, in NativeList<JobHandle> taskHandles);
+        public abstract void Pack(CommandBuffer cmdBuffer, in FoliageView view);
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public abstract void FlushPendingUploads(CommandBuffer cmdBuffer, RTHandle cameraDepth, in Vector4 zParams);
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public abstract void DispatchDraw(CommandBuffer cmdBuffer, in int passIndex);
+        public abstract void Draw(CommandBuffer cmdBuffer, in FoliageView view, in FoliageDrawPass pass);
     }
 }

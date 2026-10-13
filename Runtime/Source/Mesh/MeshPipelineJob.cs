@@ -60,23 +60,29 @@ namespace Landscape.FoliagePipeline
 #endif
 
     [BurstCompile]
-    public struct TreeShadowCullJob : IJob
+    public unsafe struct TreeShadowCullJob : IJob
     {
-        [ReadOnly] public NativeArray<BoundSection> sections;
-        [ReadOnly] public NativeArray<TreeCell> cells;
-        [ReadOnly] public NativeArray<Aabb> bounds;
-        [ReadOnly] public NativeArray<FrustumPlane> planes;
-        [ReadOnly] public NativeArray<float> lodScreenSizes;
-        public NativeArray<int> lodStable;
-        public NativeArray<int> indices;
-        public NativeArray<int> counts;
+        public int planeCount;
         public float3 origin;
         public float4x4 projection;
         public float hysteresis;
 
+        [ReadOnly]
+        [NativeDisableUnsafePtrRestriction]
+        public FrustumPlane* planes;
+
+        [ReadOnly] public NativeArray<BoundSection> sections;
+        [ReadOnly] public NativeArray<TreeCell> cells;
+        [ReadOnly] public NativeArray<Aabb> bounds;
+        [ReadOnly] public NativeArray<float> lodScreenSizes;
+        public NativeArray<int> lodStable;
+        public NativeArray<ulong> bucketMasks;
+
         public void Execute()
         {
-            for (int lod = 0; lod < counts.Length; ++lod) { counts[lod] = 0; }
+            int slotCount = lodScreenSizes.Length * FoliageLogic.LodBucketCount;
+            int chunkCount = slotCount > 0 ? bucketMasks.Length / slotCount : 0;
+            for (int i = 0; i < bucketMasks.Length; ++i) { bucketMasks[i] = 0; }
             for (int cellIndex = 0; cellIndex < cells.Length; ++cellIndex)
             {
                 TreeCell cell = cells[cellIndex];
@@ -90,16 +96,15 @@ namespace Landscape.FoliagePipeline
                     float screen = Geometry.ComputeBoundsScreenRadiusSquared(radius, box.center, origin, projection);
                     int lod = FoliageLogic.ComputeLodIndexHysteresis(screen, lodScreenSizes, lodStable[candidate], hysteresis);
                     lodStable[candidate] = lod;
-                    int slot = lod * bounds.Length + counts[lod];
-                    indices[slot] = candidate;
-                    counts[lod] = counts[lod] + 1;
+                    int maskIndex = (FoliageLogic.BucketSlot(lod, LodBucket.Stable) * chunkCount) + (candidate >> 6);
+                    bucketMasks[maskIndex] = bucketMasks[maskIndex] | (1UL << (candidate & 63));
                 }
             }
         }
 
         bool Visible(in Aabb box)
         {
-            for (int i = 0; i < planes.Length; ++i)
+            for (int i = 0; i < planeCount; ++i)
             {
                 float4 plane = planes[i].normalDist;
                 float distance = math.dot(plane.xyz, box.center) + plane.w;
@@ -307,17 +312,10 @@ namespace Landscape.FoliagePipeline
     }
 
     [BurstCompile]
-    public unsafe struct TreeCullLodJob : IJobParallelFor
+    public struct TreeCellTerrainJob : IJobParallelFor
     {
         public int heightRes;
-        public float maxDistance;
         public float3 viewOrigin;
-        public float3 lodHoldOrigin;
-        public float3 lodNowOrigin;
-        public float4x4 lodHoldProj;
-        public float4x4 lodNowProj;
-        public float lodHysteresis;
-        public int distanceMode;
         public float3 terrainPos;
         public float3 terrainSize;
 
@@ -328,131 +326,21 @@ namespace Landscape.FoliagePipeline
         public NativeArray<BoundSection> cellBounds;
 
         [ReadOnly]
-        public NativeArray<int> instanceCell;
-
-        [ReadOnly]
-        public NativeArray<Aabb> bounds;
-
-        [ReadOnly]
-        public NativeArray<float> lodScreenSizes;
-
-        [ReadOnly]
         public NativeArray<float> heights;
 
-        [ReadOnly]
-        [NativeDisableUnsafePtrRestriction]
-        public FrustumPlane* planes;
-
         [WriteOnly]
-        public NativeArray<ulong> chunkMasks;
+        public NativeArray<byte> cellFlags;
 
-        [NativeDisableParallelForRestriction]
-        public NativeArray<int> lodHold;
-
-        [ReadOnly]
-        public NativeArray<int> lodStable;
-
-        [NativeDisableParallelForRestriction]
-        public NativeArray<int> lodNow;
-
-        [NativeDisableParallelForRestriction]
-        public NativeArray<float> lodScreenSqr;
-
-        public void Execute(int chunk)
+        public void Execute(int cell)
         {
-            int candidateBase = chunk * 64;
-            int remain = bounds.Length - candidateBase;
-            int count = remain > 64 ? 64 : (remain < 0 ? 0 : remain);
-            ulong mask = 0;
+            if (cellVisible[cell] == 0)
+            {
+                cellFlags[cell] = 0;
+                return;
+            }
             bool hasTerrainHeight = heightRes > 1 && heights.Length >= heightRes * heightRes;
-
-            if (count <= 0)
-            {
-                chunkMasks[chunk] = 0;
-                return;
-            }
-
-            int firstCell = instanceCell[candidateBase];
-            int lastCell = instanceCell[candidateBase + count - 1];
-            int activeCell = 0;
-            for (int cell = firstCell; cell <= lastCell; ++cell)
-            {
-                if (cellVisible[cell] == 0) { continue; }
-                if (hasTerrainHeight && TerrainOccludes(cellBounds[cell].boundBox) != 0) { continue; }
-                activeCell = 1;
-                break;
-            }
-            if (activeCell == 0)
-            {
-                for (int bit = 0; bit < count; ++bit)
-                {
-                    lodHold[candidateBase + bit] = -1;
-                    lodNow[candidateBase + bit] = -1;
-                }
-                chunkMasks[chunk] = 0;
-                return;
-            }
-
-            int currentCell = -1;
-            int currentCellVisible = 0;
-
-            for (int bit = 0; bit < count; ++bit)
-            {
-                int index = candidateBase + bit;
-                int cell = instanceCell[index];
-                if (cell != currentCell)
-                {
-                    currentCell = cell;
-                    currentCellVisible = cellVisible[cell] != 0 && (!hasTerrainHeight || TerrainOccludes(cellBounds[cell].boundBox) == 0) ? 1 : 0;
-                }
-                if (currentCellVisible == 0)
-                {
-                    lodHold[index] = -1;
-                    lodNow[index] = -1;
-                    continue;
-                }
-
-                Aabb box = bounds[index];
-                int visible = 1;
-                float2 distRadius = new float2(0, 0);
-                for (int planeIndex = 0; planeIndex < 6; ++planeIndex)
-                {
-                    ref FrustumPlane plane = ref planes[planeIndex];
-                    distRadius.x = math.dot(plane.normalDist.xyz, box.center) + plane.normalDist.w;
-                    distRadius.y = math.dot(math.abs(plane.normalDist.xyz), box.extents);
-                    visible = math.select(visible, 0, distRadius.x + distRadius.y < 0);
-                }
-                visible = math.select(visible, 0, math.distance(viewOrigin, box.center) > maxDistance);
-                if (visible == 0)
-                {
-                    lodHold[index] = -1;
-                    lodNow[index] = -1;
-                    continue;
-                }
-
-                mask |= 1UL << bit;
-                float radius = math.max(math.max(math.abs(box.extents.x), math.abs(box.extents.y)), math.abs(box.extents.z));
-                if (distanceMode != 0)
-                {
-                    float screenSqr = ScreenRadiusSqr(box.center, radius, viewOrigin, lodNowProj);
-                    lodHold[index] = -1;
-                    lodNow[index] = FoliageLogic.ComputeLodIndex(screenSqr, lodScreenSizes);
-                    lodScreenSqr[index] = screenSqr;
-                }
-                else
-                {
-                    int previous = lodStable[index];
-                    lodHold[index] = FoliageLogic.ComputeLodIndexHysteresis(ScreenRadiusSqr(box.center, radius, lodHoldOrigin, lodHoldProj), lodScreenSizes, previous, lodHysteresis);
-                    lodNow[index] = FoliageLogic.ComputeLodIndexHysteresis(ScreenRadiusSqr(box.center, radius, lodNowOrigin, lodNowProj), lodScreenSizes, previous, lodHysteresis);
-                }
-            }
-
-            chunkMasks[chunk] = mask;
-        }
-
-        float ScreenRadiusSqr(float3 center, float radius, float3 origin, float4x4 projection)
-        {
-            return Geometry.ComputeBoundsScreenRadiusSquared(radius, center, origin, projection);
+            bool occluded = hasTerrainHeight && TerrainOccludes(cellBounds[cell].boundBox) != 0;
+            cellFlags[cell] = occluded ? FoliageLogic.CellFrustum : FoliageLogic.CellVisible;
         }
 
         public int TerrainOccludes(Aabb box)
@@ -508,10 +396,220 @@ namespace Landscape.FoliagePipeline
     }
 
     [BurstCompile]
+    public unsafe struct TreeCullLodJob : IJobParallelFor
+    {
+        public float maxDistance;
+        public float3 viewOrigin;
+        public float3 lodHoldOrigin;
+        public float3 lodNowOrigin;
+        public float4x4 lodHoldProj;
+        public float4x4 lodNowProj;
+        public float lodHysteresis;
+        public int distanceMode;
+
+        [ReadOnly]
+        public NativeArray<byte> cellFlags;
+
+        [ReadOnly]
+        public NativeArray<int> instanceCell;
+
+        [ReadOnly]
+        public NativeArray<Aabb> bounds;
+
+        [ReadOnly]
+        public NativeArray<float> lodScreenSizes;
+
+        [ReadOnly]
+        [NativeDisableUnsafePtrRestriction]
+        public FrustumPlane* planes;
+
+        [WriteOnly]
+        public NativeArray<ulong> chunkMasks;
+
+        [NativeDisableParallelForRestriction]
+        public NativeArray<int> lodHold;
+
+        [ReadOnly]
+        public NativeArray<int> lodStable;
+
+        [NativeDisableParallelForRestriction]
+        public NativeArray<int> lodNow;
+
+        [NativeDisableParallelForRestriction]
+        public NativeArray<float> lodScreenSqr;
+
+        public void Execute(int chunk)
+        {
+            int candidateBase = chunk * 64;
+            int remain = bounds.Length - candidateBase;
+            int count = remain > 64 ? 64 : (remain < 0 ? 0 : remain);
+            ulong mask = 0;
+
+            if (count <= 0)
+            {
+                chunkMasks[chunk] = 0;
+                return;
+            }
+
+            int firstCell = instanceCell[candidateBase];
+            int lastCell = instanceCell[candidateBase + count - 1];
+            int activeCell = 0;
+            for (int cell = firstCell; cell <= lastCell; ++cell)
+            {
+                if (cellFlags[cell] != FoliageLogic.CellVisible) { continue; }
+                activeCell = 1;
+                break;
+            }
+            if (activeCell == 0)
+            {
+                for (int bit = 0; bit < count; ++bit)
+                {
+                    lodHold[candidateBase + bit] = -1;
+                    lodNow[candidateBase + bit] = -1;
+                }
+                chunkMasks[chunk] = 0;
+                return;
+            }
+
+            int currentCell = -1;
+            int currentCellVisible = 0;
+
+            for (int bit = 0; bit < count; ++bit)
+            {
+                int index = candidateBase + bit;
+                int cell = instanceCell[index];
+                if (cell != currentCell)
+                {
+                    currentCell = cell;
+                    currentCellVisible = cellFlags[cell] == FoliageLogic.CellVisible ? 1 : 0;
+                }
+                if (currentCellVisible == 0)
+                {
+                    lodHold[index] = -1;
+                    lodNow[index] = -1;
+                    continue;
+                }
+
+                Aabb box = bounds[index];
+                int visible = 1;
+                float2 distRadius = new float2(0, 0);
+                for (int planeIndex = 0; planeIndex < 6; ++planeIndex)
+                {
+                    ref FrustumPlane plane = ref planes[planeIndex];
+                    distRadius.x = math.dot(plane.normalDist.xyz, box.center) + plane.normalDist.w;
+                    distRadius.y = math.dot(math.abs(plane.normalDist.xyz), box.extents);
+                    visible = math.select(visible, 0, distRadius.x + distRadius.y < 0);
+                }
+                visible = math.select(visible, 0, math.distance(viewOrigin, box.center) > maxDistance);
+                if (visible == 0)
+                {
+                    lodHold[index] = -1;
+                    lodNow[index] = -1;
+                    continue;
+                }
+
+                mask |= 1UL << bit;
+                float radius = math.max(math.max(math.abs(box.extents.x), math.abs(box.extents.y)), math.abs(box.extents.z));
+                if (distanceMode != 0)
+                {
+                    float screenSqr = ScreenRadiusSqr(box.center, radius, viewOrigin, lodNowProj);
+                    lodHold[index] = -1;
+                    lodNow[index] = FoliageLogic.ComputeLodIndex(screenSqr, lodScreenSizes);
+                    lodScreenSqr[index] = screenSqr;
+                }
+                else
+                {
+                    int previous = lodStable[index];
+                    lodHold[index] = FoliageLogic.ComputeLodIndexHysteresis(ScreenRadiusSqr(box.center, radius, lodHoldOrigin, lodHoldProj), lodScreenSizes, previous, lodHysteresis);
+                    lodNow[index] = FoliageLogic.ComputeLodIndexHysteresis(ScreenRadiusSqr(box.center, radius, lodNowOrigin, lodNowProj), lodScreenSizes, previous, lodHysteresis);
+                }
+            }
+
+            chunkMasks[chunk] = mask;
+        }
+
+        float ScreenRadiusSqr(float3 center, float radius, float3 origin, float4x4 projection)
+        {
+            return Geometry.ComputeBoundsScreenRadiusSquared(radius, center, origin, projection);
+        }
+    }
+
+    [BurstCompile]
+    public struct TreeAdvanceFadeJob : IJob
+    {
+        public int hardCut;
+        public int advance;
+        public int ditherEnabled;
+        public float step;
+
+        [ReadOnly]
+        public NativeArray<int> lodHold;
+
+        [ReadOnly]
+        public NativeArray<int> lodNow;
+
+        [ReadOnly]
+        public NativeArray<byte> lodDither;
+
+        public NativeArray<int> lodStable;
+        public NativeArray<float> fadeState;
+
+        public void Execute()
+        {
+            float alpha = fadeState[0];
+            bool fading = fadeState[1] != 0f;
+            bool commit = hardCut != 0;
+            if (!commit && advance != 0)
+            {
+                if (fading)
+                {
+                    alpha = math.min(1f, alpha + step);
+                    commit = alpha >= 1f;
+                }
+                else if (StartsFade())
+                {
+                    fading = true;
+                    alpha = 0f;
+                }
+                else
+                {
+                    commit = true;
+                }
+            }
+            if (commit)
+            {
+                for (int i = 0; i < lodNow.Length; ++i)
+                {
+                    if (lodNow[i] >= 0) { lodStable[i] = lodNow[i]; }
+                }
+                fading = false;
+                alpha = 1f;
+            }
+            fadeState[0] = alpha;
+            fadeState[1] = fading ? 1f : 0f;
+            fadeState[2] = commit ? 1f : 0f;
+        }
+
+        bool StartsFade()
+        {
+            if (ditherEnabled == 0) { return false; }
+            for (int i = 0; i < lodNow.Length; ++i)
+            {
+                int now = lodNow[i];
+                int hold = lodHold[i];
+                if (now < 0 || hold < 0) { continue; }
+                int delta = hold - now;
+                if (delta < 0) { delta = -delta; }
+                if (delta == 1 && lodDither[hold] != 0 && lodDither[now] != 0) { return true; }
+            }
+            return false;
+        }
+    }
+
+    [BurstCompile]
     public struct TreeEmitLodMasksJob : IJob
     {
-        public int meshIndex;
-        public int ditherEnabled;
+        public int allowDither;
         public int instanceCount;
 
         [ReadOnly]
@@ -526,97 +624,59 @@ namespace Landscape.FoliagePipeline
         [ReadOnly]
         public NativeArray<byte> lodDither;
 
-        public NativeArray<ulong> stableMask;
-        public NativeArray<ulong> fadeOutMask;
-        public NativeArray<ulong> fadeInMask;
+        [ReadOnly]
+        public NativeArray<float> fadeState;
+
+        public NativeArray<ulong> bucketMasks;
         public NativeArray<int> bucketCounts;
 
         public void Execute()
         {
-            int stableCount = 0;
-            int fadeOutCount = 0;
-            int fadeInCount = 0;
             int chunkCount = chunkMasks.Length;
+            int lodCount = lodDither.Length;
+            int ditherEnabled = allowDither != 0 && fadeState[1] != 0f ? 1 : 0;
+            for (int i = 0; i < bucketMasks.Length; ++i) { bucketMasks[i] = 0; }
+            for (int i = 0; i < bucketCounts.Length; ++i) { bucketCounts[i] = 0; }
             for (int chunk = 0; chunk < chunkCount; ++chunk)
             {
                 int candidateBase = chunk * 64;
                 int remain = instanceCount - candidateBase;
                 int count = remain > 64 ? 64 : (remain < 0 ? 0 : remain);
                 ulong vis = chunkMasks[chunk];
-                ulong stable = 0;
-                ulong fadeOut = 0;
-                ulong fadeIn = 0;
                 for (int bit = 0; bit < count; ++bit)
                 {
                     if ((vis & (1UL << bit)) == 0) { continue; }
                     int index = candidateBase + bit;
-                    int hold = lodHold[index];
                     int now = lodNow[index];
-                    if (now < 0) { continue; }
-                    if (hold < 0) { hold = now; }
+                    if (now < 0 || now >= lodCount) { continue; }
+                    int hold = lodHold[index];
+                    if (hold < 0 || hold >= lodCount) { hold = now; }
 
-                    int bucket;
-                    if (ditherEnabled == 0 || hold < 0 || hold >= lodDither.Length || now >= lodDither.Length || lodDither[hold] == 0 || lodDither[now] == 0)
-                    {
-                        bucket = now == meshIndex ? (int)LodBucket.Stable : (int)LodBucket.None;
-                    }
-                    else
-                    {
-                        int delta = hold - now;
-                        if (delta < 0) { delta = -delta; }
-                        if (delta > 1)
-                        {
-                            bucket = now == meshIndex ? (int)LodBucket.Stable : (int)LodBucket.None;
-                        }
-                        else if (hold == now)
-                        {
-                            bucket = now == meshIndex ? (int)LodBucket.Stable : (int)LodBucket.None;
-                        }
-                        else if (hold == meshIndex)
-                        {
-                            bucket = (int)LodBucket.FadeOut;
-                        }
-                        else if (now == meshIndex)
-                        {
-                            bucket = (int)LodBucket.FadeIn;
-                        }
-                        else
-                        {
-                            bucket = (int)LodBucket.None;
-                        }
-                    }
-
+                    int delta = hold - now;
+                    if (delta < 0) { delta = -delta; }
                     ulong bitMask = 1UL << bit;
-                    if (bucket == (int)LodBucket.Stable)
+                    if (ditherEnabled == 0 || delta != 1 || lodDither[hold] == 0 || lodDither[now] == 0)
                     {
-                        stable |= bitMask;
-                        ++stableCount;
+                        Emit(FoliageLogic.BucketSlot(now, LodBucket.Stable), chunk, chunkCount, bitMask);
+                        continue;
                     }
-                    else if (bucket == (int)LodBucket.FadeOut)
-                    {
-                        fadeOut |= bitMask;
-                        ++fadeOutCount;
-                    }
-                    else if (bucket == (int)LodBucket.FadeIn)
-                    {
-                        fadeIn |= bitMask;
-                        ++fadeInCount;
-                    }
+                    Emit(FoliageLogic.BucketSlot(hold, LodBucket.FadeOut), chunk, chunkCount, bitMask);
+                    Emit(FoliageLogic.BucketSlot(now, LodBucket.FadeIn), chunk, chunkCount, bitMask);
                 }
-                stableMask[chunk] = stable;
-                fadeOutMask[chunk] = fadeOut;
-                fadeInMask[chunk] = fadeIn;
             }
-            bucketCounts[0] = stableCount;
-            bucketCounts[1] = fadeOutCount;
-            bucketCounts[2] = fadeInCount;
+        }
+
+        void Emit(in int slot, in int chunk, in int chunkCount, in ulong bitMask)
+        {
+            int maskIndex = (slot * chunkCount) + chunk;
+            bucketMasks[maskIndex] = bucketMasks[maskIndex] | bitMask;
+            bucketCounts[slot] = bucketCounts[slot] + 1;
         }
     }
 
     [BurstCompile]
     public struct TreeEmitDistanceMasksJob : IJob
     {
-        public int meshIndex;
         public int ditherEnabled;
         public int instanceCount;
         public float fadeWidth;
@@ -636,66 +696,96 @@ namespace Landscape.FoliagePipeline
         [ReadOnly]
         public NativeArray<byte> lodDither;
 
-        public NativeArray<ulong> stableMask;
-        public NativeArray<ulong> fadeOutMask;
-        public NativeArray<ulong> fadeInMask;
+        public NativeArray<ulong> bucketMasks;
         public NativeArray<int> bucketCounts;
-
         public NativeArray<float> lodWeight;
 
         public void Execute()
         {
-            int stableCount = 0;
-            int fadeOutCount = 0;
-            int fadeInCount = 0;
             int chunkCount = chunkMasks.Length;
+            int lodCount = lodDither.Length;
+            for (int i = 0; i < bucketMasks.Length; ++i) { bucketMasks[i] = 0; }
+            for (int i = 0; i < bucketCounts.Length; ++i) { bucketCounts[i] = 0; }
             for (int chunk = 0; chunk < chunkCount; ++chunk)
             {
                 int candidateBase = chunk * 64;
                 int remain = instanceCount - candidateBase;
                 int count = remain > 64 ? 64 : (remain < 0 ? 0 : remain);
                 ulong vis = chunkMasks[chunk];
-                ulong stable = 0;
-                ulong fadeOut = 0;
-                ulong fadeIn = 0;
                 for (int bit = 0; bit < count; ++bit)
                 {
                     if ((vis & (1UL << bit)) == 0) { continue; }
                     int index = candidateBase + bit;
                     int lod = lodNow[index];
-                    if (lod < 0) { continue; }
+                    if (lod < 0 || lod >= lodCount) { continue; }
 
                     int pairDither = 0;
-                    if (ditherEnabled != 0 && lod + 1 < lodDither.Length && lodDither[lod] != 0 && lodDither[lod + 1] != 0)
+                    if (ditherEnabled != 0 && lod + 1 < lodCount && lodDither[lod] != 0 && lodDither[lod + 1] != 0)
                     {
                         pairDither = 1;
                     }
                     DistanceFade fade = FoliageLogic.ClassifyDistanceLodAt(screenSqr[index], lodScreenSizes, fadeWidth, pairDither, lod);
                     ulong bitMask = 1UL << bit;
-                    if (fade.lod == meshIndex)
+                    if (fade.lod >= 0)
                     {
-                        stable |= bitMask;
-                        ++stableCount;
+                        Emit(FoliageLogic.BucketSlot(fade.lod, LodBucket.Stable), chunk, chunkCount, bitMask);
+                        continue;
                     }
-                    else if (fade.fadeOutLod == meshIndex)
+                    Emit(FoliageLogic.BucketSlot(fade.fadeOutLod, LodBucket.FadeOut), chunk, chunkCount, bitMask);
+                    Emit(FoliageLogic.BucketSlot(fade.fadeInLod, LodBucket.FadeIn), chunk, chunkCount, bitMask);
+                    lodWeight[index] = fade.x;
+                }
+            }
+        }
+
+        void Emit(in int slot, in int chunk, in int chunkCount, in ulong bitMask)
+        {
+            int maskIndex = (slot * chunkCount) + chunk;
+            bucketMasks[maskIndex] = bucketMasks[maskIndex] | bitMask;
+            bucketCounts[slot] = bucketCounts[slot] + 1;
+        }
+    }
+
+    [BurstCompile]
+    public struct TreeCompactJob : IJob
+    {
+        public int instanceCount;
+        public int weighted;
+
+        [ReadOnly]
+        public NativeArray<ulong> bucketMasks;
+
+        [ReadOnly]
+        public NativeArray<float> candidateWeights;
+
+        public NativeArray<int> indices;
+        public NativeArray<float> weights;
+        public NativeArray<int2> ranges;
+
+        public void Execute()
+        {
+            int slotCount = ranges.Length;
+            int chunkCount = slotCount > 0 ? bucketMasks.Length / slotCount : 0;
+            int written = 0;
+            for (int slot = 0; slot < slotCount; ++slot)
+            {
+                int start = written;
+                bool slotWeighted = weighted != 0 && (slot % FoliageLogic.LodBucketCount) != 0;
+                for (int chunk = 0; chunk < chunkCount; ++chunk)
+                {
+                    ulong mask = bucketMasks[(slot * chunkCount) + chunk];
+                    while (mask != 0)
                     {
-                        fadeOut |= bitMask;
-                        ++fadeOutCount;
-                        lodWeight[index] = fade.x;
-                    }
-                    else if (fade.fadeInLod == meshIndex)
-                    {
-                        fadeIn |= bitMask;
-                        ++fadeInCount;
+                        int candidate = (chunk << 6) + math.tzcnt(mask);
+                        mask &= mask - 1;
+                        if (candidate >= instanceCount || written >= indices.Length) { continue; }
+                        indices[written] = candidate;
+                        if (slotWeighted) { weights[written] = candidateWeights[candidate]; }
+                        ++written;
                     }
                 }
-                stableMask[chunk] = stable;
-                fadeOutMask[chunk] = fadeOut;
-                fadeInMask[chunk] = fadeIn;
+                ranges[slot] = new int2(start, written - start);
             }
-            bucketCounts[0] = stableCount;
-            bucketCounts[1] = fadeOutCount;
-            bucketCounts[2] = fadeInCount;
         }
     }
 }

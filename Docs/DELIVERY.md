@@ -1,5 +1,16 @@
 # Infinity Foliage 交付记录
 
+## 2026-10-13 Cull / Pack / Draw
+
+草和树的运行时入口收成每个视点一次 `Cull`、一次 `Pack`、若干次 `Draw`（PreZ、Forward、Shadow）。CPU 格剔除、格地形、实例 LOD、emit、compact 用 `dependsOn` 串成一条链，每个视点只 `CompleteAll` 一次。GPU 每个 LOD 一次写出三个桶的 mask、扫描、compact 和 args。`treePreZ` 默认开启，在 `AfterRenderingPrePasses` 写 `activeDepth`；`TreeLeave` 以 `TransparentCutout` 全部进 PreZ，`TreeBrak` 只进淡化桶，草全部进。HZB 改为按相机保存的上一帧深度，视点不连续则跳过。`package.json` 对齐 Unity `6000.6` / URP `17.6.0`。
+
+| 项 | 结果 |
+|---|---|
+| 静态对照 | 已按 AGENTS 相位、PreZ 过滤、上一帧 HZB、草页私有 scatter 和 `ComputeBuffer` 约束核对当前源码。旧相位名、`F` 类型、`DESIGN.md`、全图草缓冲和死 shader 注释没有残留 |
+| 托管编译 | **未验收**。本环境没有 Unity、csc 或 dotnet，不能用 6000.6 Managed DLL 编译 |
+| Editor Game / Frame Debugger / 日志 | **未验收**。没有已打开的 Editor，不能观察 PreZ、主绘制、阴影和 HZB |
+| Nature Renderer | 兼容层保留，未改 API。Nature Renderer 6 的自定义 shader 文档仍要求 `NatureRendererInstancing` 和 `procedural:SetupNatureRenderer`；厂商 include 是 `Nature Renderer.templatex`，本包继续用本地 `ProceduralInstance.hlsl`，否则没有该资产时编不过。缓冲名和压缩矩阵格式没有公开文档，不改写。`_NatureRendererDistanceControl` 不是文档里的 Shader Graph 属性 `_NatureRendererInstancing`，不改名 |
+
 ## 2026-09-30 Tree CPU／GPU 双 Backend
 
 基线 `29e3273`，工作树干净；Unity 6000.6.0f1／URP 17.6。仅扩展树颜色与主光 CSM，草保持 CPU 格剔除与连续 run；候选资产和矩阵格式不变，不 rebake。CPU compact 与 GPU 64 位 mask→计数→前缀→compact 为两条正式路径，退役旧混合搬运选择器。任务按阶段集中记录，正常帧不读回 GPU。
