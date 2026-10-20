@@ -1,0 +1,66 @@
+{
+  "baseline": "5ac2e03639141fc183cf16bf8044c15a19640dad",
+  "editor": "6000.6.0f1 / Metal",
+  "scene": "Scene_PBR",
+  "camera": {
+    "name": "PlayerCamera",
+    "position": [
+      406.5,
+      16.4,
+      229.5
+    ],
+    "yaw": 309.37,
+    "resolution": [
+      1566,
+      881
+    ]
+  },
+  "records": [
+    "SUMMARY GPU-Temporal-PreZTrue fadeOut=4 fadeIn=4 missingForwardDraw=0",
+    "SNAP GPU-Temporal-PreZFalse tree=3 frame=23597 backend=GPU alpha=float4(0.365126f, 1f, 0f, 0f) failed=False",
+    "SUMMARY GPU-Temporal-PreZFalse fadeOut=4 fadeIn=4 missingForwardDraw=0",
+    "SNAP GPU-Temporal-PreZFalse-step tree=3 frame=24779 backend=GPU alpha=float4(0.5314024f, 1f, 0f, 0f) failed=False",
+    "SUMMARY GPU-Temporal-PreZFalse-step fadeOut=4 fadeIn=4 missingForwardDraw=0",
+    "SNAP GPU-Temporal-PreZFalse-step-step tree=3 frame=26124 backend=GPU alpha=float4(0.6985164f, 1f, 0f, 0f) failed=False",
+    "SUMMARY GPU-Temporal-PreZFalse-step-step fadeOut=3 fadeIn=3 missingForwardDraw=0",
+    "SUMMARY GPU-Distance-PreZTrue fadeOut=49 fadeIn=49 missingForwardDraw=0",
+    "SUMMARY GPU-Distance-PreZFalse fadeOut=49 fadeIn=49 missingForwardDraw=0",
+    "SUMMARY CPU-Temporal-PreZFalse fadeOut=1 fadeIn=1 missingForwardDraw=0",
+    "GRASS frozen-on frame=6909 pos=(406.50, 16.40, 229.50) preZ=True bases=7 details=28 pending=0 uploaded=71804 visible=8075",
+    "GRASS frozen-off frame=6919 pos=(406.50, 16.40, 229.50) preZ=False bases=7 details=28 pending=0 uploaded=71804 visible=8075",
+    "GRASS frozen-repeat frame=6929 pos=(406.50, 16.40, 229.50) preZ=True bases=7 details=28 pending=0 uploaded=71804 visible=8075",
+    "NATIVE species=0 resolution=512 nativeTotal=134386 bakedPixelMismatch=0 uploadedPageMismatch=0 nativeVisibleFullDensity=5223 loadedVisible=5223",
+    "NATIVE species=1 resolution=512 nativeTotal=9216 bakedPixelMismatch=0 uploadedPageMismatch=0 nativeVisibleFullDensity=347 loadedVisible=347",
+    "NATIVE species=2 resolution=512 nativeTotal=10837 bakedPixelMismatch=0 uploadedPageMismatch=0 nativeVisibleFullDensity=416 loadedVisible=416",
+    "NATIVE species=3 resolution=512 nativeTotal=28823 bakedPixelMismatch=0 uploadedPageMismatch=0 nativeVisibleFullDensity=1135 loadedVisible=1135",
+    "NATIVE species=4 resolution=512 nativeTotal=20220 bakedPixelMismatch=0 uploadedPageMismatch=0 nativeVisibleFullDensity=636 loadedVisible=636",
+    "NATIVE species=5 resolution=512 nativeTotal=2409 bakedPixelMismatch=0 uploadedPageMismatch=0 nativeVisibleFullDensity=211 loadedVisible=211",
+    "NATIVE species=6 resolution=512 nativeTotal=4313 bakedPixelMismatch=0 uploadedPageMismatch=0 nativeVisibleFullDensity=107 loadedVisible=107",
+    "SUMMARY Auto-Temporal-PreZTrue fadeOut=4 fadeIn=4 missingForwardDraw=0"
+  ],
+  "frameDebugger": {
+    "events": 826,
+    "preZ": 529,
+    "forward": 278,
+    "selected": [],
+    "limitation": "Indirect is shown as Mesh with zero vertices; nonempty bucket counts come from requested frozen snapshots, actual Forward calls from a temporary same-frame Draw hook. Not all captured Mesh events are nonempty."
+  },
+  "grassFrozenPixelComparison": {
+    "onOffMeanRGB_0to255": 0.003053440278641526,
+    "onOffMaxChannelDelta": 9,
+    "onRepeatMeanRGB_0to255": 0.00015849476363260335
+  },
+  "sourcePngSha256": {
+    "frozen-on.png": "3b01035a2e80c231a6c566178a9d3b07396d01b2d5b6f13b01c1b3280e4ce8bb",
+    "frozen-off.png": "e9ede49e3ff5df41516b4ef93026b003677d240a12ca9ff66c491e5506193d34",
+    "frozen-repeat.png": "073d728aba50c8eef47435df483fcbc2dc653c5b0e97c86272a913494600d2dd",
+    "GPU-Temporal-PreZFalse-23600.png": "2857db6b9406210db7ddcf783fd8c1eeca67656c4eaf03d1cb86eea6450e0959",
+    "GPU-Temporal-PreZFalse-step-24782.png": "77daa36d12e6cb6006e1cb615ab259f366a5790f5563f1e60e22fb0a57c27a53",
+    "GPU-Temporal-PreZFalse-step-step-26126.png": "835c985639527bbaa151d73a9ca37a9d991a7497edddd0c26c508948f6cf6430"
+  },
+  "limits": [
+    "Native visible count reconstructs the existing per-page Bake coordinate convention; no rebake or asset write.",
+    "Current camera only; historical perceived grass thinning has no matched old screenshot.",
+    "CSM and HZB full acceptance were not repeated for this two-line state handoff fix."
+  ]
+}

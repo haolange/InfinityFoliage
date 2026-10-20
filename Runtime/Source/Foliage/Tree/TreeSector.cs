@@ -968,6 +968,8 @@ namespace Landscape.FoliagePipeline
 
         unsafe void CullGpu(CommandBuffer cmdBuffer, TreeView treeView, in FoliageView view, in TreeViewSettings settings)
         {
+            treeView.allowFade = !view.isShadow && settings.allowFade;
+            treeView.fadeMode = view.isShadow ? TreeLodFadeMode.Temporal : settings.fadeMode;
             int planeCount = math.min(view.planeCount, TreeVisibilityGpu.MaxPlanes);
             for (int i = 0; i < planeCount; ++i)
             {

@@ -1,5 +1,46 @@
 # Infinity Foliage 交付记录
 
+## 2026-10-21 GPU fade 回归修复与草数量对照
+
+基线 `5ac2e03`。只复用已打开的 LandscapeExample / Unity `6000.6.0f1` / Metal，在现有已 Bake 的 Scene_PBR 验证；依赖保持本机实际版本。正式代码仅补齐 `TreeSector.CullGpu` 到 Draw 的两项视图状态，不改 scatter、密度、驻留预算、Shader、Bake 格式或架构。
+
+### 根因与前次验收更正
+
+`d47c6bd` 将共享绘制状态迁入 TreeView 时，`allowFade / fadeMode` 只在 CPU ScheduleColorCull 赋值。GPU Cull 与 Pack 使用 settings 和自身 TreeGpuView，外层 TreeView.allowFade 却一直为 false；Draw 因此只提交 stable，跳过已生成的 FadeOut / FadeIn。过渡实例可能临时缺失，而非正常渐变。修复在 CullGpu 同步当前视图的淡化开关与模式；阴影视图保持关闭淡化、Temporal 硬切口径，GPU 内部仍负责重置和推进。
+
+下方“本机闭环”中的 GPU alpha 采样只能证明状态推进，不能证明两个桶实际绘制。前次据此把 fade 判为通过，证据不足；本节以非空桶、同帧 Draw、Shader 状态及 Game 画面补验并替代该项结论，保留此前采样的历史事实。
+
+### 本机验证
+
+临时入口只在内存中切设置和相机，沿原相机前方每个渲染帧 0.16 米移动 70 帧，再冻结时间采样。既有冻结快照只在明确验收请求时读回；临时 Draw 钩子在正式 DrawMeshInstancedIndirect 调用后记录帧、树种、LOD、桶及 args。将快照的每个非空颜色桶与同帧 Forward 调用匹配，所有配置 missingForwardDraw 均为 0，不用空桶事件数代替实际实例数。
+
+| 配置 | 结果 |
+|---|---|
+| GPU Temporal，PreZ 开／关 | 两种配置均有 FadeOut 4 / FadeIn 4 个实例，非空桶均实际提交 Forward，实际 backend 为 GPU |
+| GPU Distance，PreZ 开／关 | 两种配置均有 FadeOut 49 / FadeIn 49，非空桶均提交；距离桶 weighted=true，快照 invalidWeights=0 |
+| CPU Temporal 对照 | FadeOut 1 / FadeIn 1，非空桶均提交 |
+| Auto Temporal，PreZ 开 | 实际为 GPU，FadeOut 4 / FadeIn 4，非空桶均提交 |
+| Temporal 画面推进 | PreZ 关、固定位置继续推进，Tree 3 alpha 为 0.365126 / 0.5314024 / 0.6985164；前两次仍为 4 对，第三次其余树种一对已结束，剩 3 对。Game 树冠 dither 随过渡变化，未见原来因跳过两桶造成的整树缺失 |
+| Frame Debugger | 当前捕获 826 事件，PreZ 529，Forward foliage 278。颜色事件 #600 为 TreeLeave / ForwardLit-Instance stable，LODFactor=0、LodFadeEnable=0；#602 为淡化 Draw，LODFactor=1、LodFadeEnable=1，FOLIAGE_GPU_TEMPORAL 关键词及 _TreeFadeState / _TreeIndexBuffer 均存在。该版将 indirect 显示为 Mesh 且顶点为 0，不能据此判定零实例；非空计数由冻结快照佐证 |
+
+画面保留小型[过渡阶段对照](Evidence/gpu-fade-progress.jpg)，每幅是固定机位 Game 截图的相同裁剪，标注 alpha 属于 Tree 3；图内其他树种各有自身状态。本轮未逐一隔离所有树种的像素，也不将几幅画面扩展为所有机位无 popping 的保证。
+
+### 草是否变稀疏
+
+固定 PlayerCamera `(406.5,16.4,229.5)`、yaw `309.37°`、1566×881、原 4× MSAA、Terrain density=1。PreZ 开／关／再开各采样一次，随后固定风动画时间再做一次同样对照：每次均为 7 个已上传基础页、28 个细节页、71,804 个上传实例、8,075 个可见格内实例，pending=0；同轮每页 buffer 身份和实例数保持一致。按 MergeVisibleRuns 的可见格规则计算提交量，零计数桥不增加实例。
+
+逐草种读取当前 Terrain detail 数据，按现有 Bake 的页坐标和 BaseDensity 规则重建期望值，与驻留 Bake 页逐像素比对：7 种的 bakedPixelMismatch 和 uploadedPageMismatch 均为 0。原始全密度在当前可见格内的期望实例数为 `5223 / 347 / 416 / 1135 / 636 / 211 / 107`，逐种与加载页实际可见数相等，总计 8,075。因此当前机位没有因为细节页缺失或预算只剩约 1/8 基础层；这不是通过加密度得到的结果。
+
+固定时间的 PreZ 开／关原始 PNG，RGB 通道平均绝对差为 0.003053/255，最大通道差 9；开／再开平均差 0.0001585/255。Game 覆盖没有明显稀疏变化，保留[同机位开关对照](Evidence/grass-prez-count-control.jpg)。JPG 仅用于小型画面留证，统计在编码前的原始 PNG 上计算，原图 SHA-256 和精简数值记录见[验收数据](Evidence/gpu-fade-grass-verification.json)。
+
+结论：当前版本在此机位**未复现草数量或覆盖减少**，已有密度资产足量进入可见绘制。`d47c6bd` 的 scatter、ScaleGrassCount、StartBuild 代码块与父版本逐字相同，FoliageResidency / FoliageAssetCodec 整文件相同；原始 PreZ 的透明卡片覆盖错误已由 `5ac2e03` 修复。本轮没有同条件旧版本画面，不能给用户此前的稀疏观感指定唯一历史原因，也不能把当前机位结果推广到整张 Terrain；没有调整密度、重 Bake 或改宿主资产。
+
+### 清理与终编
+
+临时 Editor 入口最初因现有 Editor asmdef 未引用 URP 而编译失败，改为反射获取 Renderer 后完成采样；首次 CaptureScreenshotAsTexture 调用时机不正确，改用延迟截图请求。Frame Debugger 会暂停 Play，暂停期间的推进尝试不计入 alpha 验证。这些临时采集问题不作为 Runtime 回归。临时入口、.meta 和 Draw 钩子已删除。CSM / HZB 完整矩阵、其他平台及全场景草覆盖不属于本次两行状态传递修复的新增验收；宿主 VT 缺资产、只读数据库及 TLS 问题独立保留。
+
+收尾：删除临时源码后的 Editor.log 第 3488 行为 `Tundra build success (1.13 seconds), 23 items updated, 995 evaluated`；Runtime / Editor 正式程序集重编通过。随后正式源码默认 Auto / Temporal / PreZ 开再次进入 Play，草树可见、Inspector 显示实际 GPU，退出 Play。第 3410–3792 行新增日志的 C# 编译错误、Shader 错误和异常均为 0，仍有一条独立 VT 缺资产错误，不宣称 Console 总错误为零。Frame Debugger 已停用并关闭，原相机、设置和时间倍率恢复；Scene_PBR、UniversalRenderer、UniversalAsset 的 SHA-256 与测试前一致。定向子 agent 复查临时符号和禁止入口零残留，`git diff --check` 通过。永久保留的 JSON 与两张小型 JPG 共 391,366 bytes，其余本轮临时帧和报告精确删除，不清理 Unity 缓存。
+
 ## 2026-10-21 Cull / Pack / Draw 本机闭环
 
 基线 `main / d47c6bd`（PR #3 已合入），本轮仅复用 `LandscapeExample` 已打开的 Unity `6000.6.0f1` / Metal 和现有已 Bake 的 `Scene_PBR`。未启动 Editor、Hub 或 batchmode，未操作其他 session 的 Editor。实际依赖为 URP / Core `17.6.0`、Burst `2.0.0`、Collections `6.6.0`、Mathematics `1.4.0`；不调整包依赖。10 月 13 日的未验收记录保留为当时事实。
