@@ -101,7 +101,7 @@ Shader "Landscape/Grass"
 			windInput.normalWS = 0;
 			windInput.direction = GetWindDirection();
 			windInput.mask = uv0.y * saturate(vertexOS.y / _PivotOffset) * GetWindVariation(objectPos);
-			float3 discardedNormal;
+			float3 discardedNormal = windInput.normalWS;
 			Wind(windInput, worldPos, discardedNormal);
 			worldPos = ApplyScaleFade(worldPos, objectPos, scaleFade);
 		}
@@ -369,7 +369,7 @@ Shader "Landscape/Grass"
             ZWrite On
             Cull Off
             ColorMask 0
-            AlphaToMask Off
+            AlphaToMask On
 
             HLSLPROGRAM
             #pragma target 4.5
@@ -405,7 +405,7 @@ Shader "Landscape/Grass"
             {
                 float4 baseColor = _AlbedoTexture.Sample(sampler_AlbedoTexture, input.uv0);
                 clip(baseColor.a - _AlphaThreshold);
-                return 0;
+                return float4(0, 0, 0, baseColor.a);
             }
             ENDHLSL
         }

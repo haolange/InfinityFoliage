@@ -217,7 +217,7 @@ Shader "Landscape/TreeLeave"
             ZWrite On
             Cull [_Cull]
             ColorMask 0
-            AlphaToMask Off
+            AlphaToMask On
 
             HLSLPROGRAM
             #pragma target 4.5
@@ -261,7 +261,7 @@ Shader "Landscape/TreeLeave"
                 }
                 float4 baseColor = _AlbedoTexture.Sample(sampler_AlbedoTexture, input.uv0);
                 clip(baseColor.a - _AlphaThreshold);
-                return 0;
+                return float4(0, 0, 0, baseColor.a);
             }
             ENDHLSL
         }

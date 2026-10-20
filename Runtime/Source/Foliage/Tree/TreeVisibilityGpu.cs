@@ -163,7 +163,7 @@ namespace Landscape.FoliagePipeline
             TreeHzb hzb = Find(camera, false);
             if (hzb == null) { reason = "HZB has not been built for this camera."; return null; }
             if (hzb.frame < 0) { reason = hzb.reason; return null; }
-            if (Time.frameCount - hzb.frame > 1) { reason = "Previous-frame HZB is unavailable."; return null; }
+            if (Time.frameCount - hzb.frame != 1) { reason = "Previous-frame HZB is unavailable."; return null; }
             if (FoliageLogic.ViewDiscontinuous(hzb.origin, origin, hzb.projection, projection, cullDistance))
             {
                 reason = "View is discontinuous; HZB skipped this frame.";

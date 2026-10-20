@@ -1,5 +1,43 @@
 # Infinity Foliage 交付记录
 
+## 2026-10-21 Cull / Pack / Draw 本机闭环
+
+基线 `main / d47c6bd`（PR #3 已合入），本轮仅复用 `LandscapeExample` 已打开的 Unity `6000.6.0f1` / Metal 和现有已 Bake 的 `Scene_PBR`。未启动 Editor、Hub 或 batchmode，未操作其他 session 的 Editor。实际依赖为 URP / Core `17.6.0`、Burst `2.0.0`、Collections `6.6.0`、Mathematics `1.4.0`；不调整包依赖。10 月 13 日的未验收记录保留为当时事实。
+
+### 根因与修复
+
+- 编译失败：`TreeShadowCullJob` 已改为平面指针、`planeCount` 和 bucket mask，`AssertShadowJob` 仍使用 NativeArray 平面及旧 `indices/counts`。断言迁移到正式 Cull → mask → 依赖 Compact → index/ranges，检查候选顺序 `[0,2]`、不可见候选不算 LOD、仅 stable 桶、整格剔除后 mask/ranges 清零；完成 Job 后再释放资源，没有跳过中间状态。
+- Play 首次编译草 Shader：共用 `GrassInstancePosition` 把未初始化的 `discardedNormal` 传给 `Wind` 的 inout 参数，Metal 拒绝 FoliageDepth 和 ForwardLit-Instance。调用前从 `windInput.normalWS` 初始化，不改 Wind 或位置算法。
+- PreZ 画面：宿主为 4× MSAA，现有草／树叶材质 `_AlphaThreshold=0`，颜色依赖 AlphaToMask；深度原为 AlphaToMask Off，`clip(0)` 保留透明区域，导致整张卡片先占深度，出现蓝色卡片。经用户明确授权，草与 TreeLeave 的 FoliageDepth 改为 AlphaToMask On，并返回相同 albedo alpha；ColorMask 0、LEqual、ZWrite、clip/dither 和树干深度状态保留。恢复原 4× MSAA 后草叶／树叶轮廓恢复；没有修改材质或保存管线资产。AGENTS 同步这项覆盖率约定。
+- HZB 边界：本机调用检查证明旧条件还接受同帧深度。`Previous` 收紧为帧差必须等于 1，拒绝同帧和过期帧，不改投影或 UV 口径。
+
+### 本机结果
+
+| 检查 | 当前结果与证据 |
+|---|---|
+| Runtime / Editor 编译 | 修复后多次 Editor Tundra 成功，正式 DLL 重新生成；删除临时入口后的终编结果见本节收尾记录。没有借用旧 DLL 作为通过证据 |
+| CPU，PreZ 开／关 | 各 120 个 PlayerCamera 渲染帧，帧号各推进 120；草树颜色可见，修复后无蓝色整卡片 |
+| GPU，PreZ 开／关 | 各 120 帧，15 个树种实际 backend 均为 GPU，未发生 CPU 回退；草树颜色可见 |
+| Auto，PreZ 开／关 | 各 120 帧，实际选择 GPU，草树颜色可见 |
+| 相机／级联资源 | 每种配置采到 15 个颜色视图、45 个阴影视图（原 3 级联）、184 个 LOD packs；颜色 3 桶、阴影 1 桶，桶数错误、过期 Cull/Pack 和各视图 index/args 对象共用均为 0 |
+| CPU 单 Pass fade | 沿原相机前方每帧 0.16 米推进至 19.2 米，共观察 210 帧，81 帧存在 fade；逐渲染帧 alpha 增量与 deltaTime / fadeDuration 相符，0 次增量错误 |
+| GPU 单 Pass fade | 同路径，正常帧不读回，仅对一个树种请求 3 次已有冻结快照。帧 263 / 273 / 283 的 alpha 为 0.100 / 0.434 / 0.769；两段实测增量 0.3337756 / 0.3346304，对应经过时间 / fadeDuration 为 0.3337755 / 0.3346300，0 次增量错误，未出现双算 fade |
+| HZB 首帧／连续帧 | GPU 首次没有历史深度时为 0/15 启用，连续下一帧为 15/15；Auto / GPU 稳定运行同样为 15/15 |
+| HZB 传送／关闭 | 移动 150 米的不连续帧为 0/15，下一帧恢复 15/15；关闭后 0/15，理由为 HZB disabled |
+| HZB 帧龄／缺深度 | 修后针对当前相机缓存验证：age 0 拒绝、age 1 接受、age 2 拒绝；以 null depth 调用正式 Build 后 Previous 拒绝，理由为 Camera depth unavailable。这是缓存边界检查，不冒充真实深度纹理丢失的画面故障注入 |
+| Frame Debugger | CPU PreZ 开的捕获为 294 事件：Foliage Main Light Shadows 108、Foliage PreZ 78、Forward foliage 82；PreZ 有树叶与草 FoliageDepth。GPU PreZ 关的捕获为 1455 事件：阴影 822 Compute + 207 Mesh，颜色 274 Compute + 70 Mesh + 58 InstancedMesh，无 PreZ 阶段 |
+| Draw 与阴影绑定 | 草抽查为 instanced 事件，FoliageDepth、_GrassElementBuffer、LEqual / ZWrite On，源码对应页内 run 的 DrawMeshInstancedProcedural。树事件抽查为 FoliageDepth / FoliageShadow，绑定 _TreeElementBuffer 与 _TreeIndexBuffer；源码对应 DrawMeshInstancedIndirect，运行时资源身份检查确认各相机／级联的 index/args 独立。该版 Frame Debugger 把 indirect 记为 Mesh，不能把其零顶点／横线解读为实际零实例 |
+
+画面与资源证据仅保留四张：[PreZ 开及最终草树画面](Evidence/cpd-prez-on.png)、[PreZ 关及最终草树画面](Evidence/cpd-prez-off.png)、[树叶 FoliageDepth 与 index 绑定](Evidence/cpd-prez-depth.png)、[树干 FoliageShadow 与 index 绑定](Evidence/cpd-shadow-index.png)。事件计数是该帧的提交事件，包含 GPU 空桶，不能当作非空 Draw 数或性能成绩。阴影只对树执行正式级联路径，未添加草阴影；未扩展测试其他级联数量。
+
+### 独立问题、未验收范围与收尾
+
+当前场景仍有 `VirtualTextureVolume` 缺少 VirtualTextureAsset／地形材质／烘焙数据的错误，另有 `attempt to write a readonly database`、TLS 证书失败及第三方序列化提示，未扩展修复。临时探针曾有类型枚举编译错误、FrameDebuggerUtility 命名空间定位错误，以及 GPU 模式误读未创建 CPU NativeArray 的错误；修正后完成上述采样，临时入口最终删除。这些探针错误不能计作正式 Runtime 回归，也不能把 Console 总数宣称为零。
+
+本轮没有重烘焙、保存宿主资产、创建场景或测试 asmdef，没有修改 ProceduralInstance.hlsl、WindComponent、Gust 别名、DummyFoliageShaders、包名和 Shader 路径。Scene_PBR、UniversalRenderer、UniversalAsset 的 SHA-256 与测试前一致，原相机、组件覆盖、Renderer 设置和 4× MSAA 已恢复，Frame Debugger 与 Play 已退出。正常帧没有新增 GPU 读回。已有非本轮回归、性能、完整遮挡准确率、Windows / Vulkan / 非 MSAA 画面均不纳入通过结论。
+
+收尾记录：临时 Editor 验收入口及其 .meta 已删除；删除后本项目 Editor.log 第 79922 行记录 `Tundra build success (0.85 seconds), 13 items updated, 995 evaluated`，Runtime / Editor 正式程序集编译通过。随后用正式源码再次进入默认配置 Play，草树可见并退出。第 79812–80167 行新日志的 C# 编译错误、Shader 编译错误和异常均为 0；第三方弃用警告与 VT 缺资产错误独立保留。最终宿主三份资产哈希一致，`git diff --check` 通过；定向子 agent 复查旧符号与旧运行路径无残留。四张证据 PNG 合计 1,322,426 bytes；本轮 AppleDouble、临时入口与小型临时哈希清单精确清理，不删除 Unity 缓存。上述本轮本机修复门通过，不扩大为其他平台或旧问题的验收。
+
 ## 2026-10-13 Cull / Pack / Draw
 
 草和树的运行时入口收成每个视点一次 `Cull`、一次 `Pack`、若干次 `Draw`（PreZ、Forward、Shadow）。CPU 格剔除、格地形、实例 LOD、emit、compact 用 `dependsOn` 串成一条链，每个视点只 `CompleteAll` 一次。GPU 每个 LOD 一次写出三个桶的 mask、扫描、compact 和 args。`treePreZ` 默认开启，在 `AfterRenderingPrePasses` 写 `activeDepth`；`TreeLeave` 以 `TransparentCutout` 全部进 PreZ，`TreeBrak` 只进淡化桶，草全部进。HZB 改为按相机保存的上一帧深度，视点不连续则跳过。`package.json` 对齐 Unity `6000.6` / URP `17.6.0`。
