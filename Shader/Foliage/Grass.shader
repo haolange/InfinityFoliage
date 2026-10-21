@@ -309,7 +309,7 @@ Shader "Landscape/Grass"
 				output.vertexCS = mul(unity_MatrixVP, output.vertexWS);
 				GrassElement grassElement = _GrassElementBuffer[input.InstanceId + _InstanceOffset];
 				output.normalWS = TransformFoliageNormal(grassElement.matrix_World, input.normalOS);
-				output.normalWS = lerp(terrainNormal, output.normalWS, _VertexNormalStrength);
+				output.normalWS = lerp(float3(0, 1, 0), output.normalWS, _VertexNormalStrength);
 				return output;
 			}
 

@@ -865,6 +865,7 @@ namespace Landscape.FoliagePipeline
                 cullLodJob.lodNowProj = treeView.nowProj;
                 cullLodJob.lodHysteresis = distanceMode || discontinuous ? 0f : math.clamp(settings.lodHysteresis, 0f, 0.5f);
                 cullLodJob.distanceMode = distanceMode ? 1 : 0;
+                cullLodJob.temporalStep = !hardCut && settings.allowFade && m_DitherEnabled ? 1 : 0;
                 cullLodJob.cellFlags = m_CellFlags;
                 cullLodJob.instanceCell = m_InstanceCell;
                 cullLodJob.bounds = m_Bounds;

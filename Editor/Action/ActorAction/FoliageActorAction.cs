@@ -299,7 +299,7 @@ namespace Landscape.FoliagePipeline.Editor
                                 int cellY = ((yStart + y) * numSection) / resolution;
                                 for (int x = 0; x < width; ++x)
                                 {
-                                    int density = source[x, y];
+                                    int density = source[y, x];
                                     if (density < 0 || density > byte.MaxValue)
                                     {
                                         throw new InvalidOperationException("Grass density exceeds the compact byte asset format.");

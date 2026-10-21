@@ -378,6 +378,7 @@ namespace Landscape.FoliagePipeline
             }
 
             AssertDistanceFade();
+            AssertTemporalCatchUp();
 
             int[] lodNow = { -1, -1, -1, -1 };
             byte[] visible = { 0, 0, 0, 0 };
@@ -387,6 +388,98 @@ namespace Landscape.FoliagePipeline
                 {
                     Fail("culled instances must keep a lod sentinel");
                 }
+            }
+        }
+
+        static unsafe void AssertTemporalCatchUp()
+        {
+            var flags = new NativeArray<byte>(1, Allocator.TempJob);
+            var cells = new NativeArray<int>(1, Allocator.TempJob);
+            var bounds = new NativeArray<Aabb>(1, Allocator.TempJob);
+            var sizes = new NativeArray<float>(3, Allocator.TempJob);
+            var masks = new NativeArray<ulong>(1, Allocator.TempJob);
+            var hold = new NativeArray<int>(1, Allocator.TempJob);
+            var now = new NativeArray<int>(1, Allocator.TempJob);
+            var stable = new NativeArray<int>(1, Allocator.TempJob);
+            var screen = new NativeArray<float>(1, Allocator.TempJob);
+            var dither = new NativeArray<byte>(3, Allocator.TempJob);
+            var fade = new NativeArray<float>(3, Allocator.TempJob);
+            try
+            {
+                FrustumPlane* planes = stackalloc FrustumPlane[6];
+                for (int i = 0; i < 6; ++i) { planes[i].normalDist = new float4(0, 0, 0, 1); }
+                flags[0] = FoliageLogic.CellVisible;
+                bounds[0] = new Aabb(new float3(0, 0, 100), new float3(1));
+                sizes[0] = 1f;
+                sizes[1] = 0.4f;
+                sizes[2] = 0.1f;
+                for (int i = 0; i < 3; ++i) { dither[i] = 1; }
+                var cull = new TreeCullLodJob();
+                {
+                    cull.maxDistance = 512f;
+                    cull.lodHoldProj = float4x4.PerspectiveFov(math.radians(90f), 1f, 0.1f, 1000f);
+                    cull.lodNowProj = cull.lodHoldProj;
+                    cull.temporalStep = 1;
+                    cull.cellFlags = flags;
+                    cull.instanceCell = cells;
+                    cull.bounds = bounds;
+                    cull.lodScreenSizes = sizes;
+                    cull.planes = planes;
+                    cull.chunkMasks = masks;
+                    cull.lodHold = hold;
+                    cull.lodStable = stable;
+                    cull.lodNow = now;
+                    cull.lodScreenSqr = screen;
+                }
+                var advance = new TreeAdvanceFadeJob();
+                {
+                    advance.advance = 1;
+                    advance.ditherEnabled = 1;
+                    advance.step = 0.5f;
+                    advance.lodHold = hold;
+                    advance.lodNow = now;
+                    advance.lodDither = dither;
+                    advance.lodStable = stable;
+                    advance.fadeState = fade;
+                }
+                for (int stage = 0; stage < 4; ++stage)
+                {
+                    int previous = stable[0];
+                    int target = stage < 2 ? previous + 1 : previous - 1;
+                    cull.lodNowOrigin = stage < 2 ? float3.zero : new float3(0, 0, 99);
+                    for (int frame = 0; frame < 3; ++frame)
+                    {
+                        advance.Schedule(cull.Schedule(1, 1)).Complete();
+                        if (masks[0] != 1 || hold[0] != previous || now[0] != target ||
+                            stable[0] != (frame == 2 ? target : previous) ||
+                            math.abs(fade[0] - frame * 0.5f) > 1e-6f)
+                        {
+                            Fail("continuous temporal motion must finish each adjacent fade before advancing or reversing");
+                        }
+                    }
+                }
+                cull.temporalStep = 0;
+                cull.lodNowOrigin = float3.zero;
+                advance.hardCut = 1;
+                advance.Schedule(cull.Schedule(1, 1)).Complete();
+                if (now[0] != 2 || stable[0] != 2 || fade[0] != 1f || fade[1] != 0f)
+                {
+                    Fail("discontinuous temporal views must still hard-cut directly to the requested lod");
+                }
+            }
+            finally
+            {
+                flags.Dispose();
+                cells.Dispose();
+                bounds.Dispose();
+                sizes.Dispose();
+                masks.Dispose();
+                hold.Dispose();
+                now.Dispose();
+                stable.Dispose();
+                screen.Dispose();
+                dither.Dispose();
+                fade.Dispose();
             }
         }
 

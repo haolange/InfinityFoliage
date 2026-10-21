@@ -438,6 +438,11 @@ void CullInstances(uint3 groupId : SV_GroupID, uint threadIndex : SV_GroupIndex)
             {
                 lodState.x = HysteresisLod(ScreenRadius(box, _FadeState[1], projection.x), lodState.z);
                 lodState.y = HysteresisLod(screen, lodState.z);
+                if (_AllowFade != 0 && fadeState.w == 0.0 && lodState.z >= 0)
+                {
+                    lodState.x = lodState.z;
+                    lodState.y = clamp(lodState.y, lodState.z - 1, lodState.z + 1);
+                }
                 int delta = abs(lodState.x - lodState.y);
                 changed = delta == 1 && _LodDither[lodState.x] != 0u && _LodDither[lodState.y] != 0u ? 1u : 0u;
             }

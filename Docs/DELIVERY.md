@@ -1,5 +1,98 @@
 # Infinity Foliage 交付记录
 
+## 2026-10-21 草空间分布、色调与快速移动树 fade 修复
+
+本节接续下方调查，基线 `main / 6888132`。用户已批准更新 Scene_PBR 的草 Bake 和必要的目标 Editor 重启。本轮操作自行打开的 LandscapeExample / Unity 6000.6.0f1 / Metal，不操作其他 session 的 InfinityExample；没有提高密度、改架构、重 Bake 树、改材质或依赖。下方“当时未验收”的记录保留为历史事实。
+
+### 根因与正式修复
+
+- 草分布：`GetDetailLayer` 的 `[y,x]` 被按 `[x,y]` 读取，每张方形页内部密度转置。修正生产 Bake 读取轴序，通过原有 `UpdateTerrainGrass` 更新 Scene_PBR 的七种草基础层、细节页及组件格计数。此缺陷来自 `d04898c`，早于 d47；下方实际运行父提交／d47／688 的同机位对照仍有效。
+- 草色调：原生 Forward 与自定义实例 pass 的 tint／Perlin／albedo 公式一致，当前七种材质均启用 ColorMap。两条路径都不消费 Terrain healthyColor/dryColor 或顶点色，它们不是本场景两路径差色的依据。实例 pass 将地形法线混入 mesh normal，而原生混入世界向上法线；材质 normalStrength=0.125 时前者占 87.5%，坡面明暗偏移明显。实例 pass 改为相同世界向上基准；保留原有逆转置法线变换、SH、材质与风。
+- 树快速移动：Temporal 原先根据旧 hold 视点重新求 LOD，再与窗口结束后的目标比较，连续移动也可能跨两档，Classify／EmitMasks 随即硬切。CPU Job 与 GPU CullInstances 现在从实际已提交的 stable 档开始，每个时间窗最多推进相邻一档，淡化完成后再追赶目标。CPU／GPU 对称；传送／投影不连续、禁用 fade、Distance 和阴影语义保持原样。屏占比迟滞、IR、Compact、args 与 Draw 路径没有更换。
+
+### 已取得的本机证据
+
+同一原相机 `(406.5,16.4,229.5)`、Euler `(0,309.37,0)`、1566×881、4× MSAA，density=1。所有 GPU 数据读取均由已有按需冻结快照明确触发，正常帧没有新增读回。
+
+| 项目 | 本轮结果 |
+|---|---|
+| Bake 对原始 Terrain | 解码基础层与全部 16 张细节页后相加，与七种 `GetDetailLayer[y,x]` 的全部 512×512 密度逐点对照，各种 mismatch=0 |
+| 实际草 Forward 提交 | 同机位由 8,075 恢复为 **9,695** 株；逐种 **6315 / 238 / 435 / 1493 / 913 / 243 / 58**，与原生引擎在相同空间格生成的计数相等。原生值不是原生最终视锥 draw 数，不作此扩张 |
+| PreZ 开／关 | 两次均 **60 次 procedural run、9,695 株**；34 张实际上传页（7 基础＋27 细节）。旧分布为 35 张，不同分布会改变可见细节页需求；不能把少一张驻留页直接解释为少密度 |
+| 快速移动旧／新 A/B | 相同 GPU、每渲染帧 2 米前进 60 帧再后退 60 帧；15 树种×5 个采样，共 75 快照。旧逻辑可见状态 `abs(hold-now)>1` 合计 24，新逻辑为 0；非空颜色桶均匹配同帧实际 Forward 调用，missingForwardDraw=0 |
+| CPU 与正反向 | 相同 2 米路径 CPU 各采样跨档数 0，FadeOut／FadeIn 均有非空样本。现有 Runtime 新增实际 Job 链断言覆盖 0→1→2→1→0、stable 延迟提交及 discontinuity 硬切，Editor 显式执行通过 |
+| 连续／不连续 | GPU 0.16 米／帧仍淡化；9 米／帧超过既有不连续阈值，reset=1、alpha=1，按约定硬切。此修复不承诺传送时仍淡化 |
+| 固定位置继续过渡 | 快速移动后冻结相机，Tree 3 alpha 为 **0.2341368 → 0.5326295 → 0.7991679**，同一对桶保持非空，画面 dither 推进；随后下一时间窗 alpha 重新从低值开始，不能误读为同一窗口回退 |
+| 正式 Runtime／Shader Play | 移除生产 Draw／upload 探针后，Auto（实际 GPU）PreZ 开／关、CPU 和强制 GPU PreZ 关的 Play 帧继续推进；PreZ 开的 CPU／GPU 快速路径已在前述采样验证。未出现本轮 foliage C#、Shader 或 Play 异常 |
+| Frame Debugger | 实际捕获 PreZ 与 Forward foliage 事件。草 ForwardLit-Instance 与 FoliageDepth 均绑定 `_GrassElementBuffer`；树 FoliageDepth stable 绑定 Element／Index，fade 事件 LODFactor=1、LodFadeEnable=1，绑定 `_TreeFadeState`。Unity 将 indirect 显示为 Mesh／0 instance，不能将该字段当 args 实例数；实际非空 Draw 由同帧钩子和冻结快照佐证 |
+
+草 normal 的受控 A/B 使用同一实例、材质和时间，只切换混合基准。前景区域 RGB 均值：原生 `[123.84649,115.79637,67.12291]`，旧地形 normal `[128.96039,120.48064,68.87077]`，修复世界向上 `[122.84503,114.80688,65.73359]`；两种自定义结果前景 RGB 平均绝对差约 4.9754/255，天空差为 0。该结果说明坡面光照差异的来源；自定义 jitter／旋转／尺度随机算法仍不同于原生，分布修复不要求逐株或逐像素相同。
+
+证据：[原生与正式修复画面](Evidence/grass-repair-native-control.jpg)、[法线受控对照](Evidence/grass-normal-control.jpg)、[固定机位树过渡](Evidence/tree-fast-fade-progress.jpg)、[采样与 Frame Debugger 数据](Evidence/grass-tree-repair-verification.json)。历史草直方图 JSON 的数组数值未改，本轮更正其坐标说明为 X-major `x*16+z` 和对应世界页坐标；避免将标签错误延续为证据。
+
+### 验收边界与清理
+
+本轮快速移动测试关闭遮挡以隔离 LOD，不据此新增 HZB 验收结论。Scene_PBR 保存的主光 shadows=None，因此本轮 Frame Debugger 未包含 CSM；此前 CSM／HZB 证据和各自限制仍见历史记录。Frame Debugger 的 shader buffer 信息只有名字，没有资源身份，不能用本轮事件替代颜色／级联 index 独立性的历史资源检查。这里验收的是本轮三项修复，不宣布整个渲染系统所有机位、平台或遮挡行为均已通过。
+
+目标 Editor 曾遇到文件描述符耗尽；按批准重启后，启动还暴露 DataStore 的 AppleDouble `._UDSData_*` 解析异常和上次测试的场景恢复提示。只隔离了经文件头核验的 sidecar，并丢弃本次测试恢复文件／空恢复目录；没有删除真实 UDS 数据、Library 或 Unity 缓存。临时探针的反射／Frame Debugger 调用错误已修正并移除，不作为正式源码缺陷。最终日志另有 TLS 和 OnDemand 导入 worker 连接超时，未归入 foliage 编译通过证据。
+
+已退出 Play、关闭 Frame Debugger，恢复 renderer 设置、相机与时间倍率。宿主保存只涉及批准的草 Bake 和 Scene_PBR 计数；UniversalRenderer、UniversalAsset 及 15 个 tree bytes 的测试前后 SHA-256 全部一致。宿主草 bytes／Scene_PBR 在本包 Git 之外，推送本包不会携带它们；其他已 Bake 场景仍须以修复后的工具执行草 Update，不能继续沿用错误轴序资产。
+
+最终删除临时入口及 `.meta` 后，目标 Editor 原生编译为 `Tundra build success (1.45 seconds), 13 items updated, 995 evaluated`，随后成功重载程序集并加载 Scene_PBR；新日志 C# error=0、Shader error=0。当前正式 Runtime DLL SHA-256 记录在证据 JSON；不以独立 Roslyn 或旧 DLL 代替 Editor 结果。独立 Runtime／Editor 编译也通过。定向旧路径／临时钩子复查和源码／文档 `git diff --check` 通过；Unity 自动生成 `.meta` 的空值尾空格保留原样，差异检查单独排除这些 importer 文件。Git 完整性检查发现 AppleDouble 伪 ref／object，核验文件头后仅删除 29 份元数据，`git fsck --full --no-dangling` 通过，远端 main 与本轮基线相同。临时目录、场景恢复副本和探针已精确删除，只保留本节的小型图像／结构化证据；没有清 Unity 缓存。本轮三项修复通过以上限定验收，提交当前 main；CSM／HZB 等未重测项不因此升级为新一轮通过。
+
+## 2026-10-21 草原生／历史对照与快速移动 fade 调查
+
+基线 `main / 6888132`。本节更正上一节仅复现本包 Bake 规则得到的草结论：该检查证明了加载与 Bake 自洽，没有证明 Bake 与 Unity 原生地形分布相同。用户提供的原生／Play 差异在现有 `Scene_PBR` 同机位实际复现；本轮没有改密度、重 Bake 或保存宿主资产。
+
+### 草：空间密度转置，早于 d47c6bd
+
+`FoliageActorAction.BuildTerrainGrass` 取得 `GetDetailLayer` 后用 `source[x, y]` 读取，随后按 `y * width + x` 写页。现有 Unity 6000.6 的非方形查询 `GetDetailLayer(0,0,2,3,0)` 返回数组维度 **[3,2]**，即应按 `[y,x]` 读取。当前 128×128 方形页让错误没有越界，而是每页内部 X/Z 密度转置；基础层与细节层从同一错误读取产生。`git blame` 定位到更早的 `d04898c`；该 Bake 代码和资产 codec 在 `f9856b0 → d47c6bd` 间没有改变。
+
+本轮使用引擎的 `TerrainData.ComputeDetailInstanceTransforms` 取得原生真实实例变换，按世界 X/Z 的 32 米格统计。当前 Terrain 为 InstanceCountMode、512 分辨率、每 patch 8、density=1。完整驻留的四张页覆盖 64 格／草种；7 种共 448 格，同位置有 **320 格**计数不同。只把原生数据在各页内转置，全部 **448 格计数一致，0 个 mismatch**。这直接佐证空间分布错误，不依赖重写本包 Bake 算法作“期望值”。自定义 jitter／尺度随机算法也不等同 Unity 原生，因此不能要求逐实例位置完全相同；随机差异不能解释整页密度的精确转置。
+
+原相机 `(406.5,16.4,229.5)`、Euler `(0,309.37,0)`、Game 1566×881、4× MSAA，取自定义当前 10 个可见空间格：
+
+| 草种 | 本包实际 Forward 提交实例 | 原生引擎在相同格内生成实例 |
+|---|---:|---:|
+| PF_GrassB | 5,223 | 6,315 |
+| PF_GrassC | 347 | 238 |
+| PF_GrassD | 416 | 435 |
+| Poppy | 1,135 | 1,493 |
+| Chamomile | 636 | 913 |
+| Brownray knapweed | 211 | 243 |
+| Saint John's wort | 107 | 58 |
+| 合计 | **8,075** | **9,695** |
+
+右列为引擎变换在同一空间范围的实例数，**不是原生 Frame Debugger 的最终提交数**；原生还可能执行更细的距离／视锥处理。左列通过实际 `DrawMeshInstancedProcedural` 调用后的临时钩子按目标相机、Forward pass 统计，没有用上传总量替代 Draw 数。此机位花和草被搬到别处，局部少 1,620 株；有的种类反而增加，不能概括成全地形统一降低密度。
+
+### 草：真正运行提交前后版本
+
+只复用已打开的 LandscapeExample Editor，在同一宿主、已 Bake 资产与机位，顺序编译／Play `d47c6bd` 的父提交 `f9856b0`、`d47c6bd` 和当前 `6888132`；不切 Git 分支。统一 CPU、tree fade 关、PreZ 关，避开原始 d47 已知深度覆盖错误。d47 的原始源码无法直接编译，测试仅套用当前阴影断言 API 修复和 Grass discardedNormal 初始化，不改 scatter、页、位置或 Forward 颜色公式。
+
+三个版本均实际提交 **59 次 procedural run、8,075 株**，逐草种数与上表左列相同。三者 35 张驻留页（7 基础＋28 细节）的完整上传矩阵哈希、实例数、可见格 byte map 全部相同。由此，在该机位不能把空间稀疏归为 d47 的撒点或数量回归；父提交已存在同一错误分布。各 Play 会话风动画相位未完全对齐，画面对照不作逐像素相等证明。
+
+原生与三个版本的[同机位画面对照](Evidence/grass-native-history-control.jpg)及[数值、页矩阵哈希和空间格数据](Evidence/grass-native-history-verification.json)保留。当前版原生草通过仅在 Play 内关闭 GrassComponent 恢复 Terrain 绘制采集，没有修改 TerrainData。
+
+本场景七个原型均为单 submesh／单材质，且自定义引用相同 mesh，因此不是只绘制 submesh 0 漏了花瓣。Forward 草颜色公式在 f985→d47→当前间没有实际改变；ColorVariation 删除的是无调用函数。当前自定义 shader 使用材质 tint／Perlin，不接入 Terrain prototype 的 healthyColor/dryColor；它是原生与自定义的另一处实现差异，尚未用材质／光照隔离量测其视觉贡献。截图中的彩色花丛减少已有位置与计数依据；**剩余色调差异仍未完全归因**，不能宣称改轴序即可与原生逐像素一致。既有 PreZ 开关对照只排除了当前深度 pass 对该机位覆盖的新增影响。
+
+### 树：高速移动会触发明确的硬切条件
+
+当前 CPU／GPU Temporal 路径均保留以下规则，f985→d47 没有改变：
+
+- `FoliageLogic.ViewDiscontinuous`：单帧位移严格大于 `clamp(cullDistance * 0.25, 1, 8)` 米，或投影矩阵分量变化超过 0.1，当前过渡重置，首帧硬切。这也解释了此前 9 米单步测试不能作连续 fade 验收。
+- LOD 只允许相邻两档淡化；`abs(holdLod - nowLod) > 1` 直接 stable 当前档。CPU Classify 和 GPU EmitMasks 均执行该规则。
+- Temporal 过渡期间 hold／now 两个视点保持固定，直到过渡完成才采新的目标视点。高速移动即便每帧不足 8 米，半秒窗口内也可能累积较大位移，下次目标跨两档时仍会硬切。该项是源码推导，尚没有本轮同实例逐帧状态证据证明用户看到的每次 popping 都由它触发。
+
+本轮计划以 GPU、遮挡关闭分别采 0.16／2／9 米每帧，分离 HZB 和 fade；恢复当前源码时 Editor 编译基础设施失败，因此这些高速路径的 GPU 快照／画面均标为 **未验收**。不能用历史 d47 DLL（含已知 fade 状态缺失）采样当前行为，也没有为消除 popping 擅自放宽传送或跨档语义。
+
+### 编译阻塞、恢复与交付状态
+
+历史版本编译和草 Play 数据已取得；原始 d47 的最后一次成功为 `Tundra build success (1.85 seconds), 23 items updated, 995 evaluated`。恢复当前正式源码时先出现 `Tundra build interrupted`，随后构建和 Burst gRPC 都报 `System.NotSupportedException: Could not register to wait for file descriptor 1271`（后续 1273）。在同一个 Editor 多次刷新，删除临时入口后的正式源码终编仍被同源 IOSelector 错误阻塞。该堆栈属于 Editor／编译服务故障，没有成功的新 DLL，**终编与高速树 Play 未验收**；不记为 foliage C# 编译通过，也不以旧 DLL 代替。
+
+已恢复 17 个参与历史对照文件为 HEAD 原始字节并核对 SHA-256，删除临时 Editor 入口、.meta 与 Grass Draw／upload 钩子；Runtime、Shader、Editor 正式源码无差异。退出 Play，Frame Debugger 停用并关闭，恢复相机／测试设置／时间倍率；未重启 Editor、启动 Hub／batchmode、改宿主配置、清 Unity 缓存或操作其他 Editor。本轮只保留两份小型证据，约 244 KB；临时原图／报告删除。宿主资产哈希与测试前一致。
+
+本轮只形成调查证据，未修改 Bake 轴序或重新生成资产。修复轴序将涉及现有错误 Bake 产物的更新，须在后续明确范围内处理；当前不通过增加密度掩盖。由于终编与树高速路径未过门，**保持未提交、未上传**。
+
 ## 2026-10-21 GPU fade 回归修复与草数量对照
 
 基线 `5ac2e03`。只复用已打开的 LandscapeExample / Unity `6000.6.0f1` / Metal，在现有已 Bake 的 Scene_PBR 验证；依赖保持本机实际版本。正式代码仅补齐 `TreeSector.CullGpu` 到 Draw 的两项视图状态，不改 scatter、密度、驻留预算、Shader、Bake 格式或架构。

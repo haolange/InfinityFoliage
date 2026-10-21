@@ -406,6 +406,7 @@ namespace Landscape.FoliagePipeline
         public float4x4 lodNowProj;
         public float lodHysteresis;
         public int distanceMode;
+        public int temporalStep;
 
         [ReadOnly]
         public NativeArray<byte> cellFlags;
@@ -522,6 +523,11 @@ namespace Landscape.FoliagePipeline
                     int previous = lodStable[index];
                     lodHold[index] = FoliageLogic.ComputeLodIndexHysteresis(ScreenRadiusSqr(box.center, radius, lodHoldOrigin, lodHoldProj), lodScreenSizes, previous, lodHysteresis);
                     lodNow[index] = FoliageLogic.ComputeLodIndexHysteresis(ScreenRadiusSqr(box.center, radius, lodNowOrigin, lodNowProj), lodScreenSizes, previous, lodHysteresis);
+                    if (temporalStep != 0 && previous >= 0)
+                    {
+                        lodHold[index] = previous;
+                        lodNow[index] = math.clamp(lodNow[index], previous - 1, previous + 1);
+                    }
                 }
             }
 
