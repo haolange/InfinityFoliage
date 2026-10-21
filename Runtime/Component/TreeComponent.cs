@@ -415,7 +415,17 @@ namespace Landscape.FoliagePipeline
             TreeViewSettings viewSettings = ResolveViewSettings();
             for (int i = 0; i < treeSectors.Length; ++i)
             {
-                if (m_SectorReady[i]) { treeSectors[i].Pack(cmdBuffer, view, viewSettings); }
+                if (m_SectorReady[i])
+                {
+                    treeSectors[i].Pack(cmdBuffer, view, viewSettings);
+#if UNITY_EDITOR
+                    Camera boundsCamera = debugCamera != null ? debugCamera : Camera.main;
+                    if (showBounds && boundsMode == TreeBoundsMode.Instances && !view.isShadow && view.camera == boundsCamera)
+                    {
+                        treeSectors[i].CaptureBounds(view.camera);
+                    }
+#endif
+                }
             }
         }
 

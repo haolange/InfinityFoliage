@@ -45,7 +45,7 @@ namespace Landscape.FoliagePipeline.Editor
             }
             serializedObject.ApplyModifiedProperties();
             if (targets.Length == 1) { EditorGUILayout.HelpBox(treeTarget.BackendStatusSummary(), MessageType.None); }
-            EditorGUILayout.HelpBox("Live bounds: red = CPU rejection; LOD colors = CPU candidate. Frozen cells: magenta = terrain rejection, cyan = GPU cell rejection. Frozen instances: cyan = absent from final GPU indices. Lines keep scene depth.", MessageType.Info);
+            EditorGUILayout.HelpBox("Live bounds use Debug Camera (Main Camera when unset): red = CPU rejection; LOD colors = CPU candidate. GPU live bounds stay gray; capture a snapshot for GPU LOD colors. Frozen cells: magenta = terrain rejection, cyan = GPU cell rejection. Frozen instances: cyan = absent from final GPU indices. Lines keep scene depth.", MessageType.Info);
             if (targets.Length != 1) { return; }
             using (new EditorGUI.DisabledScope(!Application.isPlaying))
             {

@@ -1,5 +1,35 @@
 # Infinity Foliage 交付记录
 
+## 2026-10-22 CPU 树 Procedural 与 Instance Bounds LOD 色
+
+基线 `main / 349a70c`，Unity 6000.6.0f1 / URP 17.6 / Metal，使用现有 Scene_PBR。范围仅为 CPU 树提交 API、CPU args 清理和实例 Bounds 配色；保留 VisibleIndex、fade、Cull／Pack／Draw 相位和独立级联视图。不改 Shader、材质、密度、Bake 或依赖。
+
+### 改动
+
+CPU 的 PreZ、Forward、Shadow 共用桶提交改为 `DrawMeshInstancedProcedural(..., pack.counts[bucket], ...)`，仍先按原有规则跳过空桶；GPU 继续 `DrawMeshInstancedIndirect`。删除 CPU `WriteCounts`、args 数组副本与每帧 args 上传；静态 mesh args 模板及各视图的 indirect args buffer 均延迟到 GPU Pack 首次使用才创建。backend 切换仍销毁旧视图，释放相应 GPU args；CPU 冻结快照直接记录桶 count，不再读 args，GPU 快照按需从原 args 读取 count。
+
+Instance Bounds 原先直接读取 TreeSector 共享的 `m_LodNow/m_ChunkMasks`，随后 SceneView 等相机 Cull 会覆盖它们；显式 Debug Camera 与“最后一次 Cull 相机”不匹配时还会跳过整组线框。现在仅在开启 Instance Bounds、所选颜色相机完成 CPU Pack 后保存该视点配套的 LOD/mask，绘制按此缓存取色；未设 Debug Camera 时明确使用 Main Camera。缓存只存在 Editor 调试路径，未开该调试时不拷贝，Release 清理，backend 切换使旧缓存失效。LOD0 原本就是白色；GPU 未冻结时仍灰色，冻结快照才显示真实 GPU LOD 色，不用 CPU 估计伪装 GPU 结果。
+
+### 有限本机验收
+
+每个完整用例只推进 95 个 Game 相机帧；CPU PreZ 开＋Bounds、CPU PreZ 关＋Distance、CPU PreZ 开＋Temporal、GPU PreZ 开＋Temporal。主光 Soft Shadows 仅在 Play 内开启，退出后不保存；遮挡关闭以隔离本轮提交变更，不扩展 HZB、平台或性能测试。中途一次源码重载打断 Frame Debugger 后的 Temporal 采集，停用调试器后重新完成该用例；被打断的启动不计通过。
+
+| 检查 | 实测结果 |
+|---|---|
+| CPU 无 indirect args | 所有采样的颜色及级联视图 `cpuArgs=0`；源码不再有 CPU args 分配／模板生成／数量上传／快照 args 读取 |
+| CPU PreZ / Forward | Frame Debugger 261 事件；事件索引 68 为 TreeLeave / FoliageDepth、164 为 ForwardLit-Instance，均 **318 instances / 1 draw**。另一次 PreZ 关颜色事件为 **325 instances / 1 draw**；这些是调试器实际返回的实例数 |
+| CPU Distance fade | 稳定桶 3,237，FadeOut / FadeIn 为 **10 / 10**；按需快照的距离权重 invalid weights=0 |
+| CPU Temporal fade | 采样得到 **6 / 6、11 / 11、12 / 12** 两桶；Play 画面草树可见，帧持续推进，无新生产 foliage 异常 |
+| CPU 级联阴影 | 运行中的各级联 view 保持独立 index；**138 个级联 LOD pack** 的 index buffer 与同相机颜色 pack 不同（此计数包含空 pack，不等于 draw 数）。级联桶实例总计采到 5,594～5,771，颜色/阴影 CPU args 均为 0；Game 可见地面接影。没有为本次 API 替换重做逐级联 atlas 全矩阵 |
+| GPU 保持 indirect | 实际 backend=GPU，颜色＋阴影 **184 个 args buffer**，对应独立级联 index 检查仍为 138；按需 GPU 快照完成。Frame Debugger 的 PreZ / Forward 仍返回 Mesh／0 instances 的既有显示，不能将 CPU counts 数组中的零或该 UI 字段当 GPU 绘制数量 |
+| Bounds 配色 | CPU 实例线框画面已见绿色、蓝色等 LOD 色，拒绝项红色，保留真实深度；显示取指定 Game 相机缓存，不再以最后一次 SceneView Cull 决定 |
+
+保留小型[CPU 画面与 LOD Bounds](Evidence/cpu-tree-procedural-bounds.jpg)及[运行、快照、资源身份和 Frame Debugger 记录](Evidence/cpu-tree-procedural-verification.json)。数量用于证明本次实际执行，不是跨不同采集时刻的 CPU/GPU 可见性一致性或性能结论。Frame Debugger 只抽查必要的 PreZ／颜色事件，没有额外逐项重跑历史大矩阵。
+
+### 收尾
+
+已退出 Play、关闭目标 Frame Debugger；临时入口及 `.meta` 删除。随后正式源码 Editor 终编为 `Tundra build success (1.58 seconds), 14 items updated, 995 evaluated`，Scene_PBR 加载成功；新日志 C# error=0、Shader error=0。最终 Runtime DLL 和源码哈希记录在证据 JSON。临时目录已精确删除，仅保留两份小型正式证据。定向旧 CPU args／临时钩子扫描及源码文档差异检查通过；Unity 自动生成的 `.meta` 空值尾空格保留原样。临时入口退出 Play 后曾因已销毁的 TreeComponent 引用记录 MissingReferenceException，属于探针收尾而非正式渲染错误，已随入口移除；不把它隐去或算成生产路径通过。宿主 Scene_PBR、UniversalRenderer、UniversalAsset 的 SHA-256 全部与测试前一致。正式 Editor 重新加载这些磁盘资产以恢复原设置与相机，不保存测试配置；其他 session 的 InfinityExample 未操作。
+
 ## 2026-10-21 草空间分布、色调与快速移动树 fade 修复
 
 本节接续下方调查，基线 `main / 6888132`。用户已批准更新 Scene_PBR 的草 Bake 和必要的目标 Editor 重启。本轮操作自行打开的 LandscapeExample / Unity 6000.6.0f1 / Metal，不操作其他 session 的 InfinityExample；没有提高密度、改架构、重 Bake 树、改材质或依赖。下方“当时未验收”的记录保留为历史事实。

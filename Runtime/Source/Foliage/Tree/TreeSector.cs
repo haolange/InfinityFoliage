@@ -48,7 +48,6 @@ namespace Landscape.FoliagePipeline
         public int submeshCount;
         public int capacity;
         public int[] counts;
-        public uint[] args;
         public ComputeBuffer argsBuffer;
         public ComputeBuffer[] indexBuffers;
         public ComputeBuffer[] weightBuffers;
@@ -60,16 +59,6 @@ namespace Landscape.FoliagePipeline
             counts = new int[bucketCount];
             indexBuffers = new ComputeBuffer[bucketCount];
             weightBuffers = new ComputeBuffer[bucketCount - 1];
-            args = new uint[5 * bucketCount * submeshCount];
-            for (int bucket = 0; bucket < bucketCount; ++bucket)
-            {
-                for (int submesh = 0; submesh < submeshCount; ++submesh)
-                {
-                    Array.Copy(batch.argsTemplate, submesh * 5, args, ((bucket * submeshCount) + submesh) * 5, 5);
-                }
-            }
-            argsBuffer = new ComputeBuffer(args.Length, sizeof(uint), ComputeBufferType.IndirectArguments);
-            argsBuffer.SetData(args);
             EnsureCapacity(1);
         }
 
@@ -98,16 +87,39 @@ namespace Landscape.FoliagePipeline
             capacity = nextCapacity;
         }
 
-        public void WriteCounts(CommandBuffer cmdBuffer)
+        public void EnsureGpu(TreeLodBatch batch, Mesh mesh)
         {
+            if (argsBuffer != null) { return; }
+            if (batch.argsTemplate == null)
+            {
+                batch.argsTemplate = new uint[5 * submeshCount];
+                for (int submesh = 0; submesh < submeshCount; ++submesh)
+                {
+                    int section = batch.sectionIndexs[submesh];
+                    batch.argsTemplate[(submesh * 5) + 0] = mesh.GetIndexCount(section);
+                    batch.argsTemplate[(submesh * 5) + 2] = mesh.GetIndexStart(section);
+                    batch.argsTemplate[(submesh * 5) + 3] = mesh.GetBaseVertex(section);
+                }
+            }
+            uint[] args = new uint[5 * bucketCount * submeshCount];
             for (int bucket = 0; bucket < bucketCount; ++bucket)
             {
                 for (int submesh = 0; submesh < submeshCount; ++submesh)
                 {
-                    args[(((bucket * submeshCount) + submesh) * 5) + 1] = (uint)counts[bucket];
+                    Array.Copy(batch.argsTemplate, submesh * 5, args, ((bucket * submeshCount) + submesh) * 5, 5);
                 }
             }
-            cmdBuffer.SetBufferData(argsBuffer, args);
+            ComputeBuffer next = new ComputeBuffer(args.Length, sizeof(uint), ComputeBufferType.IndirectArguments);
+            try
+            {
+                next.SetData(args);
+            }
+            catch
+            {
+                next.Dispose();
+                throw;
+            }
+            argsBuffer = next;
         }
 
         public void Dispose()
@@ -227,15 +239,14 @@ namespace Landscape.FoliagePipeline
         {
             internal int lod;
             internal int bucket;
-            internal int argsOffset;
+            internal int count;
             internal bool weighted;
-            internal uint[] args;
             internal int[] indices;
             internal float[] weights;
 
             internal int Count()
             {
-                return math.min((int)args[argsOffset + 1], indices.Length);
+                return math.min(count, indices.Length);
             }
         }
 
@@ -278,7 +289,7 @@ namespace Landscape.FoliagePipeline
             for (int b = 0; b < buckets.Count; ++b)
             {
                 Bucket bucket = buckets[b];
-                if (bucket.args == null || bucket.indices == null || bucket.weighted && bucket.weights == null)
+                if (bucket.indices == null || bucket.weighted && bucket.weights == null)
                 {
                     failed = true;
                     return;
@@ -347,6 +358,11 @@ namespace Landscape.FoliagePipeline
         private TreeView m_ScratchView;
         private TreeVisibilityGpu m_Gpu;
         private Camera m_ActiveCamera;
+#if UNITY_EDITOR
+        private Camera m_BoundsCamera;
+        private int[] m_BoundsLods;
+        private ulong[] m_BoundsMasks;
+#endif
         private Vector4[] m_PlaneScratch;
         private TreeVisibilityBackend m_RequestedBackend;
         private TreeVisibilityBackend m_ActualBackend = TreeVisibilityBackend.CPU;
@@ -612,7 +628,6 @@ namespace Landscape.FoliagePipeline
                 batch.depthPasses = new int[submeshCount];
                 batch.shadowPasses = new int[submeshCount];
                 batch.alphaClips = new bool[submeshCount];
-                batch.argsTemplate = new uint[5 * submeshCount];
                 for (int j = 0; j < submeshCount; ++j)
                 {
                     Material material = tree.materials[meshLodInfo.materialSlot[j]];
@@ -622,9 +637,6 @@ namespace Landscape.FoliagePipeline
                     batch.depthPasses[j] = material.FindPass("FoliageDepth");
                     batch.shadowPasses[j] = material.FindPass("FoliageShadow");
                     batch.alphaClips[j] = material.GetTag("RenderType", false) == "TransparentCutout";
-                    batch.argsTemplate[(j * 5) + 0] = mesh.GetIndexCount(j);
-                    batch.argsTemplate[(j * 5) + 2] = mesh.GetIndexStart(j);
-                    batch.argsTemplate[(j * 5) + 3] = mesh.GetBaseVertex(j);
                     if (batch.forwardPasses[j] < 0) { m_LodDither[i] = 0; }
                 }
                 if (m_LodDither[i] != 0) { m_DitherEnabled = true; }
@@ -680,6 +692,7 @@ namespace Landscape.FoliagePipeline
                 m_ActualBackend = actual;
                 DisposeViews();
 #if UNITY_EDITOR
+                m_BoundsCamera = null;
                 m_DebugSnapshot = null;
 #endif
             }
@@ -1002,7 +1015,11 @@ namespace Landscape.FoliagePipeline
                 if (!m_Gpu.IsReady) { return; }
                 try
                 {
-                    for (int lod = 0; lod < treeView.packs.Length; ++lod) { treeView.packs[lod].EnsureCapacity(m_InstanceCount); }
+                    for (int lod = 0; lod < treeView.packs.Length; ++lod)
+                    {
+                        treeView.packs[lod].EnsureGpu(m_Batches[lod], tree.meshes[m_Batches[lod].meshIndex]);
+                        treeView.packs[lod].EnsureCapacity(m_InstanceCount);
+                    }
                 }
                 catch (Exception error)
                 {
@@ -1038,7 +1055,6 @@ namespace Landscape.FoliagePipeline
                     cmdBuffer.SetBufferData(pack.indexBuffers[bucket], m_IndexScratch, range.x, 0, range.y);
                     if (weighted && bucket > 0) { cmdBuffer.SetBufferData(pack.weightBuffers[bucket - 1], m_WeightScratch, range.x, 0, range.y); }
                 }
-                pack.WriteCounts(cmdBuffer);
             }
             treeView.packedFrame = frame;
         }
@@ -1098,7 +1114,14 @@ namespace Landscape.FoliagePipeline
                 propertyBlock.SetFloat(TreeShaderID.LodFadeEnable, fadeEnable);
                 if (weightBuffer != null) { propertyBlock.SetBuffer(TreeShaderID.LodWeightBuffer, weightBuffer); }
                 if (fadeState != null) { propertyBlock.SetBuffer(TreeShaderID.FadeStateBuffer, fadeState); }
-                cmdBuffer.DrawMeshInstancedIndirect(mesh, batch.sectionIndexs[s], material, passIndex, pack.argsBuffer, pack.ArgsOffset(bucket, s), propertyBlock);
+                if (gpu)
+                {
+                    cmdBuffer.DrawMeshInstancedIndirect(mesh, batch.sectionIndexs[s], material, passIndex, pack.argsBuffer, pack.ArgsOffset(bucket, s), propertyBlock);
+                }
+                else
+                {
+                    cmdBuffer.DrawMeshInstancedProcedural(mesh, batch.sectionIndexs[s], material, passIndex, pack.counts[bucket], propertyBlock);
+                }
             }
             if (weightBuffer != null) { cmdBuffer.DisableShaderKeyword("FOLIAGE_LOD_WEIGHT"); }
             if (fadeState != null) { cmdBuffer.DisableShaderKeyword("FOLIAGE_GPU_TEMPORAL"); }
@@ -1180,20 +1203,25 @@ namespace Landscape.FoliagePipeline
                     TreeVisibilitySnapshot.Bucket captured = new TreeVisibilitySnapshot.Bucket();
                     captured.lod = m_Batches[lod].meshIndex;
                     captured.bucket = bucketIndex;
-                    captured.argsOffset = pack.ArgsOffset(bucketIndex, 0) / sizeof(uint);
+                    captured.count = gpu ? 0 : upperBound;
                     captured.weighted = treeView.fadeMode == TreeLodFadeMode.Distance && treeView.allowFade && bucketIndex != 0;
                     snapshot.buckets.Add(captured);
-                    snapshot.pending += 2;
-                    cmdBuffer.RequestAsyncReadback(pack.argsBuffer, request =>
+                    ++snapshot.pending;
+                    if (gpu)
                     {
-                        try
+                        int argsCountOffset = (pack.ArgsOffset(bucketIndex, 0) / sizeof(uint)) + 1;
+                        ++snapshot.pending;
+                        cmdBuffer.RequestAsyncReadback(pack.argsBuffer, request =>
                         {
-                            if (request.hasError) { snapshot.failed = true; }
-                            else { captured.args = request.GetData<uint>().ToArray(); }
-                        }
-                        catch (Exception) { snapshot.failed = true; }
-                        finally { snapshot.FinishRequest(); }
-                    });
+                            try
+                            {
+                                if (request.hasError) { snapshot.failed = true; }
+                                else { captured.count = (int)request.GetData<uint>()[argsCountOffset]; }
+                            }
+                            catch (Exception) { snapshot.failed = true; }
+                            finally { snapshot.FinishRequest(); }
+                        });
+                    }
                     cmdBuffer.RequestAsyncReadback(pack.indexBuffers[bucketIndex], upperBound * sizeof(int), 0, request =>
                     {
                         try
@@ -1333,6 +1361,11 @@ namespace Landscape.FoliagePipeline
             if (m_Gpu != null) { m_Gpu.Release(); m_Gpu = null; }
             m_Batches = null;
             m_ActiveCamera = null;
+#if UNITY_EDITOR
+            m_BoundsCamera = null;
+            m_BoundsLods = null;
+            m_BoundsMasks = null;
+#endif
             m_PlaneScratch = null;
             m_InstanceCount = 0;
             m_ChunkCount = 0;
@@ -1345,11 +1378,25 @@ namespace Landscape.FoliagePipeline
         }
 
 #if UNITY_EDITOR
+        public void CaptureBounds(Camera camera)
+        {
+            if (m_ActualBackend != TreeVisibilityBackend.CPU || m_ScratchView == null ||
+                m_ScratchView.camera != camera || m_ScratchView.isShadow || m_ScratchView.packedFrame != Time.frameCount) { return; }
+            if (m_BoundsLods == null || m_BoundsLods.Length != m_LodNow.Length) { m_BoundsLods = new int[m_LodNow.Length]; }
+            if (m_BoundsMasks == null || m_BoundsMasks.Length != m_ChunkMasks.Length) { m_BoundsMasks = new ulong[m_ChunkMasks.Length]; }
+            m_LodNow.CopyTo(m_BoundsLods);
+            m_ChunkMasks.CopyTo(m_BoundsMasks);
+            m_BoundsCamera = camera;
+        }
+
         public void DrawBounds(in TreeBoundsMode mode, Camera debugCamera)
         {
             if (Application.isPlaying == false || !m_Bounds.IsCreated) { return; }
             TreeVisibilitySnapshot snapshot = m_DebugSnapshot != null && m_DebugSnapshot.complete && !m_DebugSnapshot.failed ? m_DebugSnapshot : null;
-            if (debugCamera != null && (snapshot == null ? m_ActiveCamera != debugCamera : snapshot.camera != debugCamera)) { return; }
+            if (snapshot == null && mode == TreeBoundsMode.Instances && m_ActualBackend == TreeVisibilityBackend.CPU && m_BoundsCamera == null) { return; }
+            Camera targetCamera = debugCamera != null ? debugCamera : Camera.main;
+            Camera liveCamera = mode == TreeBoundsMode.Instances && m_ActualBackend == TreeVisibilityBackend.CPU ? m_BoundsCamera : m_ActiveCamera;
+            if (targetCamera != null && (snapshot == null ? liveCamera != targetCamera : snapshot.camera != targetCamera)) { return; }
             if (mode == TreeBoundsMode.Cells)
             {
                 if (boundSector == null || boundSector.sections == null) { return; }
@@ -1385,9 +1432,9 @@ namespace Landscape.FoliagePipeline
                     Geometry.DrawBound(m_Bounds[i], Color.gray);
                     continue;
                 }
-                bool visible = snapshot == null ? m_ChunkMasks.IsCreated && (m_ChunkMasks[chunk] & (1UL << bit)) != 0 :
+                bool visible = snapshot == null ? m_BoundsMasks != null && (m_BoundsMasks[chunk] & (1UL << bit)) != 0 :
                     snapshot.cpuMasks != null ? (snapshot.cpuMasks[chunk] & (1UL << bit)) != 0 : snapshot.gpuLods[i].w != 0;
-                int lod = snapshot == null ? (m_LodNow.IsCreated ? math.max(m_LodNow[i], 0) : 0) : math.max(snapshot.lods[i], 0);
+                int lod = snapshot == null ? (m_BoundsLods != null ? math.max(m_BoundsLods[i], 0) : 0) : math.max(snapshot.lods[i], 0);
                 int cell = m_InstanceCell[i];
                 Color color = !visible ? snapshot != null && snapshot.coarseCells[cell] != 0 &&
                     snapshot.terrainCells[cell] == 0 ? Color.magenta : Color.red :

@@ -28,6 +28,8 @@ URP Renderer 的 `FoliageRenderer / Settings` 给全场景提供默认值：草 
 
 **Terrain Occlusion** 在两条 backend 都可开启；**GPU HZB** 只对 GPU 生效。选择 CPU 时 HZB 控件禁用，但保存选择不会被清除。没有有效相机深度或当前投影不适合 HZB 时，GPU 继续基础可见性并显示原因，保守保留候选。强制 GPU 初始化失败时回退 CPU，仅状态变化时警告。视锥与距离剔除始终保留。
 
+树的 CPU backend 直接用已知桶数量调用 `DrawMeshInstancedProcedural`；GPU backend 继续用 args buffer 调用 `DrawMeshInstancedIndirect`。两者保留同一套 VisibleIndex、LOD 淡化和独立级联视图，CPU 不分配或上传 indirect args。Instance Bounds 在 CPU 模式下按 Debug Camera（未设时为 Main Camera）显示对应视点的 LOD 色；GPU 实时仍为灰色，按需冻结快照后才显示 GPU LOD 色。
+
 backend、淡化模式或 fade 开关改变后，下次视图更新重置该相机的目标状态，首帧硬切，避免播完旧状态或消费旧 args。Temporal 使用双视点、共享 alpha 与 fadeDuration；连续快速移动从已完成的 stable 档逐档追赶目标，每次完成相邻两档的淡化后再推进，传送／投影不连续仍硬切。GPU 在自己的状态缓冲中闭合过渡。Distance 仍使用单视点过渡带，fade index 旁存同序权重。主光 CSM 跟随所选 backend，每相机 / 每级联独立生成结果，硬切并使用自己的迟滞；不读取颜色 HZB、颜色索引或距离权重。实时阴影距离及级联仍由 URP 设置。
 
 该改动不改变 Bake 资产或矩阵布局，无需为切换 backend rebake。GPU 正常帧不读回结果；冻结诊断才读回。跨平台及实际验收状态以 [交付记录](Docs/DELIVERY.md) 为准。
