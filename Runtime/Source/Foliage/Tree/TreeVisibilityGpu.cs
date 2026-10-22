@@ -173,6 +173,14 @@ namespace Landscape.FoliagePipeline
             return hzb;
         }
 
+        internal static void Invalidate(Camera camera)
+        {
+            TreeHzb hzb = Find(camera, false);
+            if (hzb == null) { return; }
+            hzb.frame = -1;
+            hzb.reason = "LOD state reset; HZB skipped this frame.";
+        }
+
         public static void Release()
         {
             for (int i = 0; i < s_Views.Count; ++i) { s_Views[i].buffer?.Dispose(); }
@@ -206,6 +214,7 @@ namespace Landscape.FoliagePipeline
         private ComputeBuffer m_LodDither;
         private ComputeBuffer m_Heights;
         private ComputeBuffer m_Planes;
+        private readonly Vector4[] m_ShadowPlaneScratch = new Vector4[4 * MaxPlanes];
         private ComputeBuffer m_Masks;
         private ComputeBuffer m_Counts;
         private ComputeBuffer m_Changes;
@@ -297,7 +306,7 @@ namespace Landscape.FoliagePipeline
                 m_LodSizes = new ComputeBuffer(m_LodCount, sizeof(float));
                 m_LodDither = new ComputeBuffer(m_LodCount, sizeof(uint));
                 m_Heights = new ComputeBuffer(m_HeightRes > 0 ? heights.Length : 1, sizeof(float));
-                m_Planes = new ComputeBuffer(MaxPlanes, sizeof(float) * 4);
+                m_Planes = new ComputeBuffer(5 * MaxPlanes, sizeof(float) * 4);
                 m_Masks = new ComputeBuffer(bucketChunks, sizeof(uint) * 2);
                 m_Counts = new ComputeBuffer(bucketChunks, sizeof(uint));
                 m_Changes = new ComputeBuffer(m_ChunkCount, sizeof(uint));
@@ -375,22 +384,32 @@ namespace Landscape.FoliagePipeline
             m_FailureReason = reason;
         }
 
-        public void Cull(CommandBuffer cmdBuffer, TreeGpuView view, Vector4[] planes, in int planeCount,
-            in float3 origin, in float4x4 projection, in TreeViewSettings settings, TreeHzb hzb, in bool shadow)
+        public unsafe void Cull(CommandBuffer cmdBuffer, TreeGpuView view, Vector4[] planes, in int planeCount,
+            in float3 origin, in float4x4 projection, in TreeViewSettings settings, TreeHzb hzb, in FoliageView foliage)
         {
             if (!m_Ready || cmdBuffer == null) { return; }
-            bool allowFade = !shadow && settings.allowFade;
-            TreeLodFadeMode mode = shadow ? TreeLodFadeMode.Temporal : settings.fadeMode;
-            float drawDistance = shadow ? float.MaxValue : settings.cullDistance;
+            bool allowFade = settings.allowFade;
+            TreeLodFadeMode mode = settings.fadeMode;
+            float drawDistance = settings.cullDistance;
             bool reset = !view.hasInput || view.allowFade != allowFade || view.mode != mode ||
                 FoliageLogic.ViewDiscontinuous(view.lastOrigin, origin, view.lastProjection, projection, drawDistance);
             bool advance = view.advancedFrame != Time.frameCount;
             cmdBuffer.SetBufferData(m_Planes, planes, 0, 0, planeCount);
-            SetViewParams(cmdBuffer, mode, allowFade, shadow);
+            for (int c = 0; c < 4; ++c)
+            {
+                for (int p = 0; p < foliage.shadowPlaneCounts[c]; ++p)
+                {
+                    float4 plane = foliage.shadowPlanes[c * MaxPlanes + p].normalDist;
+                    m_ShadowPlaneScratch[c * MaxPlanes + p] = new Vector4(plane.x, plane.y, plane.z, plane.w);
+                }
+            }
+            cmdBuffer.SetBufferData(m_Planes, m_ShadowPlaneScratch, 0, MaxPlanes, m_ShadowPlaneScratch.Length);
+            cmdBuffer.SetComputeVectorParam(m_Shader, "_ShadowPlaneCounts", new Vector4(foliage.shadowPlaneCounts.x, foliage.shadowPlaneCounts.y, foliage.shadowPlaneCounts.z, foliage.shadowPlaneCounts.w));
+            SetViewParams(cmdBuffer, mode, allowFade, -1);
             cmdBuffer.SetComputeIntParam(m_Shader, "_CellCount", m_CellCount);
             cmdBuffer.SetComputeIntParam(m_Shader, "_PlaneCount", planeCount);
             cmdBuffer.SetComputeIntParam(m_Shader, "_HeightRes", m_HeightRes);
-            cmdBuffer.SetComputeIntParam(m_Shader, "_EnableTerrain", !shadow && (settings.occlusion & TreeOcclusionMode.Terrain) != 0 ? 1 : 0);
+            cmdBuffer.SetComputeIntParam(m_Shader, "_EnableTerrain", (settings.occlusion & TreeOcclusionMode.Terrain) != 0 ? 1 : 0);
             cmdBuffer.SetComputeIntParam(m_Shader, "_EnableHzb", hzb != null ? 1 : 0);
             cmdBuffer.SetComputeIntParam(m_Shader, "_Reset", reset ? 1 : 0);
             cmdBuffer.SetComputeIntParam(m_Shader, "_Advance", advance ? 1 : 0);
@@ -421,6 +440,7 @@ namespace Landscape.FoliagePipeline
             Bind(cmdBuffer, m_CullCells, "_Heights", m_Heights);
             Bind(cmdBuffer, m_CullCells, "_Hzb", hzbBuffer);
             cmdBuffer.DispatchCompute(m_Shader, m_CullCells, Groups(m_CellCount, 64), 1, 1);
+            Bind(cmdBuffer, m_CullInstances, "_CellBounds", m_CellBounds);
             Bind(cmdBuffer, m_CullInstances, "_Bounds", m_Bounds);
             Bind(cmdBuffer, m_CullInstances, "_InstanceCell", m_InstanceCell);
             Bind(cmdBuffer, m_CullInstances, "_CellVisible", view.cells);
@@ -456,16 +476,16 @@ namespace Landscape.FoliagePipeline
             view.advancedFrame = Time.frameCount;
         }
 
-        public void Pack(CommandBuffer cmdBuffer, TreeGpuView view, TreeLodPack[] packs, in TreeLodFadeMode fadeMode, in bool fadeAllowed, in bool shadow)
+        public void Pack(CommandBuffer cmdBuffer, TreeGpuView view, TreeLodPack[] packs, in TreeLodFadeMode fadeMode, in bool fadeAllowed, in int cascade)
         {
             if (!m_Ready || cmdBuffer == null) { return; }
-            bool allowFade = !shadow && fadeAllowed;
-            TreeLodFadeMode mode = shadow ? TreeLodFadeMode.Temporal : fadeMode;
-            int bucketCount = shadow ? 1 : FoliageLogic.LodBucketCount;
+            bool allowFade = fadeAllowed;
+            TreeLodFadeMode mode = fadeMode;
+            int bucketCount = FoliageLogic.LodBucketCount;
             int length = bucketCount * m_ChunkCount;
             bool weighted = mode == TreeLodFadeMode.Distance && allowFade;
             BuildLevels(length, m_ScanLengths);
-            SetViewParams(cmdBuffer, mode, allowFade, shadow);
+            SetViewParams(cmdBuffer, mode, allowFade, cascade);
             cmdBuffer.SetComputeIntParam(m_Shader, "_BucketCount", bucketCount);
             cmdBuffer.SetComputeIntParam(m_Shader, "_WriteWeight", weighted ? 1 : 0);
             for (int lod = 0; lod < packs.Length; ++lod)
@@ -510,14 +530,14 @@ namespace Landscape.FoliagePipeline
             }
         }
 
-        void SetViewParams(CommandBuffer cmdBuffer, in TreeLodFadeMode mode, in bool allowFade, in bool shadow)
+        void SetViewParams(CommandBuffer cmdBuffer, in TreeLodFadeMode mode, in bool allowFade, in int cascade)
         {
             cmdBuffer.SetComputeIntParam(m_Shader, "_InstanceCount", m_InstanceCount);
             cmdBuffer.SetComputeIntParam(m_Shader, "_ChunkCount", m_ChunkCount);
             cmdBuffer.SetComputeIntParam(m_Shader, "_LodCount", m_LodCount);
             cmdBuffer.SetComputeIntParam(m_Shader, "_Mode", mode == TreeLodFadeMode.Distance ? 1 : 0);
             cmdBuffer.SetComputeIntParam(m_Shader, "_AllowFade", allowFade ? 1 : 0);
-            cmdBuffer.SetComputeIntParam(m_Shader, "_Shadow", shadow ? 1 : 0);
+            cmdBuffer.SetComputeIntParam(m_Shader, "_VisibilityBit", 1 << (cascade + 1));
         }
 
         void Bind(CommandBuffer cmdBuffer, in int kernel, string name, ComputeBuffer buffer)

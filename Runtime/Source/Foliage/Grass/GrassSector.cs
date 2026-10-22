@@ -31,6 +31,7 @@ namespace Landscape.FoliagePipeline
         private DrawRun[] m_Runs;
         private int m_ForwardPass = -1;
         private int m_DepthPass = -1;
+        private int m_ShadowPass = -1;
 
         private class GrassPage
         {
@@ -410,6 +411,7 @@ namespace Landscape.FoliagePipeline
             Material material = grass.materials[0];
             m_ForwardPass = material.FindPass("ForwardLit-Instance");
             m_DepthPass = material.FindPass("FoliageDepth");
+            m_ShadowPass = material.FindPass("FoliageShadow");
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -457,7 +459,7 @@ namespace Landscape.FoliagePipeline
         public void Draw(CommandBuffer cmdBuffer, MaterialPropertyBlock block, byte[] visibleMap, in int numSection, in FoliageDrawPass pass)
         {
             if (!m_Resident) { return; }
-            int passIndex = pass == FoliageDrawPass.PreZ ? m_DepthPass : pass == FoliageDrawPass.Forward ? m_ForwardPass : -1;
+            int passIndex = pass == FoliageDrawPass.PreZ ? m_DepthPass : pass == FoliageDrawPass.Forward ? m_ForwardPass : m_ShadowPass;
             if (passIndex < 0) { return; }
             if (pass == FoliageDrawPass.Forward) { FoliageAmbientSH.Bind(block); }
             m_Base.Draw(cmdBuffer, block, visibleMap, m_Runs, numSection, passIndex);

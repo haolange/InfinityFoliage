@@ -212,7 +212,7 @@ Shader "Landscape/Grass"
 
 				//Surface
 				float4 baseColor = _AlbedoTexture.Sample(sampler_AlbedoTexture, input.uv0);
-				clip(baseColor.a - _AlphaThreshold);
+				clip(baseColor.a > 0.0 ? baseColor.a - _AlphaThreshold : -1.0);
 
 				float3 variantColor = lerp(lerp(_BottomTint.rgb, _TopTint.rgb, input.uv0.y), _TintVariation.rgb, input.noise.x);
 				variantColor = lerp(variantColor, _DarkTint.rgb, input.noise.y);
@@ -323,7 +323,7 @@ Shader "Landscape/Grass"
 
 				//Surface
 				float4 baseColor = _AlbedoTexture.Sample(sampler_AlbedoTexture, input.uv0);
-				clip(baseColor.a - _AlphaThreshold);
+				clip(baseColor.a > 0.0 ? baseColor.a - _AlphaThreshold : -1.0);
 
 				float3 variantColor = lerp(lerp(_BottomTint.rgb, _TopTint.rgb, input.uv0.y), _TintVariation.rgb, input.noise.x);
 				variantColor = lerp(variantColor, _DarkTint.rgb, input.noise.y);
@@ -404,8 +404,57 @@ Shader "Landscape/Grass"
             float4 frag(Varyings input) : SV_Target
             {
                 float4 baseColor = _AlbedoTexture.Sample(sampler_AlbedoTexture, input.uv0);
-                clip(baseColor.a - _AlphaThreshold);
+                clip(baseColor.a > 0.0 ? baseColor.a - _AlphaThreshold : -1.0);
                 return float4(0, 0, 0, baseColor.a);
+            }
+            ENDHLSL
+        }
+
+        Pass
+        {
+            Name "FoliageShadow"
+            Tags { "LightMode" = "FoliageShadow" }
+            Cull Off ZTest LEqual ZWrite On
+            AlphaToMask Off
+
+            HLSLPROGRAM
+            #pragma target 4.5
+            #pragma vertex vert
+            #pragma fragment frag
+
+            float3 _LightDirection;
+
+            struct Attributes
+            {
+                uint instanceId : SV_InstanceID;
+                float2 uv0 : TEXCOORD0;
+                float3 normalOS : NORMAL;
+                float4 vertexOS : POSITION;
+            };
+
+            struct Varyings
+            {
+                float2 uv0 : TEXCOORD0;
+                float4 vertexCS : SV_POSITION;
+            };
+
+            Varyings vert(Attributes input)
+            {
+                Varyings output;
+                float3 worldPos, objectPos, terrainNormal;
+                GrassInstancePosition(input.instanceId, input.vertexOS, input.uv0, worldPos, objectPos, terrainNormal);
+                GrassElement element = _GrassElementBuffer[input.instanceId + _InstanceOffset];
+                float3 normalWS = TransformFoliageNormal(element.matrix_World, input.normalOS);
+                output.uv0 = input.uv0;
+                output.vertexCS = ApplyShadowClamping(mul(UNITY_MATRIX_VP, float4(ApplyShadowBias(worldPos, normalWS, _LightDirection), 1)));
+                return output;
+            }
+
+            float4 frag(Varyings input) : SV_Target
+            {
+                float alpha = _AlbedoTexture.Sample(sampler_AlbedoTexture, input.uv0).a;
+                clip(alpha > 0.0 ? alpha - _AlphaThreshold : -1.0);
+                return 0;
             }
             ENDHLSL
         }
@@ -415,6 +464,7 @@ Shader "Landscape/Grass"
             Name "Shadowmap"
 			Tags { "LightMode" = "ShadowCaster" }
 			Cull Off ZTest LEqual ZWrite On 
+            AlphaToMask Off
 
             HLSLPROGRAM
 			#pragma target 4.5
@@ -512,7 +562,7 @@ Shader "Landscape/Grass"
 				UNITY_SETUP_INSTANCE_ID(input);
 
 				float alpha = _AlbedoTexture.Sample(sampler_AlbedoTexture, input.uv0).a;
-				clip(alpha - _AlphaThreshold);
+				clip(alpha > 0.0 ? alpha - _AlphaThreshold : -1.0);
 				return 0;
 			}
             ENDHLSL

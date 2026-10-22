@@ -40,6 +40,7 @@ namespace Landscape.FoliagePipeline
         public bool drawTrees = true;
         public bool treePreZ = true;
         public bool castTreeMainShadows = true;
+        public bool castGrassMainShadows = false;
         [Min(0f)] public float grassDistanceScale = 1f;
         [Min(0f)] public float treeDistanceScale = 1f;
 
@@ -78,6 +79,26 @@ namespace Landscape.FoliagePipeline
         }
     }
 
+    internal class FoliageCameraData : ContextItem
+    {
+        private static int s_NextRenderId;
+        internal int renderId;
+        internal bool prepared;
+        internal Plane[][] shadowPlanes;
+
+        internal void Initialize()
+        {
+            if (renderId == 0) { renderId = ++s_NextRenderId; }
+        }
+
+        public override void Reset()
+        {
+            renderId = 0;
+            prepared = false;
+            shadowPlanes = null;
+        }
+    }
+
     internal unsafe class FoliagePass : ScriptableRenderPass
     {
         private readonly FoliageRenderSettings m_Settings;
@@ -93,8 +114,8 @@ namespace Landscape.FoliagePipeline
         {
             internal FoliageRenderSettings settings;
             internal FoliageDrawPass pass;
-            internal bool cullAndPack;
             internal Camera camera;
+            internal FoliageCameraData foliage;
             internal TextureHandle color;
             internal TextureHandle depth;
             internal TextureHandle cameraDepth;
@@ -114,8 +135,9 @@ namespace Landscape.FoliagePipeline
             {
                 passData.settings = m_Settings;
                 passData.pass = m_Pass;
-                passData.cullAndPack = m_Pass == FoliageDrawPass.PreZ || !m_Settings.treePreZ;
                 passData.camera = camera;
+                passData.foliage = frameData.GetOrCreate<FoliageCameraData>();
+                passData.foliage.Initialize();
                 passData.color = resourceData.activeColorTexture;
                 passData.depth = resourceData.activeDepthTexture;
                 passData.cameraDepth = resourceData.cameraDepthTexture;
@@ -133,13 +155,14 @@ namespace Landscape.FoliagePipeline
                     RTHandle cameraDepth = data.pass == FoliageDrawPass.Forward && data.cameraDepth.IsValid() ? (RTHandle)data.cameraDepth : null;
                     bool renderIntoTexture = cameraDepth != null && context.GetTextureUVOrigin(data.cameraDepth) == TextureUVOrigin.BottomLeft;
                     Matrix4x4 depthViewProj = GL.GetGPUProjectionMatrix(data.cameraProjection, renderIntoTexture) * data.cameraView;
-                    ExecuteFoliage(cmdBuffer, data.camera, cameraDepth, depthViewProj, data.settings, data.pass, data.cullAndPack);
+                    ExecuteFoliage(cmdBuffer, data.camera, cameraDepth, depthViewProj, data.settings, data.pass, data.foliage, false);
                 });
             }
         }
 
-        private static void ExecuteFoliage(CommandBuffer cmdBuffer, Camera camera, RTHandle cameraDepth, in Matrix4x4 depthViewProj, FoliageRenderSettings settings, in FoliageDrawPass pass, in bool cullAndPack)
+        internal static void ExecuteFoliage(CommandBuffer cmdBuffer, Camera camera, RTHandle cameraDepth, in Matrix4x4 depthViewProj, FoliageRenderSettings settings, in FoliageDrawPass pass, FoliageCameraData foliage, bool prepareOnly)
         {
+            bool cullAndPack = !foliage.prepared;
             float3 viewOrigin = camera.transform.position;
             for (int i = 0; i < FoliageComponent.FoliageComponents.Count; ++i)
             {
@@ -149,138 +172,163 @@ namespace Landscape.FoliagePipeline
             }
             FoliageResidency.UpdateView(camera, viewOrigin, settings);
             var planes = new NativeArray<FrustumPlane>(6, Allocator.TempJob);
+            var shadowPlanes = new NativeArray<FrustumPlane>(4 * TreeVisibilityGpu.MaxPlanes, Allocator.TempJob);
+            int4 shadowCounts = default;
+            if (foliage.shadowPlanes != null)
+            {
+                for (int c = 0; c < foliage.shadowPlanes.Length; ++c)
+                {
+                    shadowCounts[c] = math.min(foliage.shadowPlanes[c].Length, TreeVisibilityGpu.MaxPlanes);
+                    for (int p = 0; p < shadowCounts[c]; ++p) { shadowPlanes[c * TreeVisibilityGpu.MaxPlanes + p] = foliage.shadowPlanes[c][p]; }
+                }
+            }
             var taskHandles = new NativeList<JobHandle>(256, Allocator.Temp);
             var sectorsBound = new NativeArray<Aabb>(FoliageComponent.FoliageComponents.Count, Allocator.TempJob);
             var boundsVisible = new NativeArray<byte>(FoliageComponent.FoliageComponents.Count, Allocator.TempJob);
 
-            camera.TryGetCullingParameters(false, out var cullingParams);
-            for (var i = 0; i < 6; ++i)
+            try
             {
-                planes[i] = cullingParams.cameraProperties.GetCameraCullingPlane(i);
-            }
-
-            FrustumPlane* planesPtr = (FrustumPlane*)planes.GetUnsafePtr();
-            var matrixProj = Geometry.GetLodProjectionMatrix(camera);
-            float near = camera.nearClipPlane;
-            float far = camera.farClipPlane;
-            float invNear = Mathf.Approximately(near, 0f) ? 0f : 1f / near;
-            float invFar = Mathf.Approximately(far, 0f) ? 0f : 1f / far;
-            float zc0 = 1f - far * invNear;
-            float zc1 = far * invNear;
-            Vector4 zParams = new Vector4(zc0, zc1, zc0 * invFar, zc1 * invFar);
-            if (SystemInfo.usesReversedZBuffer)
-            {
-                zParams.y += zParams.x;
-                zParams.x = -zParams.x;
-                zParams.w += zParams.z;
-                zParams.z = -zParams.z;
-            }
-
-            #region BoxCull
-            for (int i = 0; i < sectorsBound.Length; ++i)
-            {
-                FoliageComponent component = FoliageComponent.FoliageComponents[i];
-                sectorsBound[i] = component == null || component.boundSector == null ? default : component.boundSector.bound;
-            }
-
-            if (sectorsBound.Length < 8)
-            {
-                var sectorCullingJob = new BoundCullingJob();
+                camera.TryGetCullingParameters(false, out var cullingParams);
+                for (var i = 0; i < 6; ++i)
                 {
-                    sectorCullingJob.planes = planesPtr;
-                    sectorCullingJob.length = sectorsBound.Length;
-                    sectorCullingJob.visibleMap = boundsVisible;
-                    sectorCullingJob.sectorBounds = (Aabb*)sectorsBound.GetUnsafePtr();
+                    planes[i] = cullingParams.cameraProperties.GetCameraCullingPlane(i);
                 }
-                sectorCullingJob.Run();
-            }
-            else
-            {
-                var sectorCullingJob = new BoundCullingParallelJob();
+
+                FrustumPlane* planesPtr = (FrustumPlane*)planes.GetUnsafePtr();
+                var matrixProj = Geometry.GetLodProjectionMatrix(camera);
+                float near = camera.nearClipPlane;
+                float far = camera.farClipPlane;
+                float invNear = Mathf.Approximately(near, 0f) ? 0f : 1f / near;
+                float invFar = Mathf.Approximately(far, 0f) ? 0f : 1f / far;
+                float zc0 = 1f - far * invNear;
+                float zc1 = far * invNear;
+                Vector4 zParams = new Vector4(zc0, zc1, zc0 * invFar, zc1 * invFar);
+                if (SystemInfo.usesReversedZBuffer)
                 {
-                    sectorCullingJob.planes = planesPtr;
-                    sectorCullingJob.visibleMap = boundsVisible;
-                    sectorCullingJob.sectorBounds = (Aabb*)sectorsBound.GetUnsafePtr();
+                    zParams.y += zParams.x;
+                    zParams.x = -zParams.x;
+                    zParams.w += zParams.z;
+                    zParams.z = -zParams.z;
                 }
-                sectorCullingJob.Schedule(sectorsBound.Length, 8).Complete();
-            }
-            for (int i = 0; i < sectorsBound.Length; ++i)
-            {
-                FoliageComponent component = FoliageComponent.FoliageComponents[i];
-                if (component == null || component.boundSector == null) { boundsVisible[i] = 0; }
-            }
-            #endregion
 
-            FoliageView view = default;
-            view.camera = camera;
-            view.cascade = -1;
-            view.origin = viewOrigin;
-            view.lodProjection = matrixProj;
-            view.planes = planesPtr;
-            view.planeCount = planes.Length;
-
-            #region Cull
-            if (cullAndPack)
-            {
+                #region BoxCull
                 for (int i = 0; i < sectorsBound.Length; ++i)
                 {
                     FoliageComponent component = FoliageComponent.FoliageComponents[i];
-                    if (component == null || component.boundSector == null || !ShouldDraw(component, settings)) { continue; }
-                    if (boundsVisible[i] == 0 && component.foliageType != EFoliageType.Grass) { continue; }
-                    component.Cull(cmdBuffer, view, taskHandles);
+                    sectorsBound[i] = component == null || component.boundSector == null ? default : component.boundSector.bound;
                 }
-                JobHandle.CompleteAll(taskHandles.AsArray());
-                taskHandles.Clear();
-            }
-            #endregion
 
-            #region Pack
-            if (cullAndPack)
-            {
-                for (int i = 0; i < sectorsBound.Length; ++i)
+                if (sectorsBound.Length < 8)
                 {
-                    FoliageComponent component = FoliageComponent.FoliageComponents[i];
-                    if (component == null || component.boundSector == null) { continue; }
-                    if (component.foliageType != EFoliageType.Grass && (boundsVisible[i] == 0 || !ShouldDraw(component, settings))) { continue; }
-                    component.Pack(cmdBuffer, view);
-                }
-            }
-            #endregion
-
-            #region Draw
-            using (new ProfilingScope(cmdBuffer, ProfilingSampler.Get(EFoliageSamplerId.FoliageBatch)))
-            {
-                for (int i = 0; i < sectorsBound.Length; ++i)
-                {
-                    if (boundsVisible[i] == 0 || FoliageComponent.FoliageComponents[i] == null || FoliageComponent.FoliageComponents[i].boundSector == null) { continue; }
-                    if (!ShouldDraw(FoliageComponent.FoliageComponents[i], settings)) { continue; }
-                    FoliageComponent.FoliageComponents[i].Draw(cmdBuffer, view, pass);
-#if UNITY_EDITOR
-                    if (pass == FoliageDrawPass.Forward && FoliageComponent.FoliageComponents[i] is TreeComponent tree)
+                    var sectorCullingJob = new BoundCullingJob();
                     {
-                        tree.CaptureVisibilitySnapshot(cmdBuffer, camera);
+                        sectorCullingJob.planes = planesPtr;
+                        sectorCullingJob.length = sectorsBound.Length;
+                        sectorCullingJob.visibleMap = boundsVisible;
+                        sectorCullingJob.sectorBounds = (Aabb*)sectorsBound.GetUnsafePtr();
                     }
-#endif
+                    sectorCullingJob.Run();
                 }
-            }
-            if (pass == FoliageDrawPass.Forward)
-            {
-                bool buildHzb = false;
-                for (int i = 0; i < FoliageComponent.FoliageComponents.Count; ++i)
+                else
                 {
-                    TreeComponent tree = FoliageComponent.FoliageComponents[i] as TreeComponent;
-                    if (tree != null && tree.UsesHzb(settings)) { buildHzb = true; break; }
+                    var sectorCullingJob = new BoundCullingParallelJob();
+                    {
+                        sectorCullingJob.planes = planesPtr;
+                        sectorCullingJob.visibleMap = boundsVisible;
+                        sectorCullingJob.sectorBounds = (Aabb*)sectorsBound.GetUnsafePtr();
+                    }
+                    sectorCullingJob.Schedule(sectorsBound.Length, 8).Complete();
                 }
-                if (buildHzb) { TreeHzb.Build(cmdBuffer, camera, cameraDepth, zParams, depthViewProj); }
+                for (int i = 0; i < sectorsBound.Length; ++i)
+                {
+                    FoliageComponent component = FoliageComponent.FoliageComponents[i];
+                    if (component == null || component.boundSector == null) { boundsVisible[i] = 0; }
+                }
+                #endregion
+
+                FoliageView view = default;
+                view.camera = camera;
+                view.cascade = -1;
+                view.origin = viewOrigin;
+                view.lodProjection = matrixProj;
+                view.planes = planesPtr;
+                view.planeCount = planes.Length;
+                view.renderId = foliage.renderId;
+                view.shadowPlanes = (FrustumPlane*)shadowPlanes.GetUnsafeReadOnlyPtr();
+                view.shadowPlaneCounts = shadowCounts;
+
+                #region Cull
+                if (cullAndPack)
+                {
+                    for (int i = 0; i < sectorsBound.Length; ++i)
+                    {
+                        FoliageComponent component = FoliageComponent.FoliageComponents[i];
+                        if (component == null || component.boundSector == null || !ShouldDraw(component, settings)) { continue; }
+                        if (boundsVisible[i] == 0 && component.foliageType != EFoliageType.Grass && foliage.shadowPlanes == null) { continue; }
+                        component.Cull(cmdBuffer, view, taskHandles);
+                    }
+                    JobHandle.CompleteAll(taskHandles.AsArray());
+                    taskHandles.Clear();
+                }
+                #endregion
+
+                #region Pack
+                if (cullAndPack)
+                {
+                    for (int i = 0; i < sectorsBound.Length; ++i)
+                    {
+                        FoliageComponent component = FoliageComponent.FoliageComponents[i];
+                        if (component == null || component.boundSector == null) { continue; }
+                        if (component.foliageType != EFoliageType.Grass && ((boundsVisible[i] == 0 && foliage.shadowPlanes == null) || !ShouldDraw(component, settings))) { continue; }
+                        component.Pack(cmdBuffer, view);
+                    }
+                }
+                #endregion
+
+                foliage.prepared = true;
+                #region Draw
+                if (!prepareOnly)
+                {
+                using (new ProfilingScope(cmdBuffer, ProfilingSampler.Get(EFoliageSamplerId.FoliageBatch)))
+                {
+                    for (int i = 0; i < sectorsBound.Length; ++i)
+                    {
+                        if (boundsVisible[i] == 0 || FoliageComponent.FoliageComponents[i] == null || FoliageComponent.FoliageComponents[i].boundSector == null) { continue; }
+                        if (!ShouldDraw(FoliageComponent.FoliageComponents[i], settings)) { continue; }
+                        FoliageComponent.FoliageComponents[i].Draw(cmdBuffer, view, pass);
+    #if UNITY_EDITOR
+                        if (pass == FoliageDrawPass.Forward && FoliageComponent.FoliageComponents[i] is TreeComponent tree)
+                        {
+                            tree.CaptureVisibilitySnapshot(cmdBuffer, camera);
+                        }
+    #endif
+                    }
+                }
+                if (pass == FoliageDrawPass.Forward)
+                {
+                    bool buildHzb = false;
+                    for (int i = 0; i < FoliageComponent.FoliageComponents.Count; ++i)
+                    {
+                        TreeComponent tree = FoliageComponent.FoliageComponents[i] as TreeComponent;
+                        if (tree != null && tree.UsesHzb(settings)) { buildHzb = true; break; }
+                    }
+                    if (buildHzb) { TreeHzb.Build(cmdBuffer, camera, cameraDepth, zParams, depthViewProj); }
+                }
+                #endregion
+
+                }
             }
-            #endregion
-
-            planes.Dispose();
-            taskHandles.Dispose();
-            sectorsBound.Dispose();
-            boundsVisible.Dispose();
-
+            finally
+            {
+                JobHandle.CompleteAll(taskHandles.AsArray());
+                shadowPlanes.Dispose();
+                planes.Dispose();
+                taskHandles.Dispose();
+                sectorsBound.Dispose();
+                boundsVisible.Dispose();
+            }
         }
+
 
         private static bool ShouldDraw(FoliageComponent component, FoliageRenderSettings settings)
         {
@@ -321,6 +369,7 @@ namespace Landscape.FoliagePipeline
         {
             internal FoliageRenderSettings settings;
             internal Camera camera;
+            internal FoliageCameraData foliage;
             internal TextureHandle shadow;
             internal ShadowSliceData[] slices;
             internal Plane[][] planes;
@@ -338,12 +387,20 @@ namespace Landscape.FoliagePipeline
         public override void RecordRenderGraph(RenderGraph renderGraph, ContextContainer frameData)
         {
             if (!Application.isPlaying) { return; }
-            if (!m_Settings.drawTrees) { return; }
+            if (!m_Settings.drawTrees && !m_Settings.drawGrass) { return; }
             bool hasTreeCaster = false;
             for (int i = 0; i < FoliageComponent.FoliageComponents.Count; ++i)
             {
                 TreeComponent tree = FoliageComponent.FoliageComponents[i] as TreeComponent;
-                if (tree != null && tree.CastMainShadows(m_Settings)) { hasTreeCaster = true; break; }
+                if (tree != null && m_Settings.drawTrees && tree.CastMainShadows(m_Settings)) { hasTreeCaster = true; break; }
+            }
+            if (!hasTreeCaster && m_Settings.drawGrass)
+            {
+                for (int i = 0; i < FoliageComponent.FoliageComponents.Count; ++i)
+                {
+                    GrassComponent grass = FoliageComponent.FoliageComponents[i] as GrassComponent;
+                    if (grass != null && grass.CastMainShadows(m_Settings)) { hasTreeCaster = true; break; }
+                }
             }
             if (!hasTreeCaster) { return; }
             var resourceData = frameData.Get<UniversalResourceData>();
@@ -398,6 +455,9 @@ namespace Landscape.FoliagePipeline
             {
                 passData.settings = m_Settings;
                 passData.camera = cameraData.camera;
+                passData.foliage = frameData.GetOrCreate<FoliageCameraData>();
+                passData.foliage.Initialize();
+                passData.foliage.shadowPlanes = planes;
                 passData.shadow = shadowTexture;
                 passData.slices = slices;
                 passData.planes = planes;
@@ -425,6 +485,7 @@ namespace Landscape.FoliagePipeline
                         else if (component is GrassComponent grass) { grass.SetRenderSettings(data.settings); }
                     }
                     FoliageResidency.UpdateView(data.camera, data.camera.transform.position, data.settings);
+                    FoliagePass.ExecuteFoliage(cmdBuffer, data.camera, null, Matrix4x4.identity, data.settings, FoliageDrawPass.Forward, data.foliage, true);
                     for (int cascade = 0; cascade < data.cascadeCount; ++cascade)
                     {
                         ShadowSliceData slice = data.slices[cascade];
@@ -433,7 +494,7 @@ namespace Landscape.FoliagePipeline
                         cmdBuffer.SetGlobalDepthBias(1f, 2.5f);
                         VisibleLight light = data.light;
                         ShadowUtils.SetupShadowCasterConstantBuffer(cmdBuffer, ref light, data.biases[cascade]);
-                        ExecuteCascade(cmdBuffer, data.camera, cascade, data.planes[cascade], data.settings);
+                        ExecuteCascade(cmdBuffer, data.camera, cascade, data.planes[cascade], data.settings, data.foliage.renderId);
                     }
                     if (data.ownsShadowAtlas) { SetupShadowReceiver(cmdBuffer, data); }
                     cmdBuffer.SetGlobalDepthBias(0f, 0f);
@@ -443,7 +504,7 @@ namespace Landscape.FoliagePipeline
             }
         }
 
-        private static unsafe void ExecuteCascade(CommandBuffer cmdBuffer, Camera camera, in int cascade, Plane[] sourcePlanes, FoliageRenderSettings settings)
+        private static unsafe void ExecuteCascade(CommandBuffer cmdBuffer, Camera camera, in int cascade, Plane[] sourcePlanes, FoliageRenderSettings settings, int renderId)
         {
             if (camera == null || sourcePlanes == null || sourcePlanes.Length == 0) { return; }
             int count = math.min(sourcePlanes.Length, TreeVisibilityGpu.MaxPlanes);
@@ -454,6 +515,7 @@ namespace Landscape.FoliagePipeline
                 for (int i = 0; i < count; ++i) { planes[i] = sourcePlanes[i]; }
                 FoliageView view = default;
                 view.camera = camera;
+                view.renderId = renderId;
                 view.cascade = cascade;
                 view.origin = camera.transform.position;
                 view.lodProjection = Geometry.GetLodProjectionMatrix(camera);
@@ -481,6 +543,14 @@ namespace Landscape.FoliagePipeline
                     TreeComponent tree = FoliageComponent.FoliageComponents[i] as TreeComponent;
                     if (tree == null || !settings.drawTrees || !tree.CastMainShadows(settings)) { continue; }
                     tree.Draw(cmdBuffer, view, FoliageDrawPass.Shadow);
+                }
+                if (settings.drawGrass)
+                {
+                    for (int i = 0; i < componentCount; ++i)
+                    {
+                        GrassComponent grass = FoliageComponent.FoliageComponents[i] as GrassComponent;
+                        if (grass != null && grass.CastMainShadows(settings)) { grass.Draw(cmdBuffer, view, FoliageDrawPass.Shadow); }
+                    }
                 }
             }
             finally
@@ -687,6 +757,10 @@ namespace Landscape.FoliagePipeline
         protected override void Dispose(bool disposing)
         {
             TreeHzb.Release();
+            for (int i = 0; i < FoliageComponent.FoliageComponents.Count; ++i)
+            {
+                if (FoliageComponent.FoliageComponents[i] is TreeComponent tree) { tree.ReleaseRendererViews(); }
+            }
         }
     }
 }

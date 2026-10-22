@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Runtime.InteropServices;
 using System.Runtime.CompilerServices;
@@ -144,6 +144,12 @@ namespace Landscape.FoliagePipeline
         public int cascade;
         public TreeLodPack[] packs;
         public TreeGpuView gpu;
+        public NativeArray<int> currentLods;
+        public NativeArray<uint> visibility;
+        public NativeArray<ulong> sharedMasks;
+        public NativeArray<float> sharedWeights;
+        public int renderId;
+        public int packedRender = -1;
         public NativeArray<int> lodHold;
         public NativeArray<int> lodStable;
         public NativeArray<float> fadeState;
@@ -172,7 +178,7 @@ namespace Landscape.FoliagePipeline
         {
             camera = viewCamera;
             cascade = viewCascade;
-            int bucketCount = isShadow ? 1 : FoliageLogic.LodBucketCount;
+            int bucketCount = FoliageLogic.LodBucketCount;
             packs = new TreeLodPack[batches.Count];
             try
             {
@@ -192,14 +198,34 @@ namespace Landscape.FoliagePipeline
         public void EnsureCpu(in int instanceCount)
         {
             if (lodStable.IsCreated) { return; }
-            lodStable = new NativeArray<int>(instanceCount, Allocator.Persistent);
-            if (!isShadow)
+            try
             {
+                lodStable = new NativeArray<int>(instanceCount, Allocator.Persistent);
+                currentLods = new NativeArray<int>(instanceCount, Allocator.Persistent);
+                visibility = new NativeArray<uint>(instanceCount, Allocator.Persistent);
+                sharedWeights = new NativeArray<float>(instanceCount, Allocator.Persistent);
+                sharedMasks = new NativeArray<ulong>(FoliageLogic.VisibilityChunkCount(instanceCount) * packs.Length * FoliageLogic.LodBucketCount, Allocator.Persistent);
                 lodHold = new NativeArray<int>(instanceCount, Allocator.Persistent);
                 fadeState = new NativeArray<float>(3, Allocator.Persistent);
                 fadeState[0] = 1f;
+                ResetLods();
             }
-            ResetLods();
+            catch
+            {
+                DisposeCpu();
+                throw;
+            }
+        }
+
+        void DisposeCpu()
+        {
+            if (lodHold.IsCreated) { lodHold.Dispose(); }
+            if (lodStable.IsCreated) { lodStable.Dispose(); }
+            if (fadeState.IsCreated) { fadeState.Dispose(); }
+            if (visibility.IsCreated) { visibility.Dispose(); }
+            if (currentLods.IsCreated) { currentLods.Dispose(); }
+            if (sharedMasks.IsCreated) { sharedMasks.Dispose(); }
+            if (sharedWeights.IsCreated) { sharedWeights.Dispose(); }
         }
 
         public void EnsureGpu(in int instanceCount, in int cellCount)
@@ -226,9 +252,7 @@ namespace Landscape.FoliagePipeline
             }
             gpu?.Dispose();
             gpu = null;
-            if (lodHold.IsCreated) { lodHold.Dispose(); }
-            if (lodStable.IsCreated) { lodStable.Dispose(); }
-            if (fadeState.IsCreated) { fadeState.Dispose(); }
+            DisposeCpu();
         }
     }
 
@@ -759,6 +783,16 @@ namespace Landscape.FoliagePipeline
             return view;
         }
 
+        internal void ReleaseViews()
+        {
+            m_CullHandle.Complete();
+            DisposeViews();
+#if UNITY_EDITOR
+            m_DebugSnapshot = null;
+            m_BoundsCamera = null;
+#endif
+        }
+
         void DisposeViews()
         {
             m_ScratchView = null;
@@ -777,6 +811,25 @@ namespace Landscape.FoliagePipeline
                 m_OcclusionMode = settings.occlusion;
             }
 
+            if (view.isShadow)
+            {
+                TreeView owner = FindView(view.camera, -1);
+                if (owner == null || owner.renderId != view.renderId) { return; }
+                TreeView caster = GetView(view.camera, view.cascade);
+                caster.renderId = view.renderId;
+                caster.allowFade = owner.allowFade;
+                caster.fadeMode = owner.fadeMode;
+                caster.culledFrame = Time.frameCount;
+                if (m_ActualBackend == TreeVisibilityBackend.CPU)
+                {
+                    JobHandle filtered = FilterMasks(owner, view.cascade, default);
+                    m_CullHandle = ScheduleCompact(owner.fadeMode == TreeLodFadeMode.Distance, filtered, owner.sharedWeights);
+                    m_ScratchView = caster;
+                    taskHandles.Add(m_CullHandle);
+                }
+                return;
+            }
+
             if (m_ActualBackend == TreeVisibilityBackend.GPU)
             {
                 TreeView gpuView;
@@ -790,6 +843,7 @@ namespace Landscape.FoliagePipeline
                     m_Gpu.Fail("Tree GPU view allocation failed: " + error.Message);
                     return;
                 }
+                gpuView.renderId = view.renderId;
                 CullGpu(cmdBuffer, gpuView, view, settings);
                 return;
             }
@@ -797,7 +851,8 @@ namespace Landscape.FoliagePipeline
             EnsureCpu();
             TreeView treeView = GetView(view.camera, view.cascade);
             treeView.EnsureCpu(m_InstanceCount);
-            m_CullHandle = view.isShadow ? ScheduleShadowCull(treeView, view, settings) : ScheduleColorCull(treeView, view, settings);
+            treeView.renderId = view.renderId;
+            m_CullHandle = ScheduleColorCull(treeView, view, settings);
             m_ScratchView = treeView;
             treeView.culledFrame = Time.frameCount;
             taskHandles.Add(m_CullHandle);
@@ -815,6 +870,7 @@ namespace Landscape.FoliagePipeline
             treeView.distanceReset = firstMode || fadeChanged || modeChanged;
             if (treeView.distanceReset)
             {
+                TreeHzb.Invalidate(view.camera);
                 treeView.ResetLods();
 #if UNITY_EDITOR
                 m_DebugSnapshot = null;
@@ -870,6 +926,10 @@ namespace Landscape.FoliagePipeline
 
             var cullLodJob = new TreeCullLodJob();
             {
+                cullLodJob.shadowPlanes = view.shadowPlanes;
+                cullLodJob.shadowPlaneCounts = view.shadowPlaneCounts;
+                cullLodJob.sections = boundSector.nativeSections;
+                cullLodJob.visibility = treeView.visibility;
                 cullLodJob.maxDistance = settings.cullDistance;
                 cullLodJob.viewOrigin = view.origin;
                 cullLodJob.lodHoldOrigin = treeView.holdOrigin;
@@ -943,36 +1003,41 @@ namespace Landscape.FoliagePipeline
                 }
                 handle = emitJob.Schedule(handle);
             }
+            var cacheJob = new TreeCacheMasksJob();
+            {
+                cacheJob.sourceLods = m_LodNow;
+                cacheJob.lods = treeView.currentLods;
+                cacheJob.source = m_BucketMasks;
+                cacheJob.sourceWeights = m_LodWeight;
+                cacheJob.masks = treeView.sharedMasks;
+                cacheJob.weights = treeView.sharedWeights;
+            }
+            handle = cacheJob.Schedule(handle);
+            handle = FilterMasks(treeView, -1, handle);
             return ScheduleCompact(distanceMode, handle);
         }
 
-        unsafe JobHandle ScheduleShadowCull(TreeView treeView, in FoliageView view, in TreeViewSettings settings)
+        JobHandle FilterMasks(TreeView owner, in int cascade, in JobHandle dependsOn)
         {
-            var shadowCullJob = new TreeShadowCullJob();
+            var filterJob = new TreeFilterMasksJob();
             {
-                shadowCullJob.planeCount = view.planeCount;
-                shadowCullJob.origin = view.origin;
-                shadowCullJob.projection = view.lodProjection;
-                shadowCullJob.hysteresis = math.clamp(settings.lodHysteresis, 0f, 0.5f);
-                shadowCullJob.planes = view.planes;
-                shadowCullJob.sections = boundSector.nativeSections;
-                shadowCullJob.cells = m_Cells;
-                shadowCullJob.bounds = m_Bounds;
-                shadowCullJob.lodScreenSizes = m_LodScreenSizes;
-                shadowCullJob.lodStable = treeView.lodStable;
-                shadowCullJob.bucketMasks = m_BucketMasks;
+                filterJob.visibilityBit = 1u << (cascade + 1);
+                filterJob.visibility = owner.visibility;
+                filterJob.source = owner.sharedMasks;
+                filterJob.masks = m_BucketMasks;
+                filterJob.chunks = m_ChunkMasks;
             }
-            return ScheduleCompact(false, shadowCullJob.Schedule());
+            return filterJob.Schedule(dependsOn);
         }
 
-        JobHandle ScheduleCompact(in bool weighted, in JobHandle dependsOn)
+        JobHandle ScheduleCompact(in bool weighted, in JobHandle dependsOn, NativeArray<float> weights = default)
         {
             var compactJob = new TreeCompactJob();
             {
                 compactJob.instanceCount = m_InstanceCount;
                 compactJob.weighted = weighted ? 1 : 0;
                 compactJob.bucketMasks = m_BucketMasks;
-                compactJob.candidateWeights = m_LodWeight;
+                compactJob.candidateWeights = weights.IsCreated ? weights : m_LodWeight;
                 compactJob.indices = m_IndexScratch;
                 compactJob.weights = m_WeightScratch;
                 compactJob.ranges = m_Ranges;
@@ -982,8 +1047,16 @@ namespace Landscape.FoliagePipeline
 
         unsafe void CullGpu(CommandBuffer cmdBuffer, TreeView treeView, in FoliageView view, in TreeViewSettings settings)
         {
-            treeView.allowFade = !view.isShadow && settings.allowFade;
-            treeView.fadeMode = view.isShadow ? TreeLodFadeMode.Temporal : settings.fadeMode;
+            if (!treeView.hasMode || treeView.allowFade != settings.allowFade || treeView.fadeMode != settings.fadeMode)
+            {
+                TreeHzb.Invalidate(view.camera);
+#if UNITY_EDITOR
+                m_DebugSnapshot = null;
+#endif
+            }
+            treeView.hasMode = true;
+            treeView.allowFade = settings.allowFade;
+            treeView.fadeMode = settings.fadeMode;
             int planeCount = math.min(view.planeCount, TreeVisibilityGpu.MaxPlanes);
             for (int i = 0; i < planeCount; ++i)
             {
@@ -996,7 +1069,7 @@ namespace Landscape.FoliagePipeline
             {
                 hzb = TreeHzb.Previous(view.camera, view.origin, view.lodProjection, settings.cullDistance, out hzbReason);
             }
-            m_Gpu.Cull(cmdBuffer, treeView.gpu, m_PlaneScratch, planeCount, view.origin, view.lodProjection, settings, hzb, view.isShadow);
+            m_Gpu.Cull(cmdBuffer, treeView.gpu, m_PlaneScratch, planeCount, view.origin, view.lodProjection, settings, hzb, view);
             treeView.gpu.hzb = hzb != null;
             treeView.gpu.hzbReason = hzbReason;
             treeView.culledFrame = Time.frameCount;
@@ -1008,7 +1081,7 @@ namespace Landscape.FoliagePipeline
             if (m_InstanceCount <= 0 || m_Batches == null) { return; }
             TreeView treeView = FindView(view.camera, view.cascade);
             int frame = Time.frameCount;
-            if (treeView == null || treeView.culledFrame != frame) { return; }
+            if (treeView == null || treeView.renderId != view.renderId || treeView.culledFrame != frame) { return; }
 
             if (m_ActualBackend == TreeVisibilityBackend.GPU)
             {
@@ -1026,8 +1099,9 @@ namespace Landscape.FoliagePipeline
                     m_Gpu.Fail("Tree GPU index allocation failed: " + error.Message);
                     return;
                 }
-                m_Gpu.Pack(cmdBuffer, treeView.gpu, treeView.packs, settings.fadeMode, settings.allowFade, view.isShadow);
+                m_Gpu.Pack(cmdBuffer, FindView(view.camera, -1).gpu, treeView.packs, settings.fadeMode, settings.allowFade, view.cascade);
                 treeView.packedFrame = frame;
+                treeView.packedRender = view.renderId;
                 return;
             }
 
@@ -1037,7 +1111,7 @@ namespace Landscape.FoliagePipeline
                 treeView.holdOrigin = treeView.nowOrigin;
                 treeView.holdProj = treeView.nowProj;
             }
-            bool weighted = !view.isShadow && treeView.fadeMode == TreeLodFadeMode.Distance;
+            bool weighted = treeView.fadeMode == TreeLodFadeMode.Distance;
             for (int lod = 0; lod < treeView.packs.Length; ++lod)
             {
                 TreeLodPack pack = treeView.packs[lod];
@@ -1057,6 +1131,7 @@ namespace Landscape.FoliagePipeline
                 }
             }
             treeView.packedFrame = frame;
+            treeView.packedRender = view.renderId;
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -1064,10 +1139,11 @@ namespace Landscape.FoliagePipeline
         {
             if (m_InstanceCount <= 0 || m_Batches == null) { return; }
             TreeView treeView = FindView(view.camera, view.cascade);
-            if (treeView == null || treeView.packedFrame != Time.frameCount) { return; }
+            if (treeView == null || treeView.packedRender != view.renderId) { return; }
 
             bool gpu = m_ActualBackend == TreeVisibilityBackend.GPU;
-            bool fadeBuckets = pass != FoliageDrawPass.Shadow && treeView.allowFade && m_DitherEnabled;
+            TreeView owner = FindView(view.camera, -1);
+            bool fadeBuckets = owner.allowFade && m_DitherEnabled;
             for (int lod = 0; lod < m_Batches.Count; ++lod)
             {
                 TreeLodBatch batch = m_Batches[lod];
@@ -1082,12 +1158,12 @@ namespace Landscape.FoliagePipeline
                 }
                 else if (gpu)
                 {
-                    DrawBucket(cmdBuffer, pass, propertyBlock, batch, pack, mesh, 1, 1f, 1f, null, treeView.gpu.fade, gpu);
-                    DrawBucket(cmdBuffer, pass, propertyBlock, batch, pack, mesh, 2, -1f, 1f, null, treeView.gpu.fade, gpu);
+                    DrawBucket(cmdBuffer, pass, propertyBlock, batch, pack, mesh, 1, 1f, 1f, null, owner.gpu.fade, gpu);
+                    DrawBucket(cmdBuffer, pass, propertyBlock, batch, pack, mesh, 2, -1f, 1f, null, owner.gpu.fade, gpu);
                 }
-                else if (treeView.fadeState[1] != 0f)
+                else if (owner.fadeState[1] != 0f)
                 {
-                    float alpha = treeView.fadeState[0];
+                    float alpha = owner.fadeState[0];
                     DrawBucket(cmdBuffer, pass, propertyBlock, batch, pack, mesh, 1, 1f - alpha, 1f, null, null, gpu);
                     DrawBucket(cmdBuffer, pass, propertyBlock, batch, pack, mesh, 2, alpha - 1f, 1f, null, null, gpu);
                 }
@@ -1151,8 +1227,12 @@ namespace Landscape.FoliagePipeline
             if (!gpu)
             {
                 snapshot.coarseCells = boundSector.visibleMap.ToArray();
-                snapshot.cpuMasks = m_ChunkMasks.ToArray();
-                snapshot.lods = m_LodNow.ToArray();
+                snapshot.cpuMasks = new ulong[m_ChunkCount];
+                for (int i = 0; i < m_InstanceCount; ++i)
+                {
+                    if ((treeView.visibility[i] & 1u) != 0) { snapshot.cpuMasks[i >> 6] |= 1UL << (i & 63); }
+                }
+                snapshot.lods = treeView.currentLods.ToArray();
                 for (int i = 0; i < cells.Length; ++i)
                 {
                     snapshot.terrainCells[i] = (byte)((m_CellFlags[i] & FoliageLogic.CellTerrain) != 0 ? 1 : 0);
@@ -1271,7 +1351,7 @@ namespace Landscape.FoliagePipeline
             }
             else
             {
-                for (int i = 0; i < snapshot.gpuLods.Length; ++i) { if (snapshot.gpuLods[i].w != 0) { ++cpuCount; } }
+                for (int i = 0; i < snapshot.gpuLods.Length; ++i) { if ((snapshot.gpuLods[i].w & 1) != 0) { ++cpuCount; } }
             }
             string weights = snapshot.weightPairs > 0 ? ", distance fade pairs " + snapshot.weightPairs +
                 ", invalid weights " + snapshot.invalidWeights : "";
@@ -1288,7 +1368,7 @@ namespace Landscape.FoliagePipeline
             if (snapshot == null || !snapshot.complete || snapshot.failed) { return "Candidate snapshot is unavailable."; }
             if (index < 0 || index >= snapshot.finalVisible.Length) { return "Candidate index is outside this tree stream."; }
             int cell = m_InstanceCell[index];
-            bool cpu = snapshot.cpuMasks != null ? (snapshot.cpuMasks[index >> 6] & (1UL << (index & 63))) != 0 : snapshot.gpuLods[index].w != 0;
+            bool cpu = snapshot.cpuMasks != null ? (snapshot.cpuMasks[index >> 6] & (1UL << (index & 63))) != 0 : (snapshot.gpuLods[index].w & 1) != 0;
             string gpuCell = snapshot.gpuCells == null ? "unknown" : ((snapshot.gpuCells[cell] & 4) != 0 ? "visible" : "rejected");
             var pairs = new System.Text.StringBuilder();
             for (int b = 0; b < snapshot.buckets.Count; ++b)
@@ -1433,7 +1513,7 @@ namespace Landscape.FoliagePipeline
                     continue;
                 }
                 bool visible = snapshot == null ? m_BoundsMasks != null && (m_BoundsMasks[chunk] & (1UL << bit)) != 0 :
-                    snapshot.cpuMasks != null ? (snapshot.cpuMasks[chunk] & (1UL << bit)) != 0 : snapshot.gpuLods[i].w != 0;
+                    snapshot.cpuMasks != null ? (snapshot.cpuMasks[chunk] & (1UL << bit)) != 0 : (snapshot.gpuLods[i].w & 1) != 0;
                 int lod = snapshot == null ? (m_BoundsLods != null ? math.max(m_BoundsLods[i], 0) : 0) : math.max(snapshot.lods[i], 0);
                 int cell = m_InstanceCell[i];
                 Color color = !visible ? snapshot != null && snapshot.coarseCells[cell] != 0 &&

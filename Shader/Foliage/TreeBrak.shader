@@ -345,6 +345,7 @@ Shader "Landscape/TreeBrak"
             #pragma target 4.5
             #pragma vertex vert
             #pragma fragment frag
+            #pragma multi_compile _ FOLIAGE_LOD_WEIGHT FOLIAGE_GPU_TEMPORAL
 
             #include "Include/Foliage.hlsl"
 
@@ -360,11 +361,13 @@ Shader "Landscape/TreeBrak"
             struct Varyings
             {
                 float4 vertexCS : SV_POSITION;
+                nointerpolation float lodFactor : TEXCOORD7;
             };
 
             Varyings vert(Attributes input)
             {
                 Varyings output;
+                output.lodFactor = FoliageLodFactor(input.InstanceId);
                 uint index = _TreeIndexBuffer[input.InstanceId];
                 TreeElement element = _TreeElementBuffer[index];
                 float3 positionWS = mul(element.matrix_World, input.vertexOS).xyz;
@@ -378,7 +381,7 @@ Shader "Landscape/TreeBrak"
             {
                 if (_LodFadeEnable > 0.5)
                 {
-                    LODDitheringTransition(input.vertexCS.xy, _LODFactor);
+                    LODDitheringTransition(input.vertexCS.xy, input.lodFactor);
                 }
                 return 0;
             }

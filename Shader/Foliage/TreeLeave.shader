@@ -96,7 +96,7 @@ Shader "Landscape/TreeLeave"
 
 				//Surface
 				float4 baseColor = _AlbedoTexture.Sample(sampler_AlbedoTexture, input.uv0);
-				clip(baseColor.a - _AlphaThreshold);
+				clip(baseColor.a > 0.0 ? baseColor.a - _AlphaThreshold : -1.0);
 
 				//Geometry Context
 				float3 worldPos = input.vertexWS.xyz;
@@ -183,7 +183,7 @@ Shader "Landscape/TreeLeave"
 
 				//Surface
 				float4 baseColor = _AlbedoTexture.Sample(sampler_AlbedoTexture, input.uv0);
-				clip(baseColor.a - _AlphaThreshold);
+				clip(baseColor.a > 0.0 ? baseColor.a - _AlphaThreshold : -1.0);
 
 				//Geometry Context
 				float3 worldPos = input.vertexWS.xyz;
@@ -260,7 +260,7 @@ Shader "Landscape/TreeLeave"
                     LODDitheringTransition(input.vertexCS.xy, input.lodFactor);
                 }
                 float4 baseColor = _AlbedoTexture.Sample(sampler_AlbedoTexture, input.uv0);
-                clip(baseColor.a - _AlphaThreshold);
+                clip(baseColor.a > 0.0 ? baseColor.a - _AlphaThreshold : -1.0);
                 return float4(0, 0, 0, baseColor.a);
             }
             ENDHLSL
@@ -271,6 +271,7 @@ Shader "Landscape/TreeLeave"
             Name "Shadowmap"
 			Tags { "LightMode" = "ShadowCaster" }
 			Cull Off ZTest LEqual ZWrite On 
+            AlphaToMask Off
 
             HLSLPROGRAM
 			#pragma target 4.5
@@ -335,7 +336,7 @@ Shader "Landscape/TreeLeave"
 
 				//Surface
 				float4 baseColor = _AlbedoTexture.Sample(sampler_AlbedoTexture, input.uv0);
-				clip(baseColor.a - _AlphaThreshold);
+				clip(baseColor.a > 0.0 ? baseColor.a - _AlphaThreshold : -1.0);
 				
 				#ifdef LOD_FADE_CROSSFADE 
 					LODDitheringTransition(input.vertexCS.xy, unity_LODFade.x);
@@ -350,11 +351,13 @@ Shader "Landscape/TreeLeave"
             Name "FoliageShadow"
             Tags { "LightMode" = "FoliageShadow" }
             Cull Off ZTest LEqual ZWrite On
+            AlphaToMask Off
 
             HLSLPROGRAM
             #pragma target 4.5
             #pragma vertex vert
             #pragma fragment frag
+            #pragma multi_compile _ FOLIAGE_LOD_WEIGHT FOLIAGE_GPU_TEMPORAL
 
             #include "Include/Foliage.hlsl"
 
@@ -372,11 +375,13 @@ Shader "Landscape/TreeLeave"
             {
                 float2 uv0 : TEXCOORD0;
                 float4 vertexCS : SV_POSITION;
+                nointerpolation float lodFactor : TEXCOORD7;
             };
 
             Varyings vert(Attributes input)
             {
                 Varyings output;
+                output.lodFactor = FoliageLodFactor(input.InstanceId);
                 uint index = _TreeIndexBuffer[input.InstanceId];
                 TreeElement element = _TreeElementBuffer[index];
                 float3 positionWS = mul(element.matrix_World, input.vertexOS).xyz;
@@ -390,10 +395,10 @@ Shader "Landscape/TreeLeave"
             float4 frag(Varyings input) : SV_Target
             {
                 float4 baseColor = _AlbedoTexture.Sample(sampler_AlbedoTexture, input.uv0);
-                clip(baseColor.a - _AlphaThreshold);
+                clip(baseColor.a > 0.0 ? baseColor.a - _AlphaThreshold : -1.0);
                 if (_LodFadeEnable > 0.5)
                 {
-                    LODDitheringTransition(input.vertexCS.xy, _LODFactor);
+                    LODDitheringTransition(input.vertexCS.xy, input.lodFactor);
                 }
                 return 0;
             }

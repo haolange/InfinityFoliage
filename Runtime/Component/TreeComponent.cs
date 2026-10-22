@@ -386,6 +386,12 @@ namespace Landscape.FoliagePipeline
             return viewSettings;
         }
 
+        internal void ReleaseRendererViews()
+        {
+            if (treeSectors == null) { return; }
+            for (int i = 0; i < treeSectors.Length; ++i) { treeSectors[i]?.ReleaseViews(); }
+        }
+
         internal bool UsesHzb(FoliageRenderSettings settings)
         {
             if (!m_RuntimeReady || !m_Resident || treeSectors == null) { return false; }
@@ -404,7 +410,12 @@ namespace Landscape.FoliagePipeline
             TreeViewSettings viewSettings = ResolveViewSettings();
             for (int i = 0; i < treeSectors.Length; ++i)
             {
-                if (m_SectorReady[i]) { treeSectors[i].Cull(cmdBuffer, view, viewSettings, taskHandles); }
+                if (m_SectorReady[i])
+                {
+                    FoliageView sectorView = view;
+                    if (!CastMainShadows(m_RenderSettings)) { sectorView.shadowPlaneCounts = default; }
+                    treeSectors[i].Cull(cmdBuffer, sectorView, viewSettings, taskHandles);
+                }
             }
         }
 

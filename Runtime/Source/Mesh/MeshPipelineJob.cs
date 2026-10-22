@@ -60,58 +60,51 @@ namespace Landscape.FoliagePipeline
 #endif
 
     [BurstCompile]
-    public unsafe struct TreeShadowCullJob : IJob
+    internal struct TreeCacheMasksJob : IJob
     {
-        public int planeCount;
-        public float3 origin;
-        public float4x4 projection;
-        public float hysteresis;
-
-        [ReadOnly]
-        [NativeDisableUnsafePtrRestriction]
-        public FrustumPlane* planes;
-
-        [ReadOnly] public NativeArray<BoundSection> sections;
-        [ReadOnly] public NativeArray<TreeCell> cells;
-        [ReadOnly] public NativeArray<Aabb> bounds;
-        [ReadOnly] public NativeArray<float> lodScreenSizes;
-        public NativeArray<int> lodStable;
-        public NativeArray<ulong> bucketMasks;
+        [ReadOnly] public NativeArray<ulong> source;
+        [ReadOnly] public NativeArray<float> sourceWeights;
+        [ReadOnly] public NativeArray<int> sourceLods;
+        public NativeArray<int> lods;
+        public NativeArray<ulong> masks;
+        public NativeArray<float> weights;
 
         public void Execute()
         {
-            int slotCount = lodScreenSizes.Length * FoliageLogic.LodBucketCount;
-            int chunkCount = slotCount > 0 ? bucketMasks.Length / slotCount : 0;
-            for (int i = 0; i < bucketMasks.Length; ++i) { bucketMasks[i] = 0; }
-            for (int cellIndex = 0; cellIndex < cells.Length; ++cellIndex)
+            masks.CopyFrom(source);
+            weights.CopyFrom(sourceWeights);
+            lods.CopyFrom(sourceLods);
+        }
+    }
+
+    [BurstCompile]
+    internal struct TreeFilterMasksJob : IJob
+    {
+        public uint visibilityBit;
+        [ReadOnly] public NativeArray<uint> visibility;
+        [ReadOnly] public NativeArray<ulong> source;
+        public NativeArray<ulong> masks;
+        public NativeArray<ulong> chunks;
+
+        public void Execute()
+        {
+            int chunkCount = chunks.Length;
+            for (int c = 0; c < chunkCount; ++c)
             {
-                TreeCell cell = cells[cellIndex];
-                if (cell.count <= 0 || !Visible(sections[cellIndex].boundBox)) { continue; }
-                int end = cell.offset + cell.count;
-                for (int candidate = cell.offset; candidate < end; ++candidate)
+                ulong visible = 0;
+                int start = c * 64;
+                int count = math.min(64, visibility.Length - start);
+                for (int b = 0; b < count; ++b)
                 {
-                    Aabb box = bounds[candidate];
-                    if (!Visible(box)) { continue; }
-                    float radius = math.cmax(math.abs(box.extents));
-                    float screen = Geometry.ComputeBoundsScreenRadiusSquared(radius, box.center, origin, projection);
-                    int lod = FoliageLogic.ComputeLodIndexHysteresis(screen, lodScreenSizes, lodStable[candidate], hysteresis);
-                    lodStable[candidate] = lod;
-                    int maskIndex = (FoliageLogic.BucketSlot(lod, LodBucket.Stable) * chunkCount) + (candidate >> 6);
-                    bucketMasks[maskIndex] = bucketMasks[maskIndex] | (1UL << (candidate & 63));
+                    if ((visibility[start + b] & visibilityBit) != 0) { visible |= 1UL << b; }
+                }
+                chunks[c] = visible;
+                for (int slot = 0; slot < source.Length / chunkCount; ++slot)
+                {
+                    int index = slot * chunkCount + c;
+                    masks[index] = source[index] & visible;
                 }
             }
-        }
-
-        bool Visible(in Aabb box)
-        {
-            for (int i = 0; i < planeCount; ++i)
-            {
-                float4 plane = planes[i].normalDist;
-                float distance = math.dot(plane.xyz, box.center) + plane.w;
-                float radius = math.dot(math.abs(plane.xyz), box.extents);
-                if (distance + radius < 0f) { return false; }
-            }
-            return true;
         }
     }
 
@@ -398,6 +391,10 @@ namespace Landscape.FoliagePipeline
     [BurstCompile]
     public unsafe struct TreeCullLodJob : IJobParallelFor
     {
+        [NativeDisableUnsafePtrRestriction] public FrustumPlane* shadowPlanes;
+        public int4 shadowPlaneCounts;
+        [ReadOnly] public NativeArray<BoundSection> sections;
+        [NativeDisableParallelForRestriction] public NativeArray<uint> visibility;
         public float maxDistance;
         public float3 viewOrigin;
         public float3 lodHoldOrigin;
@@ -461,10 +458,11 @@ namespace Landscape.FoliagePipeline
                 activeCell = 1;
                 break;
             }
-            if (activeCell == 0)
+            if (activeCell == 0 && math.all(shadowPlaneCounts == 0))
             {
                 for (int bit = 0; bit < count; ++bit)
                 {
+                    if (visibility.IsCreated) { visibility[candidateBase + bit] = 0; }
                     lodHold[candidateBase + bit] = -1;
                     lodNow[candidateBase + bit] = -1;
                 }
@@ -484,15 +482,8 @@ namespace Landscape.FoliagePipeline
                     currentCell = cell;
                     currentCellVisible = cellFlags[cell] == FoliageLogic.CellVisible ? 1 : 0;
                 }
-                if (currentCellVisible == 0)
-                {
-                    lodHold[index] = -1;
-                    lodNow[index] = -1;
-                    continue;
-                }
-
                 Aabb box = bounds[index];
-                int visible = 1;
+                int visible = currentCellVisible;
                 float2 distRadius = new float2(0, 0);
                 for (int planeIndex = 0; planeIndex < 6; ++planeIndex)
                 {
@@ -502,7 +493,19 @@ namespace Landscape.FoliagePipeline
                     visible = math.select(visible, 0, distRadius.x + distRadius.y < 0);
                 }
                 visible = math.select(visible, 0, math.distance(viewOrigin, box.center) > maxDistance);
-                if (visible == 0)
+                uint flags = visible != 0 ? 1u : 0u;
+                for (int cascade = 0; cascade < 4; ++cascade)
+                {
+                    int planeCount = shadowPlaneCounts[cascade];
+                    if (planeCount == 0) { continue; }
+                    FrustumPlane* casterPlanes = shadowPlanes + cascade * TreeVisibilityGpu.MaxPlanes;
+                    if (CasterVisible(sections[cell].boundBox, casterPlanes, planeCount) && CasterVisible(box, casterPlanes, planeCount))
+                    {
+                        flags |= 2u << cascade;
+                    }
+                }
+                if (visibility.IsCreated) { visibility[index] = flags; }
+                if (flags == 0)
                 {
                     lodHold[index] = -1;
                     lodNow[index] = -1;
@@ -532,6 +535,16 @@ namespace Landscape.FoliagePipeline
             }
 
             chunkMasks[chunk] = mask;
+        }
+
+        static bool CasterVisible(in Aabb box, FrustumPlane* source, int count)
+        {
+            for (int p = 0; p < count; ++p)
+            {
+                float4 plane = source[p].normalDist;
+                if (math.dot(plane.xyz, box.center) + plane.w + math.dot(math.abs(plane.xyz), box.extents) < 0f) { return false; }
+            }
+            return true;
         }
 
         float ScreenRadiusSqr(float3 center, float radius, float3 origin, float4x4 projection)

@@ -76,7 +76,8 @@ int _Mode;
 int _AllowFade;
 int _Reset;
 int _Advance;
-int _Shadow;
+float4 _ShadowPlaneCounts;
+int _VisibilityBit;
 int _Lod;
 int _BucketCount;
 int _SubmeshCount;
@@ -203,18 +204,17 @@ float LinearEye(float raw)
 
 uint FrustumDistance(GpuAabb box, float distanceScale, float3 distancePivot)
 {
-    uint visible = 1u;
     [loop]
     for (int i = 0; i < _PlaneCount; ++i)
     {
         float4 plane = _Planes[i];
-        float dist = dot(plane.xyz, box.center) + plane.w;
+        float distance = dot(plane.xyz, box.center) + plane.w;
         float radius = dot(abs(plane.xyz), box.extents);
-        visible &= (dist + radius >= 0.0) ? 1u : 0u;
+        if (distance + radius < 0.0) { return 0u; }
     }
     float3 delta = distancePivot - _ViewOrigin;
-    visible &= (dot(delta, delta) <= (_MaxDistance * distanceScale * _MaxDistance * distanceScale)) ? 1u : 0u;
-    return visible;
+    float limit = _MaxDistance * distanceScale;
+    return dot(delta, delta) <= limit * limit ? 1u : 0u;
 }
 
 uint HzbOccluded(GpuAabb box)
@@ -340,7 +340,7 @@ void PrepareView()
     float4 current = float4(_ViewOrigin, _ProjectionY);
     float4 projection = _FadeState[3];
     bool reset = _Reset != 0 || projection.z == 0.0;
-    if (reset || _Mode == 1 || _AllowFade == 0 || _Shadow != 0)
+    if (reset || _Mode == 1 || _AllowFade == 0)
     {
         _FadeState[1] = current;
         _FadeState[2] = current;
@@ -385,24 +385,35 @@ void CullInstances(uint3 groupId : SV_GroupID, uint threadIndex : SV_GroupIndex)
         float4 fadeState = _FadeState[0];
         if (fadeState.w != 0.0) { lodState.z = -1; }
         GpuAabb box = _Bounds[candidate];
-        bool visible = _CellVisible[_InstanceCell[candidate]] == 7u;
-        if (visible) { visible = FrustumDistance(box, 1.0, box.center) != 0u; }
-        if (visible) { visible = HzbOccluded(box) == 0u; }
+        uint colorVisible = 0u;
+        if (_CellVisible[_InstanceCell[candidate]] == 7u)
+        {
+            colorVisible = FrustumDistance(box, 1.0, box.center);
+            if (colorVisible != 0u) { colorVisible &= HzbOccluded(box) == 0u ? 1u : 0u; }
+        }
         lodState.x = -1;
         lodState.y = -1;
-        lodState.w = visible ? 1 : 0;
+        uint flags = colorVisible;
+        GpuAabb cellBox = _CellBounds[_InstanceCell[candidate]];
+        for (int cascade = 0; cascade < 4; ++cascade)
+        {
+            int count = (int)_ShadowPlaneCounts[cascade];
+            bool caster = count > 0;
+            for (int p = 0; p < count; ++p)
+            {
+                float4 plane = _Planes[16 + cascade * 16 + p];
+                caster = caster && dot(plane.xyz, cellBox.center) + plane.w + dot(abs(plane.xyz), cellBox.extents) >= 0.0;
+                caster = caster && dot(plane.xyz, box.center) + plane.w + dot(abs(plane.xyz), box.extents) >= 0.0;
+            }
+            if (caster) { flags |= 2u << cascade; }
+        }
+        lodState.w = (int)flags;
         float weight = 1.0;
-        if (visible)
+        if (flags != 0u)
         {
             float4 projection = _FadeState[3];
             float screen = ScreenRadius(box, _FadeState[2], projection.y);
-            if (_Shadow != 0)
-            {
-                lodState.y = HysteresisLod(screen, lodState.z);
-                lodState.x = lodState.y;
-                lodState.z = lodState.y;
-            }
-            else if (_Mode == 1)
+            if (_Mode == 1)
             {
                 int lod = RawLod(screen);
                 lodState.x = lod;
@@ -481,7 +492,7 @@ void ReduceChanges(uint3 groupId : SV_GroupID, uint threadIndex : SV_GroupIndex)
 void AdvanceFade()
 {
     float4 state = _FadeState[0];
-    bool commit = state.w != 0.0 || _AllowFade == 0 || _Mode == 1 || _Shadow != 0;
+    bool commit = state.w != 0.0 || _AllowFade == 0 || _Mode == 1;
     if (!commit && _Advance != 0)
     {
         if (state.y != 0.0)
@@ -530,11 +541,11 @@ void EmitMasks(uint3 groupId : SV_GroupID, uint threadIndex : SV_GroupIndex)
     if (candidate < (uint)_InstanceCount)
     {
         int4 state = _LodState[candidate];
-        bool pair = state.w != 0 && state.x >= 0 && state.y >= 0 && abs(state.x - state.y) == 1;
+        bool pair = (state.w & _VisibilityBit) != 0 && state.x >= 0 && state.y >= 0 && abs(state.x - state.y) == 1;
         if (pair) { pair = _AllowFade != 0 && _LodDither[state.x] != 0u && _LodDither[state.y] != 0u; }
         pair = pair && (_Mode == 1 || _FadeState[0].y != 0.0);
         int bucket = -1;
-        if (state.w != 0 && state.y >= 0)
+        if ((state.w & _VisibilityBit) != 0 && state.y >= 0)
         {
             if (!pair) { bucket = state.y == _Lod ? 0 : -1; }
             else if (state.x == _Lod) { bucket = 1; }

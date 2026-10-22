@@ -1,5 +1,69 @@
 # Infinity Foliage 交付记录
 
+
+## 2026-10-23 Alpha clip 零阈值修复与阴影覆盖状态
+
+场景草、树叶及 cross 材质普遍保存 `_AlphaThreshold=0`。原片元 `clip(alpha - threshold)` 在 alpha=0 / threshold=0 时不会丢弃，因为 `clip` 只拒绝负值；无 MSAA 的颜色、PreZ 和单采样阴影均可能保留透明背景。4× MSAA 的颜色 AlphaToMask 会掩盖该边界问题。首轮只检查阈值 0.5，并补三处阴影 `AlphaToMask Off`，没有覆盖场景实际零阈值，不能据其“无 MSAA 未复现”结论认定场景已修好。
+
+正式修复在 TreeLeave、Grass 的普通 / 实例 Forward、FoliageDepth、普通 ShadowCaster 和 FoliageShadow 统一使用 `clip(alpha > 0.0 ? alpha - _AlphaThreshold : -1.0)`。仅新增完全透明 texel 的拒绝，正 alpha 的阈值比较保持原样；没有替用户把零阈值改为 0.5，没有改材质、纹理或新增 MSAA 变体。Grass Nature Renderer procedural Forward / ShadowCaster 共用相同片元。保留颜色 / PreZ 的 AlphaToMask，并显式关闭两种树叶阴影和普通草阴影的 AlphaToMask，避免零输出 alpha 清空覆盖；草实例阴影已有正确状态。
+
+目标 Editor / Metal 的正式 pass GPU 验证覆盖 alpha `0 / 0.25 / 0.75 / 1`、阈值 `0 / 0.5`、1× / 4× MSAA、普通 / 实例及 Grass Nature Renderer 压缩实例变体，共 40 例：修复前 15 例失败，修复后全部通过。使用原场景 `M_Poplar_leaves`、`M_grass_meadow_03` 的材质副本和原纹理、保留阈值 0，在完全相同视图下各画 Forward / ShadowCaster；216² 内部区域的背景像素从修前 0，变为树叶 25,540、草 28,629，颜色与阴影相同，证明透明背景实际被拒绝。紫色是被拒绝后露出的 clear color。该对照是正式材质 / 纹理在受控 quad 的绘制，不冒充整场景同帧截图或 depth-only atlas 读回。
+
+证据：[像素与编译记录](Evidence/alpha-clip-verification.json)、[原场景材质修前 / 修后对照](Evidence/alpha-zero-material-comparison.jpg)。原 Scene_PBR 也已进入 Play，实际 CPU 树和草可绘制；场景仍有暗部，本项不宣称修复所有树冠亮度问题。PreZ 另用其深度结果遮挡深度测试后方的不透明 quad，8 例验证透明处不挡住背景、全不透明处保持遮挡；4× MSAA 的中间 alpha 保留部分样本覆盖。最终原生编译、日志与清理结果见证据 JSON。宿主 readonly database / TLS 等基础设施日志单列，不能计作渲染错误修复。
+
+Todo：源码与场景材质核对、零 alpha 边界修复、原材质 GPU A/B、PreZ 深度、正式编译和临时文件清理逐项记录于证据 JSON。未保存宿主场景或测试设置；无 Bake、材质、设置或资产格式迁移。D3D11 / D3D12 / Vulkan 仍待相同矩阵复验。
+
+## 2026-10-23 主光树 LOD / fade 同步与草投影
+
+基线 `main / 68e3862`。本轮在原分支实现，无 Bake / 资产格式迁移。目标为 LandscapeExample 的 Scene_PBR，Unity 6000.6.0f1 / URP 17.6 / macOS Metal；未操作 InfinityExample 的场景、编译或运行状态。
+
+### 行为与根因
+
+旧树阴影已经使用所属渲染相机的位置和投影，但每级联独立维护 LOD 滞回，并在分配、Compute、Draw 三层限制为 stable 单桶。颜色正在淡化时，阴影仍会独立硬切。本轮用每相机一份 LOD / fade 状态替代级联历史：先计算颜色与各级联 caster 候选的并集，再计算一次 LOD；颜色和级联分别过滤三桶，并各自 compact index / count（GPU 为 args）。Temporal 共享档位和 alpha，Distance 按各自 index 顺序 compact 同源权重。画外树仍投影，caster 不受颜色 HZB 拒绝结果限制。首次初始化、关闭 fade、传送和投影不连续仍硬切。
+
+相机准备以 ContextItem 的 renderId 隔离，同一次渲染只做一次。有效阴影在首个级联前准备，否则由 PreZ / Forward 准备。草页只在准备阶段非阻塞换入已完成的 scatter 结果；后续级联 / PreZ / Forward 使用相同页 buffer、offset / count 和可见格，不等待未完成的新页。草可见结果同时绑定相机及 renderId，替代组件级 frame 判据。
+
+草新增 `castGrassMainShadows`，默认关；GrassComponent 的 `overrideMainShadows / castMainShadowsOverride` 可覆盖本 Terrain。`drawGrass` 关闭时颜色和投影均关闭。正式实例 `FoliageShadow` 复用高度、风和缩放淡出函数并执行 alpha clip、URP shadow bias / clamping。只草启用仍能自建 atlas；已有 URP atlas 时追加绘制。草仅复用所属相机可见页 / run，画外草不投影。
+
+GPU 同机位检查还发现颜色 frustum helper 的逐步 uint 位累积路径会在本机把全部候选保留。将其改为显式平面提前拒绝后，15 个树种的 GPU 颜色位与 CPU 平面复算全部一致，同路径 CPU / GPU Distance 数量一致；没有通过加密度或回读修正结果。该观测仅限本机 Metal，不推断其他驱动也存在相同问题。
+
+### 逐项验收
+
+| 任务 | 结果 |
+|---|---|
+| T1 契约 / 基线 | main、源码、宿主资产哈希与目标日志路径已记录 |
+| T2 相机准备 | 同相机各 pass 复用本次结果；两相机不同视向不串 run；阴影关闭时正常准备 |
+| T3 树阴影 | CPU / GPU × Temporal / Distance 均采到非空阴影 fade；级联独立 index，无 CPU args；画外 caster 保留 |
+| T4 草阴影 | 全局关、组件覆盖开、再次关、只草、已有 / 自建 atlas 均进入真实路径 |
+| T5 验证 | 现有 Runtime 断言、离线编译、Editor 原生编译、真实 Game / draw / GPU 按需快照及 Frame Debugger 抽查；末次正式源码检查见证据 JSON |
+| T6 文档 / 清理 | AGENTS / README 同步；临时探针和 hooks 移除，测试配置恢复，宿主资产哈希复核 |
+
+受控路径为相机每渲染帧前进 0.35 米，75 帧后停止，每例 100 帧；50 / 75 / 95 帧按需采样。主矩阵及已有 atlas 补验合计 **48 份样本、44,417 个颜色 / 阴影共同候选配对**；LOD / 桶 / Distance 权重不一致、非空桶缺失真实 Draw、草 run 不一致、颜色 / 级联 index 资源混用、CPU args 均为 **0**。GPU 只在这些验收快照读回，正式帧没有数量读回。
+
+| 场景 | 代表性实测 |
+|---|---|
+| CPU / GPU Distance，75 帧 | 两者颜色均 1,897、级联提交合计 3,460；独立级联中有颜色视锥外 caster，数量按级联合计，不等于唯一实例数 |
+| Temporal / Distance 阴影淡化 | 四种 backend / 模式均有非空 FadeOut / FadeIn，实际提交匹配；阴影和颜色共享候选的桶 / 权重完全一致 |
+| 草关闭 / 组件覆盖 / 再次关闭 | 代表性颜色 64 run，4 级联分别为 0 / 256 / 0 run |
+| 只草与自建 atlas | 树颜色 / 阴影提交为 0，草 64 / 256 run，ownsShadowAtlas=true；Game 地面可见草投影 |
+| URP 已有 atlas | 原生 caster 跟随相机，ownsShadowAtlas=false，继续追加草树阴影，配对 / run 检查通过 |
+| 1 / 2 / 4 级联、双相机 | 级联独立 index，草分别复用各自相机 run；双相机不同视向均通过 |
+| 默认 Terrain + HZB、切换和重启用 | 实际 GPU 运行、帧推进，无新 foliage 生产异常；本轮不宣称完成独立 HZB 单遮挡体精度 / 性能验收 |
+
+Frame Debugger 捕获 2,354 事件。零基事件 666 为 `Landscape/Grass / FoliageShadow`，**138 instances / 1 draw**，目标 `_FoliageMainLightShadowmapTexture_4096x4096_Shadowmap`；事件 460 为 `Landscape/TreeBrak / FoliageShadow`，目标相同。Unity 将 indirect 显示为 Mesh / 0 instances，不能把该值当 args 数量或非空 fade 证据；后者由同帧提交钩子及请求时的 args / index / weight 快照验证。
+
+证据：[结构化样本、Frame Debugger 与收尾记录](Evidence/main-shadow-verification.json)、[CPU Game](Evidence/main-shadow-cpu.jpg)、[GPU Game](Evidence/main-shadow-gpu.jpg)、[只草 Game](Evidence/main-shadow-grass-only.jpg)。图片为各独立运行的当前画面，不作时间 / 风相位完全对齐的像素比较。
+
+### 工程检查、恢复与平台边界
+
+离线编译直接使用宿主现有 Bee response file、Managed 引用和 Unity 自带 Roslyn，输出在临时目录；未使用失败的 NuGet / MSBuild Temp 路径。正式源码仍以目标 Editor 的原生编译和运行检查收口，具体 DLL 哈希及最终日志摘要保存在证据 JSON。没有新增测试 asmdef 或正常帧读回。 移除 Runtime 验收钩子后另以临时 Editor 控制器完成 CPU 与 GPU / HZB 正式绘制 smoke，两者 Game 相机均从第 7 帧推进到第 37 帧；控制器随后删除，最终原生编译成功（0.81 秒），新 C# / Shader error 与 Exception 均为 0。最后同步冻结快照的颜色可见性位读取，避免将画外 caster 显示为颜色可见实例。
+
+目标原 Editor 有文件描述符耗尽 / Burst gRPC 故障，需要重启；启动还复现 DataStore 的 AppleDouble `._UDSData_0.bin` 解析崩溃，只清理了已核验 `00051607` 文件头的该伪文件，没有删除真实 UDS / Library / 缓存。一次强制关闭被自动审批拒绝，补充新启动进程、无恢复文件、未运行测试和资产哈希证据后获准；用户随后也明确授权指定目标重启。TLS、readonly database 与 OnDemand worker 连接超时作为 Editor 基础设施日志单独记录，不计作 foliage 编译或渲染通过证据。
+
+收尾已删除临时源码、`.meta`、编译产物、探针数据与本轮生成的 AppleDouble sidecar。活动 Editor 日志移至正常日志目录 `~/Library/Logs/Unity/LandscapeExample-FoliageShadow-2026-10-23.log`，保留当前会话继续写入；仅保留本节链接的小型正式证据。宿主场景、Renderer 和 URP 资产哈希均未变化，目标 Editor 保持非 Play 状态。
+
+本机功能通过以上限定验收；Windows D3D11 / D3D12 和 Vulkan 仍待对应平台实测。继续验证时使用相同已 Bake 场景：启用主光阴影 / 4 级联，CPU 与 GPU 各跑 Temporal / Distance 移动与停止；抽查非空阴影 fade、画外 caster、草全局关 / 组件覆盖开 / 再关，以及只草、双相机、PreZ 开关。核对同帧共同候选桶 / 权重、草 run、独立级联资源和新日志，再做 1 / 2 级联短程检查。未测平台、全场景 GPU 性能及所有机位的视觉质量不扩展为本轮通过结论。
+
 ## 2026-10-22 CPU 树 Procedural 与 Instance Bounds LOD 色
 
 基线 `main / 349a70c`，Unity 6000.6.0f1 / URP 17.6 / Metal，使用现有 Scene_PBR。范围仅为 CPU 树提交 API、CPU args 清理和实例 Bounds 配色；保留 VisibleIndex、fade、Cull／Pack／Draw 相位和独立级联视图。不改 Shader、材质、密度、Bake 或依赖。

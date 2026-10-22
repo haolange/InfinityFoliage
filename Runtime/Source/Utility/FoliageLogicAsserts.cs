@@ -393,6 +393,8 @@ namespace Landscape.FoliagePipeline
 
         static unsafe void AssertTemporalCatchUp()
         {
+            var sections = new NativeArray<BoundSection>(1, Allocator.TempJob);
+            var visibility = new NativeArray<uint>(1, Allocator.TempJob);
             var flags = new NativeArray<byte>(1, Allocator.TempJob);
             var cells = new NativeArray<int>(1, Allocator.TempJob);
             var bounds = new NativeArray<Aabb>(1, Allocator.TempJob);
@@ -416,6 +418,8 @@ namespace Landscape.FoliagePipeline
                 for (int i = 0; i < 3; ++i) { dither[i] = 1; }
                 var cull = new TreeCullLodJob();
                 {
+                    cull.sections = sections;
+                    cull.visibility = visibility;
                     cull.maxDistance = 512f;
                     cull.lodHoldProj = float4x4.PerspectiveFov(math.radians(90f), 1f, 0.1f, 1000f);
                     cull.lodNowProj = cull.lodHoldProj;
@@ -469,6 +473,8 @@ namespace Landscape.FoliagePipeline
             }
             finally
             {
+                sections.Dispose();
+                visibility.Dispose();
                 flags.Dispose();
                 cells.Dispose();
                 bounds.Dispose();
@@ -655,102 +661,67 @@ namespace Landscape.FoliagePipeline
             }
         }
 
-        static unsafe void AssertShadowJob()
+        static void AssertShadowJob()
         {
-            var sections = new NativeArray<BoundSection>(1, Allocator.TempJob);
-            var cells = new NativeArray<TreeCell>(1, Allocator.TempJob);
-            var bounds = new NativeArray<Aabb>(3, Allocator.TempJob);
-            var planes = new NativeArray<FrustumPlane>(1, Allocator.TempJob);
-            var sizes = new NativeArray<float>(1, Allocator.TempJob);
-            var stable = new NativeArray<int>(3, Allocator.TempJob);
-            var indices = new NativeArray<int>(3, Allocator.TempJob);
-            var bucketMasks = new NativeArray<ulong>(FoliageLogic.LodBucketCount, Allocator.TempJob);
-            var ranges = new NativeArray<int2>(FoliageLogic.LodBucketCount, Allocator.TempJob);
-            var candidateWeights = new NativeArray<float>(0, Allocator.TempJob);
-            var weights = new NativeArray<float>(0, Allocator.TempJob);
-            JobHandle handle = default;
+            var visibility = new NativeArray<uint>(65, Allocator.TempJob);
+            var source = new NativeArray<ulong>(12, Allocator.TempJob);
+            var masks = new NativeArray<ulong>(12, Allocator.TempJob);
+            var chunks = new NativeArray<ulong>(2, Allocator.TempJob);
+            var weights = new NativeArray<float>(65, Allocator.TempJob);
+            var indices = new NativeArray<int>(195, Allocator.TempJob);
+            var packedWeights = new NativeArray<float>(195, Allocator.TempJob);
+            var ranges = new NativeArray<int2>(6, Allocator.TempJob);
             try
             {
-                BoundSection section = new BoundSection();
-                section.boundBox = new Aabb(float3.zero, new float3(400f));
-                sections[0] = section;
-                TreeCell cell = new TreeCell();
-                cell.offset = 0;
-                cell.count = 3;
-                cells[0] = cell;
-                bounds[0] = new Aabb(new float3(10f, 0f, 10f), new float3(1f));
-                bounds[1] = new Aabb(new float3(-10f, 0f, 10f), new float3(1f));
-                bounds[2] = new Aabb(new float3(20f, 0f, 10f), new float3(1f));
-                planes[0] = new FrustumPlane(new float3(1f, 0f, 0f), 0f);
-                sizes[0] = 0.5f;
-                for (int i = 0; i < stable.Length; ++i) { stable[i] = -1; }
-                var job = new TreeShadowCullJob();
+                visibility[0] = 3;
+                visibility[32] = 1;
+                visibility[64] = 2;
+                weights[0] = 0.25f;
+                weights[32] = 0.5f;
+                weights[64] = 0.75f;
+                source[2] = 1UL | (1UL << 32);
+                source[3] = 1;
+                source[10] = source[2];
+                source[11] = 1;
+                for (int view = 0; view < 2; ++view)
                 {
-                    job.sections = sections;
-                    job.cells = cells;
-                    job.bounds = bounds;
-                    job.planeCount = planes.Length;
-                    job.planes = (FrustumPlane*)planes.GetUnsafeReadOnlyPtr();
-                    job.lodScreenSizes = sizes;
-                    job.lodStable = stable;
-                    job.bucketMasks = bucketMasks;
-                    job.projection = float4x4.identity;
-                    job.origin = float3.zero;
-                    job.hysteresis = 0.08f;
-                }
-                var compactJob = new TreeCompactJob();
-                {
-                    compactJob.instanceCount = bounds.Length;
-                    compactJob.weighted = 0;
-                    compactJob.bucketMasks = bucketMasks;
-                    compactJob.candidateWeights = candidateWeights;
-                    compactJob.indices = indices;
-                    compactJob.weights = weights;
-                    compactJob.ranges = ranges;
-                }
-                handle = job.Schedule();
-                handle = compactJob.Schedule(handle);
-                handle.Complete();
-                int stableSlot = FoliageLogic.BucketSlot(0, LodBucket.Stable);
-                if (bucketMasks[stableSlot] != 5 || ranges[stableSlot].x != 0 || ranges[stableSlot].y != 2 ||
-                    indices[0] != 0 || indices[1] != 2 || stable[1] != -1)
-                {
-                    Fail("shadow Job must compact in candidate order and skip invisible instance LOD");
-                }
-                for (int slot = 0; slot < bucketMasks.Length; ++slot)
-                {
-                    if (slot != stableSlot && (bucketMasks[slot] != 0 || ranges[slot].y != 0))
+                    var filter = new TreeFilterMasksJob();
                     {
-                        Fail("shadow Job must only emit the stable bucket");
+                        filter.visibilityBit = 1u << view;
+                        filter.visibility = visibility;
+                        filter.source = source;
+                        filter.masks = masks;
+                        filter.chunks = chunks;
+                    }
+                    filter.Run();
+                    var compact = new TreeCompactJob();
+                    {
+                        compact.instanceCount = visibility.Length;
+                        compact.weighted = 1;
+                        compact.bucketMasks = masks;
+                        compact.candidateWeights = weights;
+                        compact.indices = indices;
+                        compact.weights = packedWeights;
+                        compact.ranges = ranges;
+                    }
+                    compact.Run();
+                    int second = view == 0 ? 32 : 64;
+                    if (ranges[1].y != 2 || ranges[5].y != 2 || indices[ranges[1].x] != 0 ||
+                        indices[ranges[1].x + 1] != second || indices[ranges[5].x + 1] != second ||
+                        packedWeights[ranges[1].x + 1] != weights[second] || packedWeights[ranges[5].x + 1] != weights[second])
+                    {
+                        Fail("camera and caster filters must preserve both fade buckets, candidate order and same-slot weights, including offscreen casters");
                     }
                 }
-                section.boundBox = new Aabb(new float3(-100f, 0f, 0f), new float3(1f));
-                sections[0] = section;
-                handle = job.Schedule();
-                handle = compactJob.Schedule(handle);
-                handle.Complete();
-                for (int slot = 0; slot < bucketMasks.Length; ++slot)
+                if (source[2] != (1UL | (1UL << 32)) || source[3] != 1 || new FoliageRenderSettings().castGrassMainShadows)
                 {
-                    if (bucketMasks[slot] != 0 || ranges[slot].x != 0 || ranges[slot].y != 0)
-                    {
-                        Fail("shadow Cull and compact must clear previous masks and ranges when its cell is culled");
-                    }
+                    Fail("view filtering must preserve the shared source and grass shadows must default off");
                 }
             }
             finally
             {
-                handle.Complete();
-                sections.Dispose();
-                cells.Dispose();
-                bounds.Dispose();
-                planes.Dispose();
-                sizes.Dispose();
-                stable.Dispose();
-                indices.Dispose();
-                bucketMasks.Dispose();
-                ranges.Dispose();
-                candidateWeights.Dispose();
-                weights.Dispose();
+                visibility.Dispose(); source.Dispose(); masks.Dispose(); chunks.Dispose();
+                weights.Dispose(); indices.Dispose(); packedWeights.Dispose(); ranges.Dispose();
             }
         }
 

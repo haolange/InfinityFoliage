@@ -33,6 +33,9 @@ namespace Landscape.FoliagePipeline
         public float4x4 lodProjection;
         public FrustumPlane* planes;
         public int planeCount;
+        internal int renderId;
+        internal FrustumPlane* shadowPlanes;
+        internal int4 shadowPlaneCounts;
 
         public bool isShadow
         {
