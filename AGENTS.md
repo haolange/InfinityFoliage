@@ -83,6 +83,8 @@ var job = new TreeCullLodJob { planes = planes };
 
 ## 禁止
 
+- 未经用户明确要求上传具体证据媒体，禁止将截图、录屏、Game 画面、渲染对照图等验证媒体及其 `.meta` 添加到 Git / Git LFS、提交或上传远端仓库。“提交代码”“上传改动”不构成上传这些文件的授权。
+- 禁止为上传验证媒体而转换格式、压缩或绕过 Git LFS 限制。验证结果默认只在 `Docs/DELIVERY.md` 记录必要的文字结论；临时媒体放在仓库外，验证结束后清理，不作为代码交付附件入库。
 - 再建 `DESIGN.md`，或把本包架构写成 UI/UX Workbench 条款。
 - 类型名加回 `F` 前缀，或加 `FormerlySerializedAs` 渡旧类型名。
 - 流式页与旧全图 packed `ComputeBuffer` / Scene `densityMap` 双路径。
