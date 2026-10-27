@@ -1,5 +1,14 @@
 # Infinity Foliage 交付记录
 
+本文件按日期记录编译、运行和画面验收。系统定义见 [ARCHITECTURE.md](../ARCHITECTURE.md)，使用步骤见 [README.md](../README.md)，修改约束见 [AGENTS.md](../AGENTS.md)。
+
+各日期小节保留当时的观察、范围和未验收项。后文里的接口说明或当次结论，不自动成为当前规格；当前行为以源码和架构说明为准。证据位于 `Docs/Evidence/`。
+
+## 2026-10-27 文档
+
+依据现行 Runtime、Editor 与 Shader 重写根目录 `ARCHITECTURE.md`、`AGENTS.md` 和 `README.md`。仓库中没有 `DESIGN.md`，本次也没有新增。
+
+本轮没有修改运行时、着色器或烘焙代码，没有启动 Editor，也没有新的画面或 Frame Debugger 记录。文档与源码的对应关系来自阅读现行实现，不构成新的渲染验收。
 
 ## 2026-10-23 Alpha clip 零阈值修复与阴影覆盖状态
 
