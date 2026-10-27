@@ -4,6 +4,12 @@
 
 各日期小节保留当时的观察、范围和未验收项。后文里的接口说明或当次结论，不自动成为当前规格；当前行为以源码和架构说明为准。证据位于 `Docs/Evidence/`。
 
+## 2026-10-28 修改约束
+
+在 `AGENTS.md` 补上完整交付、歧义处理和迭代后的文档回写。`ARCHITECTURE.md` 本轮没有结构变化。仓库中没有 `DESIGN.md`，本次也没有新增。
+
+本轮没有修改运行时、着色器或烘焙代码，没有启动 Editor，也没有新的画面或 Frame Debugger 记录。
+
 ## 2026-10-27 文档
 
 依据现行 Runtime、Editor 与 Shader 重写根目录 `ARCHITECTURE.md`、`AGENTS.md` 和 `README.md`。仓库中没有 `DESIGN.md`，本次也没有新增。
